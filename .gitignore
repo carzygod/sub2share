@@ -65,3 +65,6 @@ docker-compose.override.yml
 
 # Generated and preview artifacts
 **/*.log
+
+# Vendor upstream snapshots that are not expected in main repo
+sub2/upstream/
