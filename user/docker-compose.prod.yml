@@ -1,0 +1,56 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    depends_on:
+      - api
+    ports:
+      - "3000:80"
+
+  admin:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.admin
+    depends_on:
+      - api
+    ports:
+      - "3001:80"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zhisuan
+      POSTGRES_PASSWORD: zhisuan
+      POSTGRES_DB: zhisuan_user
+    volumes:
+      - zyz_user_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhisuan -d zhisuan_user"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - zyz_user_redis:/data
+
+volumes:
+  zyz_user_pg:
+  zyz_user_redis:
+

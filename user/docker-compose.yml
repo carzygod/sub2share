@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: zyz-user-postgres
+    environment:
+      POSTGRES_USER: zhisuan
+      POSTGRES_PASSWORD: zhisuan
+      POSTGRES_DB: zhisuan_user
+    ports:
+      - "5432:5432"
+    volumes:
+      - zyz_user_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zhisuan -d zhisuan_user"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: zyz-user-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - zyz_user_redis:/data
+
+volumes:
+  zyz_user_pg:
+  zyz_user_redis:
+

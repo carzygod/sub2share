@@ -1,0 +1,436 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  active
+  disabled
+  banned
+}
+
+enum RoleCode {
+  buyer
+  supplier
+  operator
+  admin
+}
+
+enum AuthProvider {
+  google
+  x
+}
+
+enum ResourceType {
+  codex
+  claude_code
+  gemini
+  antigravity
+}
+
+enum ProductStatus {
+  draft
+  active
+  offline
+}
+
+enum ProductBillingMode {
+  pay_as_you_go
+  daily
+  weekly
+  monthly
+}
+
+enum OrderStatus {
+  pending
+  paid
+  provisioning
+  active
+  failed
+  refunding
+  refunded
+  expired
+  cancelled
+  closed
+}
+
+enum RentalStatus {
+  active
+  low_balance
+  limited
+  suspended
+  expired
+  refunded
+  closed
+}
+
+enum WalletTransactionType {
+  recharge
+  freeze
+  unfreeze
+  consume
+  refund
+  withdrawal_freeze
+  withdrawal_paid
+  adjustment
+}
+
+enum SupplierResourceStatus {
+  pending
+  testing
+  online
+  busy
+  paused
+  abnormal
+  disabled
+}
+
+enum SupplierLevel {
+  L0
+  L1
+  L2
+  L3
+  L4
+}
+
+enum UsageStatus {
+  pending
+  billed
+  refunded
+  ignored
+  disputed
+}
+
+enum SettlementStatus {
+  pending
+  frozen
+  available
+  withdrawn
+  cancelled
+}
+
+enum WithdrawalStatus {
+  pending
+  approved
+  rejected
+  paid
+  cancelled
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  phone          String?
+  passwordHash   String
+  displayName    String?
+  status         UserStatus     @default(active)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  roles          UserRole[]
+  wallet         WalletAccount?
+  orders         Order[]
+  rentals        Rental[]
+  supplier       Supplier?
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  identities     UserIdentity[]
+}
+
+model UserIdentity {
+  id              String       @id @default(uuid())
+  userId          String
+  provider        AuthProvider
+  providerUserId  String
+  email           String?
+  displayName     String?
+  avatarUrl       String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([email])
+}
+
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String
+  role      RoleCode
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+model WalletAccount {
+  id               String              @id @default(uuid())
+  userId           String              @unique
+  currency         String              @default("USD")
+  availableBalance Decimal             @default(0) @db.Decimal(18, 6)
+  frozenBalance    Decimal             @default(0) @db.Decimal(18, 6)
+  totalRecharged   Decimal             @default(0) @db.Decimal(18, 6)
+  totalSpent       Decimal             @default(0) @db.Decimal(18, 6)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String                @id @default(uuid())
+  walletId    String
+  type        WalletTransactionType
+  amount      Decimal               @db.Decimal(18, 6)
+  balanceAfter Decimal              @db.Decimal(18, 6)
+  currency    String                @default("USD")
+  refType     String?
+  refId       String?
+  note        String?
+  createdAt   DateTime              @default(now())
+
+  wallet      WalletAccount         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@index([refType, refId])
+}
+
+model Product {
+  id            String             @id @default(uuid())
+  name          String
+  resourceType  ResourceType
+  billingMode   ProductBillingMode
+  description   String?
+  status        ProductStatus      @default(draft)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  prices        ProductPrice[]
+  orders        OrderItem[]
+  rentals       Rental[]
+}
+
+model ProductPrice {
+  id             String   @id @default(uuid())
+  productId      String
+  tierCode       String
+  displayName    String
+  discountRate   Decimal  @default(0.2) @db.Decimal(8, 4)
+  tierMultiplier Decimal  @default(1) @db.Decimal(8, 4)
+  fixedPrice     Decimal? @db.Decimal(18, 6)
+  durationDays   Int?
+  maxConcurrency Int      @default(1)
+  requestLimit   Int?
+  status         ProductStatus @default(active)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, tierCode])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  userId      String
+  status      OrderStatus @default(pending)
+  currency    String      @default("USD")
+  totalAmount Decimal     @db.Decimal(18, 6)
+  paidAmount  Decimal     @default(0) @db.Decimal(18, 6)
+  paymentRef  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items       OrderItem[]
+  rentals     Rental[]
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  productId String
+  priceId   String?
+  quantity  Int     @default(1)
+  amount    Decimal @db.Decimal(18, 6)
+  meta      Json?
+
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+}
+
+model Rental {
+  id          String       @id @default(uuid())
+  userId      String
+  orderId     String
+  productId   String
+  resourceType ResourceType
+  status      RentalStatus @default(active)
+  startsAt    DateTime     @default(now())
+  endsAt      DateTime?
+  sub2UserId  String?
+  sub2KeyId   String?
+  sub2KeyHash String?
+  endpointUrl String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  limits      RentalLimit?
+  apiKeys     ApiKey[]
+  usages      UsageRecord[]
+}
+
+model RentalLimit {
+  id             String  @id @default(uuid())
+  rentalId       String  @unique
+  maxConcurrency Int     @default(1)
+  rpmLimit       Int?
+  tpmLimit       Int?
+  requestLimit   Int?
+  spendLimit     Decimal? @db.Decimal(18, 6)
+  remainingSpend Decimal? @db.Decimal(18, 6)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  rental         Rental   @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id         String   @id @default(uuid())
+  userId     String
+  rentalId   String?
+  name       String
+  keyPrefix  String
+  keyHash    String
+  status     String   @default("active")
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rental     Rental?  @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+}
+
+model Supplier {
+  id                String             @id @default(uuid())
+  userId            String             @unique
+  displayName       String?
+  status            String             @default("pending")
+  defaultShareRate  Decimal            @default(0.7) @db.Decimal(8, 4)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resources         SupplierResource[]
+  withdrawals       Withdrawal[]
+}
+
+model SupplierResource {
+  id              String                 @id @default(uuid())
+  supplierId      String
+  resourceType    ResourceType
+  status          SupplierResourceStatus @default(pending)
+  level           SupplierLevel          @default(L0)
+  shareRate       Decimal                @default(0.7) @db.Decimal(8, 4)
+  dailyCap        Decimal?               @db.Decimal(18, 6)
+  reserveRatio    Decimal                @default(0.2) @db.Decimal(8, 4)
+  maxConcurrency  Int                    @default(1)
+  sub2AccountId   String?
+  lastCheckedAt   DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  supplier        Supplier               @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  usages          UsageRecord[]
+  settlements     SettlementRecord[]
+}
+
+model UsageRecord {
+  id                 String          @id @default(uuid())
+  sub2RequestId       String          @unique
+  rentalId            String
+  userId              String
+  supplierResourceId  String?
+  resourceType        ResourceType
+  model               String?
+  inputUnits          Decimal         @default(0) @db.Decimal(18, 6)
+  outputUnits         Decimal         @default(0) @db.Decimal(18, 6)
+  apiEquivalentCost   Decimal         @default(0) @db.Decimal(18, 6)
+  buyerCharge         Decimal         @default(0) @db.Decimal(18, 6)
+  supplierIncome      Decimal         @default(0) @db.Decimal(18, 6)
+  status              UsageStatus     @default(pending)
+  occurredAt          DateTime
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  rental              Rental          @relation(fields: [rentalId], references: [id], onDelete: Restrict)
+  supplierResource    SupplierResource? @relation(fields: [supplierResourceId], references: [id], onDelete: SetNull)
+  settlements         SettlementRecord[]
+}
+
+model SettlementRecord {
+  id                 String           @id @default(uuid())
+  supplierResourceId  String
+  usageRecordId       String?
+  amount              Decimal          @db.Decimal(18, 6)
+  shareRate           Decimal          @db.Decimal(8, 4)
+  status              SettlementStatus @default(pending)
+  availableAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  supplierResource    SupplierResource @relation(fields: [supplierResourceId], references: [id], onDelete: Restrict)
+  usageRecord         UsageRecord?      @relation(fields: [usageRecordId], references: [id], onDelete: SetNull)
+}
+
+model Withdrawal {
+  id          String           @id @default(uuid())
+  supplierId  String
+  amount      Decimal          @db.Decimal(18, 6)
+  currency    String           @default("USD")
+  status      WithdrawalStatus @default(pending)
+  payoutRef   String?
+  note        String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  supplier    Supplier         @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+}
+
+model Sub2Binding {
+  id          String   @id @default(uuid())
+  objectType  String
+  objectId    String
+  sub2Type    String
+  sub2Id      String
+  meta        Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([objectType, objectId, sub2Type])
+  @@unique([sub2Type, sub2Id])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  objectType  String
+  objectId    String?
+  before      Json?
+  after       Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}

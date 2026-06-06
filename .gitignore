@@ -1,0 +1,67 @@
+# OS / Editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Logs
+*.log
+*.pid
+*.seed
+*.pid.lock
+*.out
+*.err
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node / pnpm
+node_modules/
+**/node_modules/
+pnpm-lock.yaml.bak
+**/.pnpm-store/
+.npm/
+.yarn/
+
+# Build outputs
+dist/
+**/dist/
+out/
+build/
+tmp/
+temp/
+.next/
+coverage/
+vite.config.ts.timestamp-*
+.turbo/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.local.example
+!.env.production.example
+
+# Runtime artifacts
+docker-compose.override.yml
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Misc
+/.cache/
+/.parcel-cache/
+.eslintcache
+
+# Generated and preview artifacts
+**/*.log
