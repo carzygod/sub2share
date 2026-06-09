@@ -10,6 +10,7 @@ import { sub2Client } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
+import { recordOrderStatusHistory } from "../orders/status-history.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash"]);
 const userRoles = ["buyer", "supplier", "operator", "admin"] as const;
@@ -46,7 +47,8 @@ const orderDetailInclude = {
       apiKeys: { orderBy: { createdAt: "desc" }, take: 20 }
     },
     orderBy: { createdAt: "desc" }
-  }
+  },
+  statusHistory: { orderBy: { createdAt: "desc" }, take: 50 }
 } satisfies Prisma.OrderInclude;
 
 const userStatusSchema = z.object({
@@ -477,10 +479,20 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       throw new AppError("order_not_cancellable", `Order cannot be cancelled from ${before.status}`, 400);
     }
 
-    const order = await prisma.order.update({
-      where: { id },
-      data: { status: "cancelled" },
-      include: orderDetailInclude
+    const order = await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id },
+        data: { status: "cancelled" }
+      });
+      await recordOrderStatusHistory(tx, {
+        orderId: id,
+        fromStatus: before.status,
+        toStatus: "cancelled",
+        actorUserId: actor.id,
+        reason: "admin.order.cancel",
+        meta: { note: input.note }
+      });
+      return tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude });
     });
     await writeAuditLog(request, actor.id, "admin.order.cancel", "order", id, {
       status: before.status,
@@ -544,6 +556,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (existingRefund) {
       const order = await prisma.$transaction(async (tx) => {
         await tx.order.update({ where: { id }, data: { status: "refunded" } });
+        await recordOrderStatusHistory(tx, {
+          orderId: id,
+          fromStatus: before.status,
+          toStatus: "refunded",
+          actorUserId: actor.id,
+          reason: "admin.order.refund.reconcile",
+          meta: { existingRefundId: existingRefund.id, note: input.note }
+        });
         await tx.rental.updateMany({
           where: { orderId: id, status: { not: "refunded" } },
           data: { status: "refunded" }
@@ -610,6 +630,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           existingRefundId: transaction.id
         };
       }
+      await recordOrderStatusHistory(tx, {
+        orderId: id,
+        fromStatus: before.status,
+        toStatus: "refunding",
+        actorUserId: actor.id,
+        reason: "admin.order.refund.start",
+        meta: { note: input.note }
+      });
 
       const wallet = await tx.walletAccount.upsert({
         where: { userId: before.userId },
@@ -638,6 +666,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         }
       });
       await tx.order.update({ where: { id }, data: { status: "refunded" } });
+      await recordOrderStatusHistory(tx, {
+        orderId: id,
+        fromStatus: "refunding",
+        toStatus: "refunded",
+        actorUserId: actor.id,
+        reason: "admin.order.refund.complete",
+        meta: { refundAmount: String(before.paidAmount), note: input.note }
+      });
       await tx.rental.updateMany({
         where: { orderId: id, status: { not: "refunded" } },
         data: { status: "refunded" }

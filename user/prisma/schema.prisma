@@ -251,8 +251,25 @@ model Order {
   user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
   items   OrderItem[]
   rentals Rental[]
+  statusHistory OrderStatusHistory[]
 
   @@unique([userId, idempotencyKey])
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(uuid())
+  orderId     String
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  actorUserId String?
+  reason      String?
+  meta        Json?
+  createdAt   DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 model OrderItem {

@@ -7,6 +7,7 @@ import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
+import { recordOrderStatusHistory } from "./status-history.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/);
 
@@ -72,6 +73,14 @@ export async function registerOrderRoutes(app: FastifyInstance) {
               }
             }
           }
+        });
+        await recordOrderStatusHistory(tx, {
+          orderId: order.id,
+          fromStatus: null,
+          toStatus: "provisioning",
+          actorUserId: user.id,
+          reason: "user.order.create",
+          meta: { productId: price.productId, priceId: price.id, amount: String(amount) }
         });
         const debit = await tx.walletAccount.updateMany({
           where: {
@@ -146,6 +155,14 @@ export async function registerOrderRoutes(app: FastifyInstance) {
 
       const updatedRental = await prisma.$transaction(async (tx) => {
         await tx.order.update({ where: { id: result.order.id }, data: { status: "active" } });
+        await recordOrderStatusHistory(tx, {
+          orderId: result.order.id,
+          fromStatus: result.order.status,
+          toStatus: "active",
+          actorUserId: user.id,
+          reason: "user.order.provisioned",
+          meta: { sub2UserId: sub2Key.sub2UserId, sub2KeyId: sub2Key.sub2KeyId }
+        });
         const rental = await tx.rental.update({
           where: { id: result.rental.id },
           data: {
@@ -187,6 +204,14 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     } catch (error) {
       await prisma.$transaction(async (tx) => {
         await tx.order.update({ where: { id: result.order.id }, data: { status: "failed" } });
+        await recordOrderStatusHistory(tx, {
+          orderId: result.order.id,
+          fromStatus: result.order.status,
+          toStatus: "failed",
+          actorUserId: user.id,
+          reason: "user.order.provision_failed",
+          meta: { error: redactError(error) }
+        });
         await tx.rental.update({ where: { id: result.rental.id }, data: { status: "closed" } });
 
         const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
@@ -274,4 +299,8 @@ function isUniqueConstraintError(error: unknown) {
 
 function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function redactError(error: unknown) {
+  return error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
 }

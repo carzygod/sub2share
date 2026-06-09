@@ -225,6 +225,18 @@ interface OrderDetailRow extends OrderRow {
   user: UserRow;
   items: OrderItemRow[];
   rentals: RentalRow[];
+  statusHistory?: OrderStatusHistoryRow[];
+}
+
+interface OrderStatusHistoryRow {
+  id: string;
+  orderId: string;
+  fromStatus?: string | null;
+  toStatus: string;
+  actorUserId?: string | null;
+  reason?: string | null;
+  meta?: unknown;
+  createdAt: string;
 }
 
 interface RentalRow {
@@ -1869,6 +1881,21 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
       </div>
 
       <section className="detail-grid">
+        <DetailBlock title="状态历史">
+          <MiniTable headers={["从", "到", "原因", "操作者", "Meta", "时间"]}>
+            {(order.statusHistory ?? []).map((history) => (
+              <tr key={history.id}>
+                <td>{history.fromStatus ?? "-"}</td>
+                <td><StatusPill status={history.toStatus} /></td>
+                <td>{history.reason ?? "-"}</td>
+                <td><small>{history.actorUserId ?? "-"}</small></td>
+                <td><small>{auditSummary(history.meta)}</small></td>
+                <td>{dateTime(history.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
         <DetailBlock title="订单项">
           <MiniTable headers={["商品", "资源", "数量", "金额", "价格 ID"]}>
             {order.items.map((item) => (
