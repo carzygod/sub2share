@@ -15,6 +15,7 @@
 - 管理员 `反代请求` 接口会归一化搜索关键词，支持直接粘贴 `x-proxy-request-id: <requestId>` 或 `x-request-id=<requestId>`。
 - 管理后台 `反代请求` 表格将请求 ID 单独展示，并提供复制按钮。
 - API CORS 配置通过 `Access-Control-Expose-Headers` 暴露 `x-proxy-request-id`，浏览器端 JavaScript 也可以读取该响应头。
+- CORS 选项集中在 `user/apps/api/src/common/cors.ts`，并通过 Fastify 注入测试验证真实响应头。
 
 ## 管理员价值
 

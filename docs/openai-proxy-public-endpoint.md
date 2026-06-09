@@ -44,6 +44,7 @@ OPENAI_PROXY_PUBLIC_ENDPOINT=https://api.example.com/v1
 
 - `npm --prefix user/apps/api run typecheck`
 - `npm --prefix user/apps/api run build`
+- `npm --prefix user/apps/api test`
 
 线上验证建议：
 

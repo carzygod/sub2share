@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import Fastify from "fastify";
 import { env } from "./config/env.js";
+import { apiCorsOptions } from "./common/cors.js";
 import { sendError } from "./common/errors.js";
 import { ok } from "./common/response.js";
 import { prisma } from "./common/prisma.js";
@@ -14,7 +15,6 @@ import { registerSupplierRoutes } from "./modules/suppliers/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { registerOpenAiProxyRoutes } from "./modules/openai-proxy/routes.js";
-import { openAiProxyCorsExposedHeaders } from "./modules/openai-proxy/helpers.js";
 import { startSub2UsageSyncScheduler } from "./jobs/sub2-usage-scheduler.js";
 
 const readinessTimeoutMs = 5_000;
@@ -25,11 +25,7 @@ export async function buildServer() {
     genReqId: () => crypto.randomUUID()
   });
 
-  await app.register(cors, {
-    origin: true,
-    credentials: true,
-    exposedHeaders: openAiProxyCorsExposedHeaders
-  });
+  await app.register(cors, apiCorsOptions);
   await app.register(jwt, { secret: env.JWT_ACCESS_SECRET });
 
   app.setErrorHandler((error, _request, reply) => sendError(reply, error));
