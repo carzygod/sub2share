@@ -804,6 +804,15 @@ function App() {
     if (selectedResource?.id === resourceId) await openResourceDetail(resourceId);
   }
 
+  async function testResource(resourceId: string) {
+    const result = await api<{ result: { ok: boolean; statusCode: number }; resource: ResourceRow }>(`/api/admin/resources/${resourceId}/test`, {
+      method: "POST"
+    });
+    setMessage(`Resource test ${result.result.ok ? "passed" : "failed"} / HTTP ${result.result.statusCode} / status ${result.resource.status}`);
+    await refresh("resources");
+    if (selectedResource?.id === resourceId) await openResourceDetail(resourceId);
+  }
+
   async function createResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1084,6 +1093,7 @@ function App() {
             meta={listMeta.resources}
             onCreate={createResource}
             onStatus={setResourceStatus}
+            onTest={testResource}
             onDetail={openResourceDetail}
             onCloseDetail={() => setSelectedResource(null)}
             onDraft={(patch) => updateListDraft("resources", patch)}
@@ -1937,11 +1947,12 @@ function Sub2StatusView({ status, tests, smoke, onRefreshAccount, onTestAccount,
   );
 }
 
-function ResourcesView({ resources, selectedResource, query, meta, onCreate, onStatus, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, query, meta, onCreate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onStatus: (resourceId: string, status: ResourceStatus) => void;
+  onTest: (resourceId: string) => void;
   onDetail: (resourceId: string) => void;
   onCloseDetail: () => void;
 } & ManagedListProps) {
@@ -1990,7 +2001,7 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onS
             <td>
               <div className="row-actions">
                 <button className="secondary mini" onClick={() => onDetail(resource.id)}>详情</button>
-                <button className="secondary mini" onClick={() => onStatus(resource.id, "testing")}>测试</button>
+                <button className="secondary mini" onClick={() => onTest(resource.id)}>测试</button>
                 <button className="secondary mini" onClick={() => onStatus(resource.id, "online")}>上线</button>
                 <button className="secondary mini" onClick={() => onStatus(resource.id, "paused")}>暂停</button>
                 <button className="danger mini" onClick={() => onStatus(resource.id, "disabled")}>禁用</button>

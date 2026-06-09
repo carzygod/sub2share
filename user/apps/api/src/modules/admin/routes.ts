@@ -20,6 +20,7 @@ const productStatuses = ["draft", "active", "offline"] as const;
 const billingModes = ["pay_as_you_go", "daily", "weekly", "monthly"] as const;
 const usageStatuses = ["pending", "billed", "refunded", "ignored", "disputed"] as const;
 const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"] as const;
+type ResourceStatus = (typeof resourceStatuses)[number];
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
 
@@ -923,6 +924,43 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, { ...resource, usageSummary, settlementSummary });
   });
 
+  app.post("/api/admin/resources/:id/test", async (request, reply) => {
+    const actor = await requireRole(request, ["operator", "admin"]);
+    const { id } = request.params as { id: string };
+    const before = await prisma.supplierResource.findUnique({
+      where: { id },
+      select: { id: true, status: true, sub2AccountId: true, lastCheckedAt: true }
+    });
+    if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    if (!before.sub2AccountId) {
+      throw new AppError("resource_sub2_account_missing", "Supplier resource does not have a Sub2 account id", 400);
+    }
+
+    const accountId = Number.parseInt(before.sub2AccountId, 10);
+    if (!Number.isFinite(accountId) || String(accountId) !== before.sub2AccountId.trim()) {
+      throw new AppError("resource_sub2_account_invalid", "Supplier resource Sub2 account id must be numeric", 400);
+    }
+
+    const result = await sub2Client.testAccount(accountId);
+    const nextStatus = statusAfterResourceTest(before.status, result.ok);
+    const resource = await prisma.supplierResource.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        lastCheckedAt: new Date()
+      },
+      include: { supplier: { include: { user: true } } }
+    });
+    await writeAuditLog(request, actor.id, "admin.resource.test", "supplier_resource", id, before, {
+      status: resource.status,
+      sub2AccountId: resource.sub2AccountId,
+      ok: result.ok,
+      statusCode: result.statusCode,
+      events: result.events.map((event) => event.type ?? event.message ?? "event")
+    });
+    return adminOk(reply, { resource, result });
+  });
+
   app.patch("/api/admin/resources/:id/status", async (request, reply) => {
     const actor = await requireRole(request, ["operator", "admin"]);
     const { id } = request.params as { id: string };
@@ -1211,6 +1249,12 @@ function oneOf<T extends string>(values: readonly T[], value: string | undefined
 
 function nonEmpty(value: string | undefined) {
   return value && value.length > 0 ? value : undefined;
+}
+
+function statusAfterResourceTest(current: ResourceStatus, ok: boolean): ResourceStatus {
+  if (["disabled", "paused"].includes(current)) return current;
+  if (ok) return current === "testing" || current === "pending" || current === "abnormal" ? "online" : current;
+  return current === "online" || current === "testing" || current === "pending" || current === "busy" ? "abnormal" : current;
 }
 
 function redactSecrets(data: unknown) {
