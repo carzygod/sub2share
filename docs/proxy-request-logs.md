@@ -17,8 +17,8 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - `method` / `path`：OpenAI 兼容路径。
 - `statusCode`：最终返回给客户端的状态码。
 - `upstreamStatusCode`：Sub2API 上游状态码，本地拦截时为空。
-- `errorCode`：本地拦截或上游不可用的错误码。
-- `durationMs`：本地处理到上游响应头返回的耗时。
+- `errorCode`：本地拦截、上游不可用或流式响应异常的错误码。
+- `durationMs`：非流式请求记录完整处理耗时；流式请求会先在上游响应头返回时落库，并在响应流结束、错误或客户端断开后回写完整持续时间。
 - `requestBytes`：请求体字节数。
 - `estimatedInputTokens`：本地限流使用的粗略输入 token 估算。
 - `ipAddress` / `userAgent`：排障来源信息。
@@ -38,6 +38,8 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
   - 用户、租赁、余额、资源类型、到期时间、请求量、RPM、TPM、并发等本地准入失败。
   - Sub2API 上游超时或不可用。
   - Sub2API 正常返回，包括 2xx、4xx、5xx。
+- 流式响应结束后会回写同一条日志的 `durationMs`。
+- 客户端在流式响应中途断开时，同一条日志会写入 `errorCode=client_disconnected`。
 - 日志写入失败不会阻断用户请求，只记录服务端 warning。
 - 新增管理员接口：`GET /api/admin/proxy-requests`
 - 权限要求：`operator` 或 `admin`
@@ -58,7 +60,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 耗时、请求字节数、估算输入 token。
 - IP、User-Agent、创建时间。
 
-页面支持导出当前页 CSV，便于线上排障时交叉比对服务日志、Sub2API 状态和用户反馈。
+页面支持按当前筛选条件导出全部 CSV，便于线上排障时交叉比对服务日志、Sub2API 状态和用户反馈。
 
 ## 验收记录
 

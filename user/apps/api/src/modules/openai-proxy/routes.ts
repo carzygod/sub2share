@@ -159,7 +159,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           proxyEstimatedInputTokens: rateLimitCheck.estimatedTokens
         }, "openai proxy request");
 
-        await writeProxyRequestLog(request, startedAt, {
+        const proxyRequestLogId = await writeProxyRequestLog(request, startedAt, {
           ...logContext,
           statusCode: upstreamResponse.status,
           upstreamStatusCode: upstreamResponse.status,
@@ -176,7 +176,11 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         }
 
         const upstreamStream = Readable.fromWeb(upstreamResponse.body as never);
-        cleanupForwardedUpstreamOnStreamEnd(upstreamStream, upstream.cleanup);
+        trackForwardedUpstreamStream(request, reply, upstreamStream, {
+          cleanup: upstream.cleanup,
+          logId: proxyRequestLogId,
+          startedAt
+        });
         return reply.send(upstreamStream);
       }
     });
@@ -262,7 +266,7 @@ async function writeProxyRequestLog(
   entry: ProxyRequestLogEntry
 ) {
   try {
-    await prisma.proxyRequestLog.create({
+    const log = await prisma.proxyRequestLog.create({
       data: {
         requestId: request.id,
         userId: entry.userId ?? null,
@@ -281,8 +285,30 @@ async function writeProxyRequestLog(
         userAgent: requestUserAgent(request)
       }
     });
+    return log.id;
   } catch (error) {
     request.log.warn({ error, path: request.url }, "failed to persist openai proxy request log");
+    return null;
+  }
+}
+
+async function updateProxyRequestLogCompletion(
+  request: FastifyRequest,
+  logId: string | null,
+  startedAt: number,
+  errorCode?: string
+) {
+  if (!logId) return;
+  try {
+    await prisma.proxyRequestLog.update({
+      where: { id: logId },
+      data: {
+        durationMs: Math.max(0, Date.now() - startedAt),
+        ...(errorCode ? { errorCode } : {})
+      }
+    });
+  } catch (error) {
+    request.log.warn({ error, path: request.url, proxyRequestLogId: logId }, "failed to update openai proxy request log completion");
   }
 }
 
@@ -486,16 +512,48 @@ function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {
   reply.raw.once("close", release);
 }
 
-function cleanupForwardedUpstreamOnStreamEnd(stream: Readable, cleanup: () => void) {
+function trackForwardedUpstreamStream(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  stream: Readable,
+  options: {
+    cleanup: () => void;
+    logId: string | null;
+    startedAt: number;
+  }
+) {
   let cleaned = false;
-  const runCleanup = () => {
+  let streamEnded = false;
+  let clientClosedEarly = false;
+
+  const markClientClose = () => {
+    if (!reply.raw.writableEnded && !streamEnded) {
+      clientClosedEarly = true;
+      finalize("client_disconnected");
+    }
+  };
+
+  const finalize = (errorCode?: string) => {
     if (cleaned) return;
     cleaned = true;
-    cleanup();
+    reply.raw.off("close", markClientClose);
+    options.cleanup();
+    void updateProxyRequestLogCompletion(request, options.logId, options.startedAt, errorCode);
   };
-  stream.once("end", runCleanup);
-  stream.once("error", runCleanup);
-  stream.once("close", runCleanup);
+
+  reply.raw.once("close", markClientClose);
+  stream.once("end", () => {
+    streamEnded = true;
+    finalize();
+  });
+  stream.once("error", () => {
+    finalize(clientClosedEarly ? "client_disconnected" : "upstream_stream_error");
+  });
+  stream.once("close", () => {
+    if (!streamEnded) {
+      finalize(clientClosedEarly ? "client_disconnected" : "upstream_stream_closed");
+    }
+  });
 }
 
 function isMetadataRequest(request: FastifyRequest) {
