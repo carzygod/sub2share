@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { prisma } from "../../common/prisma.js";
 import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
-import { estimateProxyInputTokens, isMetadataProxyRequest, proxyBodyByteLength, proxyBodyText } from "./helpers.js";
+import { attachProxyRequestIdHeader, estimateProxyInputTokens, isMetadataProxyRequest, proxyBodyByteLength, proxyBodyText } from "./helpers.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
@@ -62,6 +62,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
       bodyLimit: env.OPENAI_PROXY_BODY_LIMIT_BYTES,
       handler: async (request, reply) => {
         const startedAt = Date.now();
+        attachProxyRequestIdHeader(reply, request.id);
         const apiKey = bearerToken(request);
         if (!apiKey) {
           await writeProxyRequestLog(request, startedAt, {
@@ -168,7 +169,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         });
 
         copyResponseHeaders(upstreamResponse, reply);
-        reply.header("x-proxy-request-id", request.id);
+        attachProxyRequestIdHeader(reply, request.id);
         reply.status(upstreamResponse.status);
 
         if (request.method === "HEAD" || !upstreamResponse.body) {

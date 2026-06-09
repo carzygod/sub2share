@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  attachProxyRequestIdHeader,
   estimateProxyInputTokens,
   isMetadataProxyRequest,
   proxyBodyByteLength,
+  proxyRequestIdHeaderName,
   proxyBodyText
 } from "../src/modules/openai-proxy/helpers.js";
 
@@ -36,4 +38,16 @@ test("measures proxy body text and bytes for buffers and json objects", () => {
   assert.equal(proxyBodyByteLength(bufferBody), 5);
   assert.equal(proxyBodyText(objectBody), JSON.stringify(objectBody));
   assert.equal(proxyBodyByteLength(objectBody), Buffer.byteLength(JSON.stringify(objectBody)));
+});
+
+test("attaches a stable proxy request id header for local and upstream responses", () => {
+  const headers = new Map<string, string>();
+  attachProxyRequestIdHeader({
+    header(name: string, value: string) {
+      headers.set(name, value);
+    }
+  }, "req-123");
+
+  assert.equal(proxyRequestIdHeaderName, "x-proxy-request-id");
+  assert.equal(headers.get("x-proxy-request-id"), "req-123");
 });

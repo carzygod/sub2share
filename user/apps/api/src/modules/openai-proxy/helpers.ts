@@ -1,3 +1,9 @@
+export const proxyRequestIdHeaderName = "x-proxy-request-id";
+
+export function attachProxyRequestIdHeader(reply: { header: (name: string, value: string) => unknown }, requestId: string) {
+  reply.header(proxyRequestIdHeaderName, requestId);
+}
+
 export function isMetadataProxyRequest(method: string, url: string) {
   const normalizedMethod = method.toUpperCase();
   if (!["GET", "HEAD"].includes(normalizedMethod)) return false;
