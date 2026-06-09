@@ -278,10 +278,12 @@ export class Sub2ApiClient {
   async fetchUsageSince(cursor?: string): Promise<{ records: Sub2UsageRecord[]; nextCursor?: string }> {
     const url = new URL(`${this.baseUrl}/api/v1/usage`);
     if (cursor) url.searchParams.set("cursor", cursor);
-    const response = await this.fetchWithTimeout(url.toString(), { headers: this.headers(await this.adminToken()) });
-    if (!response.ok) {
-      throw await this.errorFromResponse(response, "Sub2 usage sync failed");
-    }
+    const response = await this.fetchSub2(url.toString(), {
+      headers: this.headers(await this.adminToken())
+    }, {
+      errorPrefix: "Sub2 usage sync failed",
+      retry: true
+    });
     const envelope = await this.readJson<Sub2Envelope<Sub2UsageListDto>>(response);
     return {
       records: this.normalizeUsage(envelope.data.items ?? []),
@@ -798,16 +800,43 @@ export class Sub2ApiClient {
     headers.set("content-type", "application/json");
     if (bearerToken) headers.set("authorization", `Bearer ${bearerToken}`);
 
-    const response = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
+    const response = await this.fetchSub2(`${this.baseUrl}${path}`, {
       ...init,
       headers
+    }, {
+      errorPrefix: "Sub2API request failed",
+      retry: this.isRetrySafeMethod(init.method)
     });
 
-    if (!response.ok) {
-      throw await this.errorFromResponse(response, "Sub2API request failed");
+    return this.readJson<T>(response);
+  }
+
+  private async fetchSub2(
+    url: string,
+    init: RequestInit,
+    options: { errorPrefix: string; retry: boolean; timeoutMs?: number }
+  ) {
+    const maxRetries = options.retry ? env.SUB2_REQUEST_RETRY_ATTEMPTS : 0;
+    let lastError: Sub2ApiError | undefined;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+      try {
+        const response = await this.fetchWithTimeout(url, init, options.timeoutMs);
+        if (response.ok) return response;
+
+        const error = await this.errorFromResponse(response, options.errorPrefix);
+        if (!error.retryable || attempt >= maxRetries) throw error;
+        lastError = error;
+      } catch (error) {
+        if (!(error instanceof Sub2ApiError)) throw error;
+        if (!error.retryable || attempt >= maxRetries) throw error;
+        lastError = error;
+      }
+
+      await this.sleep(this.retryDelayMs(attempt));
     }
 
-    return this.readJson<T>(response);
+    throw lastError ?? new Sub2ApiError("unknown", `${options.errorPrefix}: retry loop ended unexpectedly`);
   }
 
   private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs = env.SUB2_REQUEST_TIMEOUT_MS) {
@@ -858,6 +887,18 @@ export class Sub2ApiClient {
     if (statusCode === 429 || normalized.includes("rate limit") || normalized.includes("too many")) return "rate_limited";
     if (statusCode >= 500) return "upstream";
     return "unknown";
+  }
+
+  private isRetrySafeMethod(method?: string) {
+    return ["GET", "HEAD", "PUT", "DELETE"].includes((method ?? "GET").toUpperCase());
+  }
+
+  private retryDelayMs(attempt: number) {
+    return env.SUB2_REQUEST_RETRY_BASE_MS * (2 ** attempt);
+  }
+
+  private async sleep(ms: number) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private headers(bearerToken?: string): HeadersInit {

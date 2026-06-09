@@ -44,6 +44,8 @@ const envSchema = z.object({
   SUB2_DEFAULT_GROUP_ID: optionalPositiveInteger,
   SUB2_SMOKE_MODEL: optionalNonEmptyString.default("gpt-5.3-codex"),
   SUB2_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
+  SUB2_REQUEST_RETRY_ATTEMPTS: z.coerce.number().int().nonnegative().default(2),
+  SUB2_REQUEST_RETRY_BASE_MS: z.coerce.number().int().positive().default(500),
   SUB2_USAGE_SYNC_INTERVAL_MS: z.coerce.number().int().nonnegative().default(0),
   SUB2_USAGE_SYNC_ON_START: booleanString.default(false),
   OPENAI_PROXY_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
