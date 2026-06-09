@@ -323,6 +323,8 @@ interface OrderDetailRow extends OrderRow {
   statusHistory?: OrderStatusHistoryRow[];
   walletTransactions?: WalletTransactionRow[];
   walletTransactionSummary?: AggregateSummary;
+  proxyRequests?: ProxyRequestLogRow[];
+  proxyRequestSummary?: { _count: number };
 }
 
 interface OrderStatusHistoryRow {
@@ -2559,6 +2561,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
 
 function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onClose: () => void }) {
   const walletTransactions = order.walletTransactions ?? [];
+  const proxyRequests = order.proxyRequests ?? [];
   return (
     <section className="panel glass-panel wide detail-panel">
       <div className="section-head">
@@ -2585,6 +2588,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
         <div><span>更新时间</span><strong>{dateTime(order.updatedAt)}</strong></div>
         <div><span>钱包流水</span><strong>{order.walletTransactionSummary?._count ?? walletTransactions.length}</strong></div>
         <div><span>流水金额</span><strong>{money(order.walletTransactionSummary?._sum?.amount)}</strong></div>
+        <div><span>反代请求</span><strong>{order.proxyRequestSummary?._count ?? proxyRequests.length}</strong></div>
       </div>
 
       <section className="detail-grid">
@@ -2602,6 +2606,28 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
             ))}
             {walletTransactions.length === 0 && (
               <tr><td colSpan={6}><small>暂无关联钱包流水。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="最近反代请求">
+          <MiniTable headers={["状态", "请求", "租赁", "耗时", "体积", "时间"]}>
+            {proxyRequests.slice(0, 10).map((log) => (
+              <tr key={log.id}>
+                <td>
+                  <StatusPill status={proxyStatusTone(log.statusCode)} />
+                  <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
+                  {log.errorCode && <small>{log.errorCode}</small>}
+                </td>
+                <td><strong>{log.method}</strong><small>{log.path}</small></td>
+                <td><strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong><small>{log.apiKeyPrefix ?? log.apiKey?.keyPrefix ?? "-"}</small></td>
+                <td>{log.durationMs}ms</td>
+                <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
+                <td>{dateTime(log.createdAt)}</td>
+              </tr>
+            ))}
+            {proxyRequests.length === 0 && (
+              <tr><td colSpan={6}><small>暂无关联反代请求。</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>

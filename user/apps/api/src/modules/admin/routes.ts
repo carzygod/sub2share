@@ -616,7 +616,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/orders/:id", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const { id } = request.params as { id: string };
-    const [order, walletTransactions, walletTransactionSummary] = await Promise.all([
+    const [order, walletTransactions, walletTransactionSummary, proxyRequests, proxyRequestSummary] = await Promise.all([
       prisma.order.findUnique({
         where: { id },
         include: orderDetailInclude
@@ -631,10 +631,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where: { refType: "order", refId: id },
         _count: true,
         _sum: { amount: true }
+      }),
+      prisma.proxyRequestLog.findMany({
+        where: { rental: { orderId: id } },
+        include: {
+          user: { select: { id: true, email: true, displayName: true } },
+          rental: { select: { id: true, resourceType: true, status: true, product: { select: { name: true } } } },
+          apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 50
+      }),
+      prisma.proxyRequestLog.aggregate({
+        where: { rental: { orderId: id } },
+        _count: true
       })
     ]);
     if (!order) throw new AppError("order_not_found", "Order not found", 404);
-    return adminOk(reply, { ...order, walletTransactions, walletTransactionSummary });
+    return adminOk(reply, { ...order, walletTransactions, walletTransactionSummary, proxyRequests, proxyRequestSummary });
   });
 
   app.post("/api/admin/orders/:id/cancel", async (request, reply) => {
