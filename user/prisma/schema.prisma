@@ -140,6 +140,7 @@ model User {
   auditLogs  AuditLog[]
   identities UserIdentity[]
   proxyRequestLogs ProxyRequestLog[]
+  systemHealthSnapshots SystemHealthSnapshot[]
 }
 
 model UserIdentity {
@@ -543,4 +544,21 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+}
+
+model SystemHealthSnapshot {
+  id          String   @id @default(uuid())
+  status      String
+  source      String   @default("manual")
+  summary     Json
+  checks      Json
+  actorUserId String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+  @@index([source, createdAt])
+  @@index([actorUserId, createdAt])
 }

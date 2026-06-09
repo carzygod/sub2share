@@ -209,6 +209,20 @@ interface SystemMaintenanceResult {
   health: SystemHealthResult;
 }
 
+interface SystemHealthSnapshotRow {
+  id: string;
+  status: "ok" | "warning" | "error";
+  source: string;
+  summary: {
+    totalChecks?: number;
+    ok?: number;
+    warning?: number;
+    error?: number;
+  };
+  createdAt: string;
+  actor?: Pick<UserRow, "id" | "email" | "displayName"> | null;
+}
+
 interface RoleRow {
   role: string;
 }
@@ -747,6 +761,7 @@ function App() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealthResult | null>(null);
   const [systemMaintenance, setSystemMaintenance] = useState<SystemMaintenanceResult | null>(null);
+  const [systemHealthSnapshots, setSystemHealthSnapshots] = useState<SystemHealthSnapshotRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -850,11 +865,18 @@ function App() {
     setSub2Bindings(bindings);
   }
 
+  async function loadSystemHealthView() {
+    const health = await api<SystemHealthResult>("/api/admin/system-health");
+    const snapshots = await api<PagedResult<SystemHealthSnapshotRow>>("/api/admin/system-health/snapshots?page=1&pageSize=12");
+    setSystemHealth(health);
+    setSystemHealthSnapshots(snapshots.items);
+  }
+
   async function refresh(nextView = view, queryOverride?: ListQueryState) {
     try {
       setView(nextView);
       if (nextView === "dashboard") setDashboard(await api<Dashboard>("/api/admin/dashboard"));
-      if (nextView === "systemHealth") setSystemHealth(await api<SystemHealthResult>("/api/admin/system-health"));
+      if (nextView === "systemHealth") await loadSystemHealthView();
       if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
@@ -1324,6 +1346,8 @@ function App() {
     });
     setSystemMaintenance(result);
     setSystemHealth(result.health);
+    const snapshots = await api<PagedResult<SystemHealthSnapshotRow>>("/api/admin/system-health/snapshots?page=1&pageSize=12");
+    setSystemHealthSnapshots(snapshots.items);
     const expired = result.actions.expireOverdueRentals?.expired ?? 0;
     const deactivatedKeys = result.actions.deactivateInvalidProxyApiKeys?.deactivated ?? 0;
     const released = result.actions.releaseAvailableSettlements?.released ?? 0;
@@ -1689,6 +1713,7 @@ function App() {
           <SystemHealthView
             health={systemHealth}
             maintenance={systemMaintenance}
+            snapshots={systemHealthSnapshots}
             onRefresh={() => refresh("systemHealth")}
             onRunMaintenance={runSystemMaintenance}
           />
@@ -2009,9 +2034,10 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
+  snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
 }) {
@@ -2065,6 +2091,23 @@ function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: 
           <tr>
             <td colSpan={4}><small>点击重新巡检开始读取系统健康信号。</small></td>
           </tr>
+        )}
+      </TablePanel>
+      <TablePanel title="巡检历史" count={snapshots.length} headers={["状态", "来源", "摘要", "操作者", "时间"]}>
+        {snapshots.map((snapshot) => (
+          <tr key={snapshot.id}>
+            <td><StatusPill status={healthStatusTone(snapshot.status)} /></td>
+            <td><strong>{snapshot.source}</strong><small>{snapshot.id}</small></td>
+            <td>
+              <strong>{snapshot.summary.ok ?? 0} ok / {snapshot.summary.warning ?? 0} warning / {snapshot.summary.error ?? 0} error</strong>
+              <small>{snapshot.summary.totalChecks ?? 0} checks</small>
+            </td>
+            <td><strong>{snapshot.actor?.email ?? "-"}</strong><small>{snapshot.actor?.displayName ?? snapshot.actor?.id ?? "-"}</small></td>
+            <td>{dateTime(snapshot.createdAt)}</td>
+          </tr>
+        ))}
+        {snapshots.length === 0 && (
+          <tr><td colSpan={5}><small>暂无巡检历史。</small></td></tr>
         )}
       </TablePanel>
     </section>

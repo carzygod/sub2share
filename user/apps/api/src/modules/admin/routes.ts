@@ -39,6 +39,7 @@ const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const systemHealthApiKeyScanLimit = 500;
 const systemHealthApiKeyIssueLimit = 50;
 const sub2BindingReconciliationLimit = 500;
+const systemHealthStatuses = ["ok", "warning", "error"] as const;
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -366,14 +367,52 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.get("/api/admin/system-health", async (request, reply) => {
+    const actor = await requireRole(request, ["operator", "admin"]);
+    const report = await buildSystemHealthReport();
+    await recordSystemHealthSnapshot(report, "manual", actor.id);
+    return adminOk(reply, report);
+  });
+
+  app.get("/api/admin/system-health/snapshots", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
-    return adminOk(reply, await buildSystemHealthReport());
+    const query = parseListQuery(request.query);
+    const status = oneOf(systemHealthStatuses, query.status);
+    const where: Prisma.SystemHealthSnapshotWhereInput = {
+      ...(status ? { status } : {}),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { source: containsText(query.q) },
+          { actorUserId: containsText(query.q) },
+          { actor: { email: containsText(query.q) } },
+          { actor: { displayName: containsText(query.q) } }
+        ]
+      } : {})
+    };
+    const [snapshots, total] = await Promise.all([
+      prisma.systemHealthSnapshot.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          summary: true,
+          createdAt: true,
+          actor: { select: { id: true, email: true, displayName: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        ...pageArgs(query)
+      }),
+      prisma.systemHealthSnapshot.count({ where })
+    ]);
+    return adminOk(reply, paged(snapshots, total, query));
   });
 
   app.post("/api/admin/system-maintenance/run", async (request, reply) => {
     const actor = await requireRole(request, ["admin"]);
     const input = systemMaintenanceSchema.parse(request.body ?? {});
     const result = await runSystemMaintenance(input);
+    await recordSystemHealthSnapshot(result.health, "maintenance", actor.id);
     await writeAuditLog(request, actor.id, "admin.system.maintenance_run", "system", undefined, null, result);
     return adminOk(reply, result);
   });
@@ -2707,6 +2746,20 @@ async function buildSystemHealthReport() {
     },
     checks
   };
+}
+
+type SystemHealthReport = Awaited<ReturnType<typeof buildSystemHealthReport>>;
+
+async function recordSystemHealthSnapshot(report: SystemHealthReport, source: string, actorUserId?: string) {
+  await prisma.systemHealthSnapshot.create({
+    data: {
+      status: report.status,
+      source,
+      summary: JSON.parse(JSON.stringify(report.summary)) as Prisma.InputJsonValue,
+      checks: JSON.parse(JSON.stringify(report.checks)) as Prisma.InputJsonValue,
+      actorUserId
+    }
+  });
 }
 
 async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchema>) {

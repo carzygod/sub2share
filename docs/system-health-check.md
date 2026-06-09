@@ -9,6 +9,7 @@
 ## 后端接口
 
 - 新增接口：`GET /api/admin/system-health`
+- 新增接口：`GET /api/admin/system-health/snapshots`
 - 权限要求：`operator` 或 `admin`
 - 返回内容：
   - `checkedAt`：巡检时间。
@@ -53,6 +54,12 @@
 - API Key 可用性巡检默认扫描最近 500 条 active OpenAI/Codex Key，并在 `detail.issues` 中返回最多 50 条样本，避免巡检响应过大。
 - 巡检结果用于帮助管理员定位方向，具体修复仍通过订单、租赁、余额、资源、反代状态、反代请求、账务对账、结算和提现等页面执行。
 - 客户端中途断开通常标记为 warning，用于提示长流式请求或客户端取消较多；上游流异常会标记为 error，提示 Sub2API 或上游连接链路需要复查。
+
+## 巡检历史
+
+- 每次管理员刷新当前巡检会写入一条 `source=manual` 快照。
+- 每次管理员运行安全维护后会写入一条 `source=maintenance` 快照。
+- 管理后台会展示最近 12 条巡检历史，便于判断问题是否持续存在。
 
 ## 验收记录
 
