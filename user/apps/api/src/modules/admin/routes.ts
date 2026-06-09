@@ -31,6 +31,7 @@ const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
+const sub2BindingReconciliationLimit = 500;
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -65,6 +66,18 @@ interface SystemHealthCheck {
   summary: string;
   metrics?: Record<string, string | number | boolean | null>;
   detail?: unknown;
+}
+
+interface Sub2BindingIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  rentalId?: string;
+  bindingId?: string;
+  sub2Type?: string;
+  expected?: string | null;
+  actual?: string | null;
+  message: string;
 }
 
 const orderDetailInclude = {
@@ -1718,6 +1731,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, await sub2Client.fetchGatewayStatus());
   });
 
+  app.get("/api/admin/sub2/bindings/reconciliation", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    return adminOk(reply, await findSub2BindingIssues());
+  });
+
+  app.post("/api/admin/sub2/bindings/repair", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const result = await repairSub2Bindings();
+    await writeAuditLog(request, actor.id, "admin.sub2.bindings.repair", "sub2_binding", undefined, null, result);
+    return adminOk(reply, result);
+  });
+
   app.post("/api/admin/sub2/accounts/:id/refresh", async (request, reply) => {
     const actor = await requireRole(request, ["admin"]);
     const { id } = sub2AccountParamsSchema.parse(request.params);
@@ -2016,7 +2041,8 @@ async function buildSystemHealthReport() {
     proxyRecentServerErrors,
     proxyRecentLocalErrors,
     billingSync,
-    reconciliation
+    reconciliation,
+    sub2Bindings
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], _count: true }),
     prisma.rental.count({ where: { status: "active" } }),
@@ -2039,7 +2065,8 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 500 } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
     getSub2UsageSyncState(),
-    findBillingReconciliationIssues()
+    findBillingReconciliationIssues(),
+    findSub2BindingIssues()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const usersByStatus = countGroups(userCounts, "status");
@@ -2107,6 +2134,13 @@ async function buildSystemHealthReport() {
         accounts: sub2Status.accountCount
       },
       sub2Status.error ? { error: sub2Status.error } : { blockingReasons: sub2Status.blockingReasons }
+    ),
+    systemHealthCheck(
+      "sub2Bindings",
+      "Sub2 绑定",
+      sub2Bindings.ok ? "ok" : "warning",
+      sub2Bindings.ok ? "Sub2Binding 与本地租赁一致" : `${sub2Bindings.summary.totalIssues} 个 Sub2 绑定问题`,
+      sub2Bindings.summary
     ),
     systemHealthCheck(
       "proxy",
@@ -2352,6 +2386,273 @@ function decimalEquals(left: Prisma.Decimal, right: Prisma.Decimal) {
 
 function decimalText(value: Prisma.Decimal) {
   return value.toFixed(6);
+}
+
+async function findSub2BindingIssues() {
+  const [rentals, bindings] = await Promise.all([
+    prisma.rental.findMany({
+      where: {
+        OR: [
+          { sub2UserId: { not: null } },
+          { sub2KeyId: { not: null } }
+        ]
+      },
+      select: {
+        id: true,
+        sub2UserId: true,
+        sub2KeyId: true,
+        status: true,
+        user: { select: { email: true } },
+        product: { select: { name: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: sub2BindingReconciliationLimit
+    }),
+    prisma.sub2Binding.findMany({
+      where: {
+        objectType: { in: ["rental", "rental_api_key_history"] },
+        sub2Type: { in: ["user", "api_key"] }
+      },
+      orderBy: { createdAt: "desc" },
+      take: sub2BindingReconciliationLimit * 3
+    })
+  ]);
+
+  const issues: Sub2BindingIssue[] = [];
+  const rentalIds = new Set(rentals.map((rental) => rental.id));
+  const bindingByRentalAndType = new Map<string, { id: string; sub2Id: string }>();
+  const bindingBySub2TypeAndId = new Map<string, { id: string; objectType: string; objectId: string }>();
+  for (const binding of bindings) {
+    bindingBySub2TypeAndId.set(`${binding.sub2Type}:${binding.sub2Id}`, {
+      id: binding.id,
+      objectType: binding.objectType,
+      objectId: binding.objectId
+    });
+  }
+  for (const binding of bindings.filter((item) => item.objectType === "rental")) {
+    bindingByRentalAndType.set(`${binding.objectId}:${binding.sub2Type}`, {
+      id: binding.id,
+      sub2Id: binding.sub2Id
+    });
+  }
+
+  for (const rental of rentals) {
+    if (rental.sub2UserId) {
+      const binding = bindingBySub2TypeAndId.get(`user:${rental.sub2UserId}`);
+      if (!binding) {
+        issues.push(sub2BindingIssue({
+          type: "missing_user_binding",
+          rentalId: rental.id,
+          sub2Type: "user",
+          expected: rental.sub2UserId,
+          message: `Rental ${rental.id} has sub2UserId but no user binding for that Sub2 user.`
+        }));
+      }
+    }
+
+    if (rental.sub2KeyId) {
+      const binding = bindingByRentalAndType.get(`${rental.id}:api_key`);
+      if (!binding) {
+        issues.push(sub2BindingIssue({
+          type: "missing_current_api_key_binding",
+          rentalId: rental.id,
+          sub2Type: "api_key",
+          expected: rental.sub2KeyId,
+          message: `Rental ${rental.id} has sub2KeyId but no current api_key binding.`
+        }));
+      } else if (binding.sub2Id !== rental.sub2KeyId) {
+        issues.push(sub2BindingIssue({
+          type: "mismatched_current_api_key_binding",
+          rentalId: rental.id,
+          bindingId: binding.id,
+          sub2Type: "api_key",
+          expected: rental.sub2KeyId,
+          actual: binding.sub2Id,
+          message: `Rental ${rental.id} api_key binding does not match current sub2KeyId.`
+        }));
+      }
+    }
+  }
+
+  for (const binding of bindings) {
+    const rentalId = binding.objectType === "rental_api_key_history"
+      ? binding.objectId.split(":")[0]
+      : binding.objectId;
+    if (rentalId && !rentalIds.has(rentalId)) {
+      issues.push(sub2BindingIssue({
+        type: "orphan_binding",
+        severity: "warning",
+        rentalId,
+        bindingId: binding.id,
+        sub2Type: binding.sub2Type,
+        actual: binding.sub2Id,
+        message: `Sub2 binding ${binding.id} points to a missing rental.`
+      }));
+    }
+  }
+
+  return {
+    checkedAt: new Date().toISOString(),
+    ok: issues.length === 0,
+    scanLimit: sub2BindingReconciliationLimit,
+    summary: {
+      rentalsScanned: rentals.length,
+      bindingsScanned: bindings.length,
+      totalIssues: issues.length,
+      missingCurrentUserBindings: issues.filter((issue) => issue.type === "missing_current_user_binding").length,
+      missingUserBindings: issues.filter((issue) => issue.type === "missing_user_binding").length,
+      missingCurrentApiKeyBindings: issues.filter((issue) => issue.type === "missing_current_api_key_binding").length,
+      mismatchedCurrentBindings: issues.filter((issue) => issue.type.startsWith("mismatched_current")).length,
+      orphanBindings: issues.filter((issue) => issue.type === "orphan_binding").length
+    },
+    issues: issues.slice(0, 100)
+  };
+}
+
+async function repairSub2Bindings() {
+  const rentals = await prisma.rental.findMany({
+    where: {
+      OR: [
+        { sub2UserId: { not: null } },
+        { sub2KeyId: { not: null } }
+      ]
+    },
+    select: {
+      id: true,
+      sub2UserId: true,
+      sub2KeyId: true
+    },
+    orderBy: { createdAt: "desc" },
+    take: sub2BindingReconciliationLimit
+  });
+
+  let userBindingsUpserted = 0;
+  let apiKeyBindingsUpserted = 0;
+  const conflicts: Array<{ rentalId: string; sub2Type: string; sub2Id: string; reason: string }> = [];
+  const repairedAt = new Date().toISOString();
+  await prisma.$transaction(async (tx) => {
+    for (const rental of rentals) {
+      if (rental.sub2UserId) {
+        const result = await ensureSub2Binding(tx, rental.id, "user", rental.sub2UserId, { repairedAt }, {
+          preserveExistingSub2IdOwner: true
+        });
+        if (result.changed) userBindingsUpserted += 1;
+        if (!result.ok) conflicts.push({
+          rentalId: rental.id,
+          sub2Type: "user",
+          sub2Id: rental.sub2UserId,
+          reason: result.reason
+        });
+      }
+
+      if (rental.sub2KeyId) {
+        const result = await ensureSub2Binding(tx, rental.id, "api_key", rental.sub2KeyId, { repairedAt }, {
+          preserveExistingSub2IdOwner: false
+        });
+        if (result.changed) apiKeyBindingsUpserted += 1;
+        if (!result.ok) conflicts.push({
+          rentalId: rental.id,
+          sub2Type: "api_key",
+          sub2Id: rental.sub2KeyId,
+          reason: result.reason
+        });
+      }
+    }
+  });
+
+  const reconciliation = await findSub2BindingIssues();
+  return {
+    repairedAt,
+    rentalsScanned: rentals.length,
+    userBindingsUpserted,
+    apiKeyBindingsUpserted,
+    conflicts,
+    reconciliation
+  };
+}
+
+async function ensureSub2Binding(
+  tx: Prisma.TransactionClient,
+  rentalId: string,
+  sub2Type: "user" | "api_key",
+  sub2Id: string,
+  meta: Prisma.InputJsonObject,
+  options: { preserveExistingSub2IdOwner: boolean }
+) {
+  const [bySub2Id, canonical] = await Promise.all([
+    tx.sub2Binding.findUnique({
+      where: {
+        sub2Type_sub2Id: {
+          sub2Type,
+          sub2Id
+        }
+      }
+    }),
+    tx.sub2Binding.findUnique({
+      where: {
+        objectType_objectId_sub2Type: {
+          objectType: "rental",
+          objectId: rentalId,
+          sub2Type
+        }
+      }
+    })
+  ]);
+
+  if (bySub2Id) {
+    if (bySub2Id.objectType === "rental" && bySub2Id.objectId === rentalId) {
+      await tx.sub2Binding.update({ where: { id: bySub2Id.id }, data: { meta } });
+      return { ok: true as const, changed: true };
+    }
+    if (options.preserveExistingSub2IdOwner) {
+      return { ok: true as const, changed: false };
+    }
+    if (canonical && canonical.id !== bySub2Id.id) {
+      return {
+        ok: false as const,
+        changed: false,
+        reason: "canonical_binding_conflicts_with_existing_sub2_id"
+      };
+    }
+    await tx.sub2Binding.update({
+      where: { id: bySub2Id.id },
+      data: {
+        objectType: "rental",
+        objectId: rentalId,
+        meta
+      }
+    });
+    return { ok: true as const, changed: true };
+  }
+
+  await tx.sub2Binding.upsert({
+    where: {
+      objectType_objectId_sub2Type: {
+        objectType: "rental",
+        objectId: rentalId,
+        sub2Type
+      }
+    },
+    update: { sub2Id, meta },
+    create: {
+      objectType: "rental",
+      objectId: rentalId,
+      sub2Type,
+      sub2Id,
+      meta
+    }
+  });
+  return { ok: true as const, changed: true };
+}
+
+function sub2BindingIssue(input: Omit<Sub2BindingIssue, "id" | "severity"> & {
+  severity?: Sub2BindingIssue["severity"];
+}): Sub2BindingIssue {
+  return {
+    id: `${input.type}:${input.rentalId ?? "none"}:${input.sub2Type ?? "none"}:${input.bindingId ?? "none"}`,
+    severity: input.severity ?? "error",
+    ...input
+  };
 }
 
 function systemHealthCheck(

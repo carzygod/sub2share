@@ -559,6 +559,44 @@ interface Sub2ProxySmokeTestResult {
   };
 }
 
+interface Sub2BindingIssueRow {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  rentalId?: string;
+  bindingId?: string;
+  sub2Type?: string;
+  expected?: string | null;
+  actual?: string | null;
+  message: string;
+}
+
+interface Sub2BindingReconciliationResult {
+  checkedAt: string;
+  ok: boolean;
+  scanLimit: number;
+  summary: {
+    rentalsScanned: number;
+    bindingsScanned: number;
+    totalIssues: number;
+    missingUserBindings?: number;
+    missingCurrentUserBindings?: number;
+    missingCurrentApiKeyBindings: number;
+    mismatchedCurrentBindings: number;
+    orphanBindings: number;
+  };
+  issues: Sub2BindingIssueRow[];
+}
+
+interface Sub2BindingRepairResult {
+  repairedAt: string;
+  rentalsScanned: number;
+  userBindingsUpserted: number;
+  apiKeyBindingsUpserted: number;
+  conflicts: Array<{ rentalId: string; sub2Type: string; sub2Id: string; reason: string }>;
+  reconciliation: Sub2BindingReconciliationResult;
+}
+
 interface AuditLogRow {
   id: string;
   action: string;
@@ -617,6 +655,7 @@ function App() {
   const [sub2Status, setSub2Status] = useState<Sub2Status | null>(null);
   const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
   const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
+  const [sub2Bindings, setSub2Bindings] = useState<Sub2BindingReconciliationResult | null>(null);
   const [proxyRequests, setProxyRequests] = useState<ProxyRequestLogRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
@@ -675,6 +714,15 @@ function App() {
     }));
   }
 
+  async function loadSub2View() {
+    const [status, bindings] = await Promise.all([
+      api<Sub2Status>("/api/admin/sub2/status"),
+      api<Sub2BindingReconciliationResult>("/api/admin/sub2/bindings/reconciliation")
+    ]);
+    setSub2Status(status);
+    setSub2Bindings(bindings);
+  }
+
   async function refresh(nextView = view, queryOverride?: ListQueryState) {
     try {
       setView(nextView);
@@ -689,7 +737,7 @@ function App() {
       if (nextView === "products") await loadPaged("products", "/api/admin/products", setProducts, queryOverride);
       if (nextView === "orders") await loadPaged("orders", "/api/admin/orders", setOrders, queryOverride);
       if (nextView === "rentals") await loadPaged("rentals", "/api/admin/rentals", setRentals, queryOverride);
-      if (nextView === "sub2") setSub2Status(await api<Sub2Status>("/api/admin/sub2/status"));
+      if (nextView === "sub2") await loadSub2View();
       if (nextView === "proxyRequests") await loadPaged("proxyRequests", "/api/admin/proxy-requests", setProxyRequests, queryOverride);
       if (nextView === "resources") await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
       if (nextView === "settlements") await loadPaged("settlements", "/api/admin/settlements", setSettlements, queryOverride);
@@ -1082,6 +1130,22 @@ function App() {
     await refresh("sub2");
   }
 
+  async function checkSub2Bindings() {
+    const result = await api<Sub2BindingReconciliationResult>("/api/admin/sub2/bindings/reconciliation");
+    setSub2Bindings(result);
+    setMessage(result.ok ? "Sub2 bindings are consistent" : `Sub2 bindings need review: ${result.summary.totalIssues} issues`);
+  }
+
+  async function repairSub2Bindings() {
+    const result = await api<Sub2BindingRepairResult>("/api/admin/sub2/bindings/repair", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSub2Bindings(result.reconciliation);
+    setMessage(`Sub2 bindings repaired: user ${result.userBindingsUpserted}, api_key ${result.apiKeyBindingsUpserted}, conflicts ${result.conflicts.length}`);
+    await refresh("sub2");
+  }
+
   async function applySub2RefreshToken(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1317,9 +1381,12 @@ function App() {
             status={sub2Status}
             tests={sub2Tests}
             smoke={sub2Smoke}
+            bindings={sub2Bindings}
             onRefreshAccount={refreshSub2Account}
             onTestAccount={testSub2Account}
             onSmokeTest={runSub2SmokeTest}
+            onCheckBindings={checkSub2Bindings}
+            onRepairBindings={repairSub2Bindings}
             onApplyRefreshToken={applySub2RefreshToken}
           />
         )}
@@ -2297,13 +2364,16 @@ function RentalsView({ rentals, query, meta, onRentalStatus, onUpdateLimits, onA
   );
 }
 
-function Sub2StatusView({ status, tests, smoke, onRefreshAccount, onTestAccount, onSmokeTest, onApplyRefreshToken }: {
+function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTestAccount, onSmokeTest, onCheckBindings, onRepairBindings, onApplyRefreshToken }: {
   status: Sub2Status | null;
   tests: Record<number, Sub2AccountTestResult>;
   smoke: Sub2ProxySmokeTestResult | null;
+  bindings: Sub2BindingReconciliationResult | null;
   onRefreshAccount: (accountId: number) => void;
   onTestAccount: (accountId: number) => void;
   onSmokeTest: () => void;
+  onCheckBindings: () => void;
+  onRepairBindings: () => void;
   onApplyRefreshToken: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const accounts = status?.accounts ?? [];
@@ -2343,6 +2413,42 @@ function Sub2StatusView({ status, tests, smoke, onRefreshAccount, onTestAccount,
             <div><span>临时 Key</span><strong>{smoke.keyDisabled ? "已禁用" : "未清理"}</strong></div>
             <div><span>Models</span><strong>{smoke.models.ok ? `通过 / ${smoke.models.modelCount}` : `失败 / HTTP ${smoke.models.statusCode}`}</strong></div>
             <div><span>Responses</span><strong>{smoke.responses.ok ? "通过" : smoke.responses.errorMessage ?? smoke.responses.errorType ?? `HTTP ${smoke.responses.statusCode}`}</strong></div>
+          </div>
+        )}
+      </div>
+      <div className="panel glass-panel">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Object mapping</span>
+            <h2>Sub2 绑定巡检</h2>
+          </div>
+          <div className="row-actions">
+            <StatusPill status={bindings?.ok ? "active" : "warning"} />
+            <button className="secondary mini" onClick={onCheckBindings}>巡检绑定</button>
+            <button className="secondary mini" onClick={onRepairBindings}>修复绑定</button>
+          </div>
+        </div>
+        <div className="diagnostic-grid">
+          <div><span>租赁扫描</span><strong>{bindings?.summary.rentalsScanned ?? "-"}</strong></div>
+          <div><span>绑定扫描</span><strong>{bindings?.summary.bindingsScanned ?? "-"}</strong></div>
+          <div><span>问题数</span><strong>{bindings?.summary.totalIssues ?? "-"}</strong></div>
+          <div><span>检查时间</span><strong>{dateTime(bindings?.checkedAt)}</strong></div>
+        </div>
+        {bindings && bindings.issues.length > 0 && (
+          <div className="compact-table table-wrap">
+            <table>
+              <thead><tr><th>类型</th><th>租赁</th><th>期望/实际</th><th>说明</th></tr></thead>
+              <tbody>
+                {bindings.issues.slice(0, 8).map((issue) => (
+                  <tr key={issue.id}>
+                    <td><StatusPill status={issue.severity} /><small>{issue.type}</small></td>
+                    <td><small>{issue.rentalId ?? "-"}</small></td>
+                    <td><strong>{issue.expected ?? "-"}</strong><small>{issue.actual ?? "-"}</small></td>
+                    <td><small>{issue.message}</small></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
