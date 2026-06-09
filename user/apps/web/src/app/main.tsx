@@ -191,6 +191,20 @@ function App() {
     }
   }
 
+  async function rotateRentalKey(rentalId: string) {
+    setLoading(true);
+    try {
+      const result = await api<{ apiKey: string; oldSub2KeyDisabled: boolean }>(`/api/rentals/${rentalId}/rotate-key`, {
+        method: "POST"
+      });
+      setLastApiKey(result.apiKey);
+      setMessage(`API key rotated. Copy the new key now.${result.oldSub2KeyDisabled ? "" : " Old Sub2 key disable needs support check."}`);
+      await refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function applySupplier() {
     await api("/api/supplier/apply", { method: "POST", body: JSON.stringify({ displayName: user?.displayName ?? user?.email }) });
     setMessage("供给方身份已开通");
@@ -261,7 +275,7 @@ function App() {
 
         {view === "dashboard" && <Dashboard wallet={wallet} rentals={rentals} activeRental={activeRental} resources={resources} />}
         {view === "products" && <Products products={products} onBuy={buy} />}
-        {view === "rentals" && <Rentals rentals={rentals} lastApiKey={lastApiKey} />}
+        {view === "rentals" && <Rentals rentals={rentals} lastApiKey={lastApiKey} onRotateKey={rotateRentalKey} />}
         {view === "wallet" && <WalletPage wallet={wallet} onRecharge={recharge} />}
         {view === "supplier" && <SupplierPage user={user} resources={resources} onApply={applySupplier} onCreateResource={createResource} />}
       </section>
@@ -464,7 +478,7 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
   );
 }
 
-function Rentals({ rentals, lastApiKey }: { rentals: Rental[]; lastApiKey: string }) {
+function Rentals({ rentals, lastApiKey, onRotateKey }: { rentals: Rental[]; lastApiKey: string; onRotateKey: (rentalId: string) => void }) {
   return (
     <section className="panel surface wide">
       <div className="section-head">
@@ -477,7 +491,7 @@ function Rentals({ rentals, lastApiKey }: { rentals: Rental[]; lastApiKey: strin
       {lastApiKey && <code className="key-display">{lastApiKey}</code>}
       <div className="table-wrap">
         <table>
-          <thead><tr><th>资源</th><th>状态</th><th>Endpoint</th><th>到期</th><th>Sub2 Key</th></tr></thead>
+          <thead><tr><th>资源</th><th>状态</th><th>Endpoint</th><th>到期</th><th>Sub2 Key</th><th>操作</th></tr></thead>
           <tbody>
             {rentals.map((rental) => (
               <tr key={rental.id}>
@@ -486,6 +500,7 @@ function Rentals({ rentals, lastApiKey }: { rentals: Rental[]; lastApiKey: strin
                 <td>{rental.endpointUrl ?? "-"}</td>
                 <td>{rental.endsAt ? new Date(rental.endsAt).toLocaleString() : "-"}</td>
                 <td>{rental.sub2KeyId ?? "-"}</td>
+                <td><button className="secondary" disabled={rental.status !== "active"} onClick={() => onRotateKey(rental.id)}>Rotate Key</button></td>
               </tr>
             ))}
           </tbody>

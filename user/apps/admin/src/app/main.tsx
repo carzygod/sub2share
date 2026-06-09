@@ -706,6 +706,17 @@ function App() {
     }
   }
 
+  async function rotateRentalKey(rentalId: string) {
+    const result = await api<{ apiKey: string; oldSub2KeyDisabled: boolean }>(`/api/admin/rentals/${rentalId}/rotate-key`, {
+      method: "POST"
+    });
+    setMessage(`API key rotated. New key: ${result.apiKey}${result.oldSub2KeyDisabled ? "" : " (old Sub2 key disable needs manual check)"}`);
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
+      await openOrderDetail(selectedOrder.id);
+    }
+  }
+
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1031,6 +1042,7 @@ function App() {
             meta={listMeta.rentals}
             onRentalStatus={setRentalStatus}
             onApiKeyStatus={setApiKeyStatus}
+            onRotateKey={rotateRentalKey}
             onDraft={(patch) => updateListDraft("rentals", patch)}
             onFilter={(event) => submitListFilters("rentals", event)}
             onClear={() => clearListFilters("rentals")}
@@ -1760,10 +1772,11 @@ function OrderDetailPanel({ order, onClose }: { order: OrderDetailRow; onClose: 
   );
 }
 
-function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onRotateKey, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   onRentalStatus: (rentalId: string, status: string) => void;
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
+  onRotateKey: (rentalId: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -1802,6 +1815,7 @@ function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onD
             <td>{dateTime(rental.endsAt)}</td>
             <td>
               <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onRotateKey(rental.id)}>Rotate Key</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "active")}>恢复</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "suspended")}>暂停</button>
                 <button type="button" className="danger mini" onClick={() => onRentalStatus(rental.id, "closed")}>关闭</button>

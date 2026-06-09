@@ -8,6 +8,7 @@ import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
 import { syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
+import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash"]);
 const userStatuses = ["active", "disabled", "banned"] as const;
@@ -426,6 +427,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       sub2Sync
     });
     return adminOk(reply, rental);
+  });
+
+  app.post("/api/admin/rentals/:id/rotate-key", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const result = await rotateRentalApiKey({ rentalId: id });
+    await writeAuditLog(request, actor.id, "admin.rental.rotate_key", "rental", id, {
+      previousSub2KeyId: result.previousSub2KeyId,
+      previousApiKeyIds: result.previousApiKeyIds
+    }, {
+      sub2KeyId: result.sub2KeyId,
+      oldSub2KeyDisabled: result.oldSub2KeyDisabled,
+      oldSub2KeyDisableError: result.oldSub2KeyDisableError ? redactSensitiveText(result.oldSub2KeyDisableError) : null
+    });
+    return adminOk(reply, result);
   });
 
   app.patch("/api/admin/api-keys/:id/status", async (request, reply) => {
