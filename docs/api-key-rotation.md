@@ -46,7 +46,8 @@ Authorization: Bearer <admin-token>
    - 停用该租赁下旧的本地 API Key。
    - 更新 `Rental.sub2KeyId`、`Rental.sub2KeyHash`、`Rental.endpointUrl`。
    - 创建新的本地 `ApiKey` 记录。
-   - 更新 `Sub2Binding` 中的 `user` 和 `api_key` 绑定。
+   - 更新 `Sub2Binding` 中的当前 `user` 和 `api_key` 绑定。
+   - 为旧 Sub2 Key 写入 `rental_api_key_history` 历史绑定。
 5. 本地事务成功后，尽力停用旧 Sub2 Key。
 6. 若本地事务失败，尽力停用刚创建的新 Sub2 Key，避免留下孤儿 Key。
 
@@ -61,6 +62,7 @@ Authorization: Bearer <admin-token>
 - 用户租赁列表、租赁详情和轮换响应不再返回 `sub2KeyHash`、嵌套 `user`、`order` 或历史 `apiKeys`。
 - 旧 Sub2 Key 禁用错误会先脱敏再返回或写入审计。
 - 审计记录不会持久化新 API Key 明文。
+- 旧 Sub2 Key 历史绑定会保留租赁 ID，避免轮换前产生但尚未同步的 usage 变成 unmatched。
 
 ## 验收方式
 
@@ -81,6 +83,7 @@ Authorization: Bearer <admin-token>
 4. 使用新 Key 请求 `GET /v1/models`。
 5. 使用旧 Key 请求 `GET /v1/models`，预期被本地代理拒绝。
 6. 在后台审计中确认存在 `admin.rental.rotate_key`。
+7. 若旧 Key 在轮换前已有未同步 usage，触发 usage 同步后应能归属到原租赁。
 
 ## 当前限制
 

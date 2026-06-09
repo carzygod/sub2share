@@ -18,10 +18,7 @@ export async function syncSub2UsageOnce(cursor?: string) {
 }
 
 async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipped" | "unmatched"> {
-  const rental = await prisma.rental.findFirst({
-    where: { sub2KeyId: record.apiKeyId },
-    include: { limits: true }
-  });
+  const rental = await findRentalForUsage(record.apiKeyId);
   if (!rental) return "unmatched";
 
   const supplierResource = record.upstreamAccountId
@@ -116,6 +113,45 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
     }
     throw error;
   }
+}
+
+async function findRentalForUsage(sub2KeyId: string) {
+  const currentRental = await prisma.rental.findFirst({
+    where: { sub2KeyId },
+    include: { limits: true }
+  });
+  if (currentRental) return currentRental;
+
+  const binding = await prisma.sub2Binding.findUnique({
+    where: {
+      sub2Type_sub2Id: {
+        sub2Type: "api_key",
+        sub2Id: sub2KeyId
+      }
+    }
+  });
+  if (!binding) return null;
+
+  const rentalId = rentalIdFromBinding(binding);
+  if (!rentalId) return null;
+
+  return prisma.rental.findUnique({
+    where: { id: rentalId },
+    include: { limits: true }
+  });
+}
+
+function rentalIdFromBinding(binding: { objectType: string; objectId: string; meta: Prisma.JsonValue | null }) {
+  if (binding.objectType === "rental") return binding.objectId;
+  if (binding.objectType !== "rental_api_key_history") return null;
+
+  if (binding.meta && typeof binding.meta === "object" && !Array.isArray(binding.meta)) {
+    const value = binding.meta.rentalId;
+    if (typeof value === "string" && value.length > 0) return value;
+  }
+
+  const separatorIndex = binding.objectId.indexOf(":");
+  return separatorIndex > 0 ? binding.objectId.slice(0, separatorIndex) : null;
 }
 
 async function updateRentalLimitsAfterUsage(

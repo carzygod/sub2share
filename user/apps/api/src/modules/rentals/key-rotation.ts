@@ -83,6 +83,14 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
         rotatedAt: new Date().toISOString(),
         previousSub2KeyId
       });
+      if (previousSub2KeyId && previousSub2KeyId !== sub2Key.sub2KeyId) {
+        await upsertHistoricalApiKeyBinding(tx, rental.id, previousSub2KeyId, {
+          rentalId: rental.id,
+          rotatedAt: new Date().toISOString(),
+          replacedBySub2KeyId: sub2Key.sub2KeyId,
+          previousApiKeyIds
+        });
+      }
 
       return tx.rental.findUniqueOrThrow({
         where: { id: rental.id },
@@ -136,6 +144,34 @@ async function upsertSub2Binding(
       objectId: rentalId,
       sub2Type,
       sub2Id,
+      meta
+    }
+  });
+}
+
+async function upsertHistoricalApiKeyBinding(
+  tx: Prisma.TransactionClient,
+  rentalId: string,
+  sub2KeyId: string,
+  meta: Prisma.InputJsonObject
+) {
+  await tx.sub2Binding.upsert({
+    where: {
+      objectType_objectId_sub2Type: {
+        objectType: "rental_api_key_history",
+        objectId: `${rentalId}:${sub2KeyId}`,
+        sub2Type: "api_key"
+      }
+    },
+    update: {
+      sub2Id: sub2KeyId,
+      meta
+    },
+    create: {
+      objectType: "rental_api_key_history",
+      objectId: `${rentalId}:${sub2KeyId}`,
+      sub2Type: "api_key",
+      sub2Id: sub2KeyId,
       meta
     }
   });
