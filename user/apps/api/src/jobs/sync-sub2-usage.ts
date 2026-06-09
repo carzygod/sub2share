@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { isLocalProxySmokeMeta } from "../common/internal-records.js";
 import { env } from "../config/env.js";
 import { prisma } from "../common/prisma.js";
 import { sub2Client, type Sub2UsageRecord } from "../integrations/sub2/client.js";
@@ -142,9 +143,10 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
 
   const apiEquivalentCost = new Prisma.Decimal(record.apiEquivalentCost);
   const billingRule = await resolveBillingRule(rental);
-  const buyerCharge = calculateBuyerCharge(apiEquivalentCost, billingRule);
+  const isSmokeUsage = isLocalProxySmokeRental(rental);
+  const buyerCharge = isSmokeUsage ? new Prisma.Decimal(0) : calculateBuyerCharge(apiEquivalentCost, billingRule);
   const shareRate = supplierResource?.shareRate ?? new Prisma.Decimal(0);
-  const supplierIncome = buyerCharge.mul(shareRate);
+  const supplierIncome = isSmokeUsage ? new Prisma.Decimal(0) : buyerCharge.mul(shareRate);
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -167,14 +169,16 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
           apiEquivalentCost,
           buyerCharge,
           supplierIncome,
-          status: buyerCharge.gt(0) ? "pending" : "billed",
+          status: isSmokeUsage ? "ignored" : buyerCharge.gt(0) ? "pending" : "billed",
           occurredAt: new Date(record.occurredAt)
         }
       });
 
-      const limitStatus = await updateRentalLimitsAfterUsage(tx, rental.id, buyerCharge);
+      const limitStatus = isSmokeUsage
+        ? { exhausted: false }
+        : await updateRentalLimitsAfterUsage(tx, rental.id, buyerCharge);
 
-      if (buyerCharge.gt(0)) {
+      if (!isSmokeUsage && buyerCharge.gt(0)) {
         const debit = await tx.walletAccount.updateMany({
           where: {
             userId: rental.userId,
@@ -205,11 +209,11 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
         await tx.usageRecord.update({ where: { id: usage.id }, data: { status: "billed" } });
       }
 
-      if (limitStatus.exhausted) {
+      if (!isSmokeUsage && limitStatus.exhausted) {
         await tx.rental.update({ where: { id: rental.id }, data: { status: "limited" } });
       }
 
-      if (supplierResource && supplierIncome.gt(0)) {
+      if (!isSmokeUsage && supplierResource && supplierIncome.gt(0)) {
         await tx.settlementRecord.create({
           data: {
             supplierResourceId: supplierResource.id,
@@ -310,6 +314,10 @@ function billingNote(rule: BillingRule) {
     return `sub2 usage billing product_price:${rule.tierCode ?? rule.priceId}`;
   }
   return "sub2 usage billing default_discount_rate";
+}
+
+function isLocalProxySmokeRental(rental: NonNullable<Awaited<ReturnType<typeof findRentalForUsage>>>) {
+  return rental.order.items.some((item) => isLocalProxySmokeMeta(item.meta));
 }
 
 function rentalIdFromBinding(binding: { objectType: string; objectId: string; meta: Prisma.JsonValue | null }) {

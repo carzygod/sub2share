@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireRole } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
+import { localProxySmokeBuyerId, localProxySmokeProductName, localProxySmokeUserEmail } from "../../common/internal-records.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
@@ -33,9 +34,6 @@ const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const sub2BindingReconciliationLimit = 500;
-const localProxySmokeBuyerId = "admin-openai-proxy-smoke";
-const localProxySmokeUserEmail = "admin-openai-proxy-smoke@local.invalid";
-const localProxySmokeProductName = "Admin OpenAI proxy smoke";
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -252,19 +250,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/dashboard", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const [users, activeRentals, onlineResources, pendingWithdrawals, usageAgg, walletAgg, orderAgg] = await Promise.all([
-      prisma.user.count(),
-      prisma.rental.count({ where: { status: "active" } }),
+      prisma.user.count({ where: nonSmokeUserWhere() }),
+      prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
       prisma.supplierResource.count({ where: { status: "online" } }),
       prisma.withdrawal.count({ where: { status: "pending" } }),
       prisma.usageRecord.aggregate({
+        where: nonSmokeUsageWhere(),
         _sum: { buyerCharge: true, supplierIncome: true },
         _count: true
       }),
       prisma.walletAccount.aggregate({
+        where: nonSmokeWalletWhere(),
         _sum: { availableBalance: true, frozenBalance: true, totalRecharged: true, totalSpent: true }
       }),
       prisma.order.aggregate({
-        where: { status: { in: ["paid", "provisioning", "active", "closed", "expired"] } },
+        where: { status: { in: ["paid", "provisioning", "active", "closed", "expired"] }, ...nonSmokeOrderWhere() },
         _sum: { paidAmount: true },
         _count: true
       })
@@ -327,6 +327,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(userStatuses, query.status);
     const where: Prisma.UserWhereInput = {
+      ...nonSmokeUserWhere(),
       ...(status ? { status } : {}),
       ...(query.q ? {
         OR: [
@@ -521,6 +522,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(orderStatuses, query.status);
     const where: Prisma.OrderWhereInput = {
+      ...nonSmokeOrderWhere(),
       ...(status ? { status } : {}),
       ...(query.q ? {
         OR: [
@@ -825,6 +827,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const status = oneOf(rentalStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
     const where: Prisma.RentalWhereInput = {
+      ...nonSmokeRentalWhere(),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -988,15 +991,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/wallets", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
-    const where: Prisma.WalletAccountWhereInput = query.q ? {
-      OR: [
-        { id: containsText(query.q) },
-        { userId: containsText(query.q) },
-        { user: { id: containsText(query.q) } },
-        { user: { email: containsText(query.q) } },
-        { user: { displayName: containsText(query.q) } }
-      ]
-    } : {};
+    const where: Prisma.WalletAccountWhereInput = {
+      ...nonSmokeWalletWhere(),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { userId: containsText(query.q) },
+          { user: { id: containsText(query.q) } },
+          { user: { email: containsText(query.q) } },
+          { user: { displayName: containsText(query.q) } }
+        ]
+      } : {})
+    };
     const [wallets, total] = await Promise.all([
       prisma.walletAccount.findMany({
         where,
@@ -1013,6 +1019,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
     const where: Prisma.WalletTransactionWhereInput = {
+      ...nonSmokeWalletTransactionWhere(),
       ...(oneOf(["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"] as const, query.status) ? {
         type: oneOf(["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"] as const, query.status)
       } : {}),
@@ -1043,15 +1050,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await requireRole(request, ["operator", "admin"]);
     const [orders, orderAgg, usageAgg] = await Promise.all([
       prisma.order.findMany({
+        where: nonSmokeOrderWhere(),
         include: { user: true, items: true, rentals: true },
         orderBy: { createdAt: "desc" },
         take: 100
       }),
       prisma.order.aggregate({
+        where: nonSmokeOrderWhere(),
         _sum: { totalAmount: true, paidAmount: true },
         _count: true
       }),
       prisma.usageRecord.aggregate({
+        where: nonSmokeUsageWhere(),
         _sum: { buyerCharge: true, supplierIncome: true },
         _count: true
       })
@@ -1080,6 +1090,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const status = oneOf(usageStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
     const where: Prisma.UsageRecordWhereInput = {
+      ...nonSmokeUsageWhere(),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -1141,6 +1152,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const status = oneOf(productStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
     const where: Prisma.ProductWhereInput = {
+      ...nonSmokeProductWhere(),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -2065,19 +2077,20 @@ async function buildSystemHealthReport() {
     reconciliation,
     sub2Bindings
   ] = await Promise.all([
-    prisma.user.groupBy({ by: ["status"], _count: true }),
-    prisma.rental.count({ where: { status: "active" } }),
-    prisma.rental.count({ where: { status: "active", endsAt: { lte: checkedAt } } }),
-    prisma.rental.count({ where: { status: { in: ["low_balance", "limited", "suspended"] } } }),
+    prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
+    prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
+    prisma.rental.count({ where: { status: "active", endsAt: { lte: checkedAt }, ...nonSmokeRentalWhere() } }),
+    prisma.rental.count({ where: { status: { in: ["low_balance", "limited", "suspended"] }, ...nonSmokeRentalWhere() } }),
     prisma.walletAccount.count({
       where: {
+        ...nonSmokeWalletWhere(),
         OR: [
           { availableBalance: { lt: 0 } },
           { frozenBalance: { lt: 0 } }
         ]
       }
     }),
-    prisma.order.groupBy({ by: ["status"], _count: true }),
+    prisma.order.groupBy({ by: ["status"], where: nonSmokeOrderWhere(), _count: true }),
     prisma.supplierResource.groupBy({ by: ["status"], _count: true }),
     prisma.withdrawal.count({ where: { status: "pending" } }),
     prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
@@ -2242,19 +2255,19 @@ async function findBillingReconciliationIssues() {
     withdrawalCandidates
   ] = await Promise.all([
     prisma.usageRecord.findMany({
-      where: { status: "billed", buyerCharge: { gt: 0 } },
+      where: { status: "billed", buyerCharge: { gt: 0 }, ...nonSmokeUsageWhere() },
       select: { id: true, buyerCharge: true, occurredAt: true },
       orderBy: { occurredAt: "desc" },
       take: reconciliationScanLimit
     }),
     prisma.walletTransaction.findMany({
-      where: { type: "consume", refType: "usage", refId: { not: null } },
+      where: { type: "consume", refType: "usage", refId: { not: null }, ...nonSmokeWalletTransactionWhere() },
       select: { id: true, amount: true, refId: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       take: reconciliationScanLimit
     }),
     prisma.usageRecord.findMany({
-      where: { status: "billed", supplierIncome: { gt: 0 } },
+      where: { status: "billed", supplierIncome: { gt: 0 }, ...nonSmokeUsageWhere() },
       select: {
         id: true,
         supplierIncome: true,
@@ -2294,7 +2307,8 @@ async function findBillingReconciliationIssues() {
     where: {
       type: "consume",
       refType: "usage",
-      refId: { in: billedUsages.map((usage) => usage.id) }
+      refId: { in: billedUsages.map((usage) => usage.id) },
+      ...nonSmokeWalletTransactionWhere()
     },
     select: { refId: true }
   });
@@ -2442,6 +2456,7 @@ async function findSub2BindingIssues() {
   const [rentals, bindings] = await Promise.all([
     prisma.rental.findMany({
       where: {
+        ...nonSmokeRentalWhere(),
         OR: [
           { sub2UserId: { not: null } },
           { sub2KeyId: { not: null } }
@@ -2461,7 +2476,8 @@ async function findSub2BindingIssues() {
     prisma.sub2Binding.findMany({
       where: {
         objectType: { in: ["rental", "rental_api_key_history"] },
-        sub2Type: { in: ["user", "api_key"] }
+        sub2Type: { in: ["user", "api_key"] },
+        NOT: [localProxySmokeBindingWhere()]
       },
       orderBy: { createdAt: "desc" },
       take: sub2BindingReconciliationLimit * 3
@@ -2562,6 +2578,7 @@ async function findSub2BindingIssues() {
 async function repairSub2Bindings() {
   const rentals = await prisma.rental.findMany({
     where: {
+      ...nonSmokeRentalWhere(),
       OR: [
         { sub2UserId: { not: null } },
         { sub2KeyId: { not: null } }
@@ -2797,6 +2814,38 @@ function groupCount(group: Record<string, unknown>) {
     return Number((count as { _all?: number })._all ?? 0);
   }
   return 0;
+}
+
+function nonSmokeUserWhere(): Prisma.UserWhereInput {
+  return { email: { not: localProxySmokeUserEmail } };
+}
+
+function nonSmokeOrderWhere(): Prisma.OrderWhereInput {
+  return { user: nonSmokeUserWhere() };
+}
+
+function nonSmokeRentalWhere(): Prisma.RentalWhereInput {
+  return { user: nonSmokeUserWhere() };
+}
+
+function nonSmokeWalletWhere(): Prisma.WalletAccountWhereInput {
+  return { user: nonSmokeUserWhere() };
+}
+
+function nonSmokeWalletTransactionWhere(): Prisma.WalletTransactionWhereInput {
+  return { wallet: nonSmokeWalletWhere() };
+}
+
+function nonSmokeUsageWhere(): Prisma.UsageRecordWhereInput {
+  return { rental: nonSmokeRentalWhere() };
+}
+
+function nonSmokeProductWhere(): Prisma.ProductWhereInput {
+  return { name: { not: localProxySmokeProductName } };
+}
+
+function localProxySmokeBindingWhere(): Prisma.Sub2BindingWhereInput {
+  return { meta: { path: ["smokeTest"], equals: true } };
 }
 
 function parseListQuery(raw: unknown): ListQuery {

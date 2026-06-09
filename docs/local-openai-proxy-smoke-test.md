@@ -78,6 +78,8 @@ POST /api/admin/sub2/proxy-smoke-test
 - smoke 订单金额为 0，不形成真实销售收入。
 - smoke 钱包只在自检过程中临时设置为代理准入所需的最低余额，结束后会归零。
 - smoke 租赁会保留 Sub2 `api_key` 绑定，便于后续 Sub2 usage 同步时归因，避免自检 usage 变成 unmatched。
+- smoke usage 同步到本地时会写为 `ignored`，不扣余额、不产生供应商结算、不改变 smoke 租赁状态。
+- 默认管理员运营统计会排除内部 smoke 用户、订单、租赁、商品、钱包和 usage；详见 `docs/internal-smoke-data-hygiene.md`。
 - 自检仍依赖真实 Sub2/OpenAI 上游。如果 Sub2 没有 active OpenAI 账号，`/v1/responses` 仍会失败；这类失败是有效诊断结果，不代表本地代理代码一定异常。
 
 ## 验收方式
