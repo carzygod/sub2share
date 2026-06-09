@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -663,6 +663,7 @@ interface AuditLogRow {
 const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "usages", "products", "orders", "rentals", "proxyRequests", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
+const csvExportPageSize = 200;
 const userStatusOptions = ["active", "disabled", "banned"];
 const productStatusOptions = ["draft", "active", "offline"];
 const billingModeOptions = ["pay_as_you_go", "daily", "weekly", "monthly"];
@@ -707,6 +708,7 @@ function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
   const [listMeta, setListMeta] = useState<Record<ManagedListView, PageMeta>>(() => createDefaultListMeta());
+  const exportInProgressRef = useRef<ManagedListView | null>(null);
   const [message, setMessage] = useState("");
   const [loggedIn, setLoggedIn] = useState(Boolean(localStorage.getItem("zyz_admin_token")));
 
@@ -826,6 +828,101 @@ function App() {
     const nextQuery = { ...listQueries[listView], page: Math.min(Math.max(page, 1), meta.totalPages) };
     setListQueries((current) => ({ ...current, [listView]: nextQuery }));
     await refresh(listView, nextQuery);
+  }
+
+  async function fetchAllListPages<T>(listView: ManagedListView, path: string, query: ListQueryState) {
+    const baseQuery = { ...query, page: 1, pageSize: csvExportPageSize };
+    const firstPage = await api<PagedResult<T>>(buildListUrl(path, baseQuery));
+    const rows = [...firstPage.items];
+    setMessage(`正在导出${titleFor(listView)}：${rows.length}/${firstPage.total}`);
+
+    for (let page = 2; page <= firstPage.totalPages; page += 1) {
+      const nextPage = await api<PagedResult<T>>(buildListUrl(path, { ...baseQuery, page }));
+      rows.push(...nextPage.items);
+      setMessage(`正在导出${titleFor(listView)}：${rows.length}/${firstPage.total}`);
+    }
+
+    return { rows, total: firstPage.total };
+  }
+
+  async function exportFilteredList(listView: ManagedListView) {
+    if (exportInProgressRef.current) {
+      setMessage(`${titleFor(exportInProgressRef.current)}导出仍在进行`);
+      return;
+    }
+
+    exportInProgressRef.current = listView;
+    try {
+      const query = listQueries[listView];
+      let exported = 0;
+
+      if (listView === "users") {
+        const { rows, total } = await fetchAllListPages<UserRow>(listView, "/api/admin/users", query);
+        exportUsersCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "wallets") {
+        const { rows, total } = await fetchAllListPages<WalletRow>(listView, "/api/admin/wallets", query);
+        exportWalletsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "walletTransactions") {
+        const { rows, total } = await fetchAllListPages<WalletTransactionRow>(listView, "/api/admin/wallet-transactions", query);
+        exportWalletTransactionsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "usages") {
+        const { rows, total } = await fetchAllListPages<UsageRecordRow>(listView, "/api/admin/usages", query);
+        exportUsagesCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "products") {
+        const { rows, total } = await fetchAllListPages<ProductRow>(listView, "/api/admin/products", query);
+        exportProductsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "orders") {
+        const { rows, total } = await fetchAllListPages<OrderRow>(listView, "/api/admin/orders", query);
+        exportOrdersCsv(rows, "orders", "filtered-all");
+        exported = total;
+      }
+      if (listView === "rentals") {
+        const { rows, total } = await fetchAllListPages<RentalRow>(listView, "/api/admin/rentals", query);
+        exportRentalsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "proxyRequests") {
+        const { rows, total } = await fetchAllListPages<ProxyRequestLogRow>(listView, "/api/admin/proxy-requests", query);
+        exportProxyRequestsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "resources") {
+        const { rows, total } = await fetchAllListPages<ResourceRow>(listView, "/api/admin/resources", query);
+        exportResourcesCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "settlements") {
+        const { rows, total } = await fetchAllListPages<SettlementRow>(listView, "/api/admin/settlements", query);
+        exportSettlementsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "withdrawals") {
+        const { rows, total } = await fetchAllListPages<WithdrawalRow>(listView, "/api/admin/withdrawals", query);
+        exportWithdrawalsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "audit") {
+        const { rows, total } = await fetchAllListPages<AuditLogRow>(listView, "/api/admin/audit-logs", query);
+        exportAuditLogsCsv(rows, "filtered-all");
+        exported = total;
+      }
+
+      setMessage(`已导出${titleFor(listView)}：${exported} 条`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      exportInProgressRef.current = null;
+    }
   }
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
@@ -1330,7 +1427,7 @@ function App() {
             onFilter={(event) => submitListFilters("users", event)}
             onClear={() => clearListFilters("users")}
             onPage={(page) => changeListPage("users", page)}
-            onExport={() => exportUsersCsv(users)}
+            onExport={() => exportFilteredList("users")}
           />
         )}
         {view === "wallets" && (
@@ -1344,7 +1441,7 @@ function App() {
             onFilter={(event) => submitListFilters("wallets", event)}
             onClear={() => clearListFilters("wallets")}
             onPage={(page) => changeListPage("wallets", page)}
-            onExport={() => exportWalletsCsv(wallets)}
+            onExport={() => exportFilteredList("wallets")}
           />
         )}
         {view === "walletTransactions" && (
@@ -1356,7 +1453,7 @@ function App() {
             onFilter={(event) => submitListFilters("walletTransactions", event)}
             onClear={() => clearListFilters("walletTransactions")}
             onPage={(page) => changeListPage("walletTransactions", page)}
-            onExport={() => exportWalletTransactionsCsv(walletTransactions)}
+            onExport={() => exportFilteredList("walletTransactions")}
           />
         )}
         {view === "reconciliation" && (
@@ -1387,7 +1484,7 @@ function App() {
             onFilter={(event) => submitListFilters("usages", event)}
             onClear={() => clearListFilters("usages")}
             onPage={(page) => changeListPage("usages", page)}
-            onExport={() => exportUsagesCsv(usages)}
+            onExport={() => exportFilteredList("usages")}
           />
         )}
         {view === "products" && (
@@ -1403,7 +1500,7 @@ function App() {
             onFilter={(event) => submitListFilters("products", event)}
             onClear={() => clearListFilters("products")}
             onPage={(page) => changeListPage("products", page)}
-            onExport={() => exportProductsCsv(products)}
+            onExport={() => exportFilteredList("products")}
           />
         )}
         {view === "orders" && (
@@ -1420,7 +1517,7 @@ function App() {
             onFilter={(event) => submitListFilters("orders", event)}
             onClear={() => clearListFilters("orders")}
             onPage={(page) => changeListPage("orders", page)}
-            onExport={() => exportOrdersCsv(orders, "orders")}
+            onExport={() => exportFilteredList("orders")}
           />
         )}
         {view === "rentals" && (
@@ -1437,7 +1534,7 @@ function App() {
             onFilter={(event) => submitListFilters("rentals", event)}
             onClear={() => clearListFilters("rentals")}
             onPage={(page) => changeListPage("rentals", page)}
-            onExport={() => exportRentalsCsv(rentals)}
+            onExport={() => exportFilteredList("rentals")}
           />
         )}
         {view === "sub2" && (
@@ -1463,7 +1560,7 @@ function App() {
             onFilter={(event) => submitListFilters("proxyRequests", event)}
             onClear={() => clearListFilters("proxyRequests")}
             onPage={(page) => changeListPage("proxyRequests", page)}
-            onExport={() => exportProxyRequestsCsv(proxyRequests)}
+            onExport={() => exportFilteredList("proxyRequests")}
           />
         )}
         {view === "resources" && (
@@ -1481,7 +1578,7 @@ function App() {
             onFilter={(event) => submitListFilters("resources", event)}
             onClear={() => clearListFilters("resources")}
             onPage={(page) => changeListPage("resources", page)}
-            onExport={() => exportResourcesCsv(resources)}
+            onExport={() => exportFilteredList("resources")}
           />
         )}
         {view === "settlements" && (
@@ -1494,7 +1591,7 @@ function App() {
             onFilter={(event) => submitListFilters("settlements", event)}
             onClear={() => clearListFilters("settlements")}
             onPage={(page) => changeListPage("settlements", page)}
-            onExport={() => exportSettlementsCsv(settlements)}
+            onExport={() => exportFilteredList("settlements")}
           />
         )}
         {view === "withdrawals" && (
@@ -1509,7 +1606,7 @@ function App() {
             onFilter={(event) => submitListFilters("withdrawals", event)}
             onClear={() => clearListFilters("withdrawals")}
             onPage={(page) => changeListPage("withdrawals", page)}
-            onExport={() => exportWithdrawalsCsv(withdrawals)}
+            onExport={() => exportFilteredList("withdrawals")}
           />
         )}
         {view === "audit" && (
@@ -1521,7 +1618,7 @@ function App() {
             onFilter={(event) => submitListFilters("audit", event)}
             onClear={() => clearListFilters("audit")}
             onPage={(page) => changeListPage("audit", page)}
-            onExport={() => exportAuditLogsCsv(auditLogs)}
+            onExport={() => exportFilteredList("audit")}
           />
         )}
       </section>
@@ -2965,7 +3062,7 @@ function ListControls({ query, meta, searchPlaceholder, statusOptions = [], reso
       <div className="filter-actions">
         <button type="submit"><Filter size={16} />筛选</button>
         <button type="button" className="secondary" onClick={onClear}><X size={16} />清空</button>
-        {onExport && <button type="button" className="secondary" onClick={onExport}><Download size={16} />导出当前页</button>}
+        {onExport && <button type="button" className="secondary" onClick={onExport}><Download size={16} />导出全部筛选</button>}
         <div className="pager">
           <button type="button" className="secondary mini" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}><ChevronLeft size={15} /></button>
           <span>{meta.page} / {meta.totalPages}</span>
@@ -3094,8 +3191,8 @@ function nullableFormNumber(form: FormData, name: string) {
 
 type CsvCell = string | number | null | undefined;
 
-function exportUsersCsv(rows: UserRow[]) {
-  downloadCsv("users-current-page", ["id", "email", "displayName", "status", "roles", "balance", "orders", "rentals", "createdAt"], rows.map((user) => [
+function exportUsersCsv(rows: UserRow[], scope = "current-page") {
+  downloadCsv(`users-${scope}`, ["id", "email", "displayName", "status", "roles", "balance", "orders", "rentals", "createdAt"], rows.map((user) => [
     user.id,
     user.email,
     user.displayName,
@@ -3108,8 +3205,8 @@ function exportUsersCsv(rows: UserRow[]) {
   ]));
 }
 
-function exportWalletsCsv(rows: WalletRow[]) {
-  downloadCsv("wallets-current-page", ["walletId", "userId", "email", "available", "frozen", "recharged", "spent", "updatedAt"], rows.map((wallet) => [
+function exportWalletsCsv(rows: WalletRow[], scope = "current-page") {
+  downloadCsv(`wallets-${scope}`, ["walletId", "userId", "email", "available", "frozen", "recharged", "spent", "updatedAt"], rows.map((wallet) => [
     wallet.id,
     wallet.userId,
     wallet.user?.email,
@@ -3121,8 +3218,8 @@ function exportWalletsCsv(rows: WalletRow[]) {
   ]));
 }
 
-function exportWalletTransactionsCsv(rows: WalletTransactionRow[]) {
-  downloadCsv("wallet-transactions-current-page", ["id", "email", "walletId", "type", "amount", "balanceAfter", "currency", "refType", "refId", "note", "createdAt"], rows.map((transaction) => [
+function exportWalletTransactionsCsv(rows: WalletTransactionRow[], scope = "current-page") {
+  downloadCsv(`wallet-transactions-${scope}`, ["id", "email", "walletId", "type", "amount", "balanceAfter", "currency", "refType", "refId", "note", "createdAt"], rows.map((transaction) => [
     transaction.id,
     transaction.wallet?.user?.email,
     transaction.walletId,
@@ -3137,8 +3234,8 @@ function exportWalletTransactionsCsv(rows: WalletTransactionRow[]) {
   ]));
 }
 
-function exportUsagesCsv(rows: UsageRecordRow[]) {
-  downloadCsv("usages-current-page", ["id", "sub2RequestId", "email", "rentalId", "resourceType", "model", "status", "inputUnits", "outputUnits", "apiEquivalentCost", "buyerCharge", "supplierIncome", "supplierEmail", "occurredAt"], rows.map((usage) => [
+function exportUsagesCsv(rows: UsageRecordRow[], scope = "current-page") {
+  downloadCsv(`usages-${scope}`, ["id", "sub2RequestId", "email", "rentalId", "resourceType", "model", "status", "inputUnits", "outputUnits", "apiEquivalentCost", "buyerCharge", "supplierIncome", "supplierEmail", "occurredAt"], rows.map((usage) => [
     usage.id,
     usage.sub2RequestId,
     usage.rental?.user?.email,
@@ -3156,8 +3253,8 @@ function exportUsagesCsv(rows: UsageRecordRow[]) {
   ]));
 }
 
-function exportProductsCsv(rows: ProductRow[]) {
-  downloadCsv("products-current-page", ["id", "name", "resourceType", "billingMode", "status", "priceCount", "orders", "rentals", "updatedAt"], rows.map((product) => [
+function exportProductsCsv(rows: ProductRow[], scope = "current-page") {
+  downloadCsv(`products-${scope}`, ["id", "name", "resourceType", "billingMode", "status", "priceCount", "orders", "rentals", "updatedAt"], rows.map((product) => [
     product.id,
     product.name,
     product.resourceType,
@@ -3170,8 +3267,8 @@ function exportProductsCsv(rows: ProductRow[]) {
   ]));
 }
 
-function exportOrdersCsv(rows: OrderRow[], filename = "orders") {
-  downloadCsv(`${filename}-current-page`, ["id", "email", "status", "paidAmount", "totalAmount", "rentals", "createdAt"], rows.map((order) => [
+function exportOrdersCsv(rows: OrderRow[], filename = "orders", scope = "current-page") {
+  downloadCsv(`${filename}-${scope}`, ["id", "email", "status", "paidAmount", "totalAmount", "rentals", "createdAt"], rows.map((order) => [
     order.id,
     order.user?.email,
     order.status,
@@ -3182,8 +3279,8 @@ function exportOrdersCsv(rows: OrderRow[], filename = "orders") {
   ]));
 }
 
-function exportRentalsCsv(rows: RentalRow[]) {
-  downloadCsv("rentals-current-page", ["id", "email", "status", "resourceType", "product", "endpointUrl", "sub2KeyId", "apiKeys", "createdAt", "endsAt"], rows.map((rental) => [
+function exportRentalsCsv(rows: RentalRow[], scope = "current-page") {
+  downloadCsv(`rentals-${scope}`, ["id", "email", "status", "resourceType", "product", "endpointUrl", "sub2KeyId", "apiKeys", "createdAt", "endsAt"], rows.map((rental) => [
     rental.id,
     rental.user?.email,
     rental.status,
@@ -3197,8 +3294,8 @@ function exportRentalsCsv(rows: RentalRow[]) {
   ]));
 }
 
-function exportResourcesCsv(rows: ResourceRow[]) {
-  downloadCsv("resources-current-page", ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "sub2AccountId", "updatedAt"], rows.map((resource) => [
+function exportResourcesCsv(rows: ResourceRow[], scope = "current-page") {
+  downloadCsv(`resources-${scope}`, ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "sub2AccountId", "updatedAt"], rows.map((resource) => [
     resource.id,
     resource.supplier?.user?.email,
     resource.resourceType,
@@ -3210,8 +3307,8 @@ function exportResourcesCsv(rows: ResourceRow[]) {
   ]));
 }
 
-function exportSettlementsCsv(rows: SettlementRow[]) {
-  downloadCsv("settlements-current-page", ["id", "supplierEmail", "resourceType", "amount", "status", "shareRate", "availableAt", "createdAt"], rows.map((settlement) => [
+function exportSettlementsCsv(rows: SettlementRow[], scope = "current-page") {
+  downloadCsv(`settlements-${scope}`, ["id", "supplierEmail", "resourceType", "amount", "status", "shareRate", "availableAt", "createdAt"], rows.map((settlement) => [
     settlement.id,
     settlement.supplierResource?.supplier?.user?.email,
     settlement.supplierResource?.resourceType,
@@ -3223,8 +3320,8 @@ function exportSettlementsCsv(rows: SettlementRow[]) {
   ]));
 }
 
-function exportWithdrawalsCsv(rows: WithdrawalRow[]) {
-  downloadCsv("withdrawals-current-page", ["id", "supplierEmail", "amount", "currency", "status", "payoutRef", "note", "createdAt", "updatedAt"], rows.map((withdrawal) => [
+function exportWithdrawalsCsv(rows: WithdrawalRow[], scope = "current-page") {
+  downloadCsv(`withdrawals-${scope}`, ["id", "supplierEmail", "amount", "currency", "status", "payoutRef", "note", "createdAt", "updatedAt"], rows.map((withdrawal) => [
     withdrawal.id,
     withdrawal.supplier?.user?.email,
     withdrawal.amount,
@@ -3237,8 +3334,8 @@ function exportWithdrawalsCsv(rows: WithdrawalRow[]) {
   ]));
 }
 
-function exportAuditLogsCsv(rows: AuditLogRow[]) {
-  downloadCsv("audit-logs-current-page", ["id", "actorEmail", "action", "objectType", "objectId", "summary", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+function exportAuditLogsCsv(rows: AuditLogRow[], scope = "current-page") {
+  downloadCsv(`audit-logs-${scope}`, ["id", "actorEmail", "action", "objectType", "objectId", "summary", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.actor?.email,
     log.action,
@@ -3251,8 +3348,8 @@ function exportAuditLogsCsv(rows: AuditLogRow[]) {
   ]));
 }
 
-function exportProxyRequestsCsv(rows: ProxyRequestLogRow[]) {
-  downloadCsv("proxy-requests-current-page", ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-page") {
+  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.requestId,
     log.user?.email,
