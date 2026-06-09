@@ -1072,6 +1072,24 @@ function App() {
     await refresh("products");
   }
 
+  async function updateProductConfig(event: FormEvent<HTMLFormElement>, productId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认更新商品配置？", `商品 ID：${productId}\n名称：${form.get("name")}\n资源：${form.get("resourceType")}\n计费：${form.get("billingMode")}\n状态：${form.get("status")}\n描述：${nullableFormString(form, "description") ?? "-"}`)) return;
+    await api(`/api/admin/products/${productId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        name: form.get("name"),
+        description: nullableFormString(form, "description"),
+        resourceType: form.get("resourceType"),
+        billingMode: form.get("billingMode"),
+        status: form.get("status")
+      })
+    });
+    setMessage("Product config updated");
+    await refresh("products");
+  }
+
   async function createProductPrice(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1665,6 +1683,7 @@ function App() {
             query={listQueries.products}
             meta={listMeta.products}
             onCreate={createProduct}
+            onUpdate={updateProductConfig}
             onProductStatus={setProductStatus}
             onCreatePrice={createProductPrice}
             onUpdatePrice={updateProductPrice}
@@ -2481,9 +2500,10 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, 
   );
 }
 
-function ProductsView({ products, query, meta, onCreate, onProductStatus, onCreatePrice, onUpdatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStatus, onCreatePrice, onUpdatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
   products: ProductRow[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdate: (event: FormEvent<HTMLFormElement>, productId: string) => void;
   onProductStatus: (productId: string, status: string) => void;
   onCreatePrice: (event: FormEvent<HTMLFormElement>) => void;
   onUpdatePrice: (event: FormEvent<HTMLFormElement>, priceId: string) => void;
@@ -2546,7 +2566,23 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
       <TablePanel title="商品与价格" count={meta.total} headers={["商品", "资源", "状态", "价格", "订单/租赁", "操作"]}>
         {products.map((product) => (
           <tr key={product.id}>
-            <td><strong>{product.name}</strong><small>{product.description ?? product.id}</small></td>
+            <td>
+              <strong>{product.name}</strong><small>{product.description ?? product.id}</small>
+              <form className="limits-form" key={`${product.id}-${product.updatedAt ?? ""}`} onSubmit={(event) => onUpdate(event, product.id)}>
+                <input name="name" defaultValue={product.name} placeholder="商品名称" required />
+                <input name="description" defaultValue={product.description ?? ""} placeholder="描述，留空清除" />
+                <select name="resourceType" defaultValue={product.resourceType} required>
+                  {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
+                </select>
+                <select name="billingMode" defaultValue={product.billingMode} required>
+                  {billingModeOptions.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                </select>
+                <select name="status" defaultValue={product.status} required>
+                  {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <button type="submit" className="secondary mini">保存商品</button>
+              </form>
+            </td>
             <td>{product.resourceType} / {product.billingMode}</td>
             <td><StatusPill status={product.status} /></td>
             <td>

@@ -170,7 +170,14 @@ const createProductSchema = z.object({
   description: z.string().trim().max(2000).optional()
 });
 
-const updateProductSchema = createProductSchema.partial();
+const updateProductSchema = createProductSchema
+  .partial()
+  .extend({
+    description: z.union([z.string().trim().max(2000), z.null()]).optional()
+  })
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
+    message: "At least one product field must be provided"
+  });
 
 const createProductPriceSchema = z.object({
   tierCode: z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/),
