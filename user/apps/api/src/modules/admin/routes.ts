@@ -228,7 +228,10 @@ const systemMaintenanceSchema = z.object({
   expireOverdueRentalsLimit: z.coerce.number().int().min(1).max(500).default(200),
   releaseAvailableSettlements: z.boolean().default(true),
   releaseAvailableSettlementsLimit: z.coerce.number().int().min(1).max(1000).default(500),
-  repairSub2Bindings: z.boolean().default(true)
+  repairSub2Bindings: z.boolean().default(true),
+  cleanupSmokeData: z.boolean().default(true),
+  cleanupSmokeDataAgeMinutes: z.coerce.number().int().min(5).max(1440).default(30),
+  cleanupSmokeDataLimit: z.coerce.number().int().min(1).max(500).default(100)
 });
 
 const createWithdrawalSchema = z.object({
@@ -2237,6 +2240,13 @@ async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchem
     actions.repairSub2Bindings = await repairSub2Bindings();
   }
 
+  if (input.cleanupSmokeData) {
+    actions.cleanupSmokeData = await cleanupStaleLocalProxySmokeData({
+      ageMinutes: input.cleanupSmokeDataAgeMinutes,
+      limit: input.cleanupSmokeDataLimit
+    });
+  }
+
   const health = await buildSystemHealthReport();
   return {
     startedAt: startedAt.toISOString(),
@@ -3316,6 +3326,157 @@ async function cleanupLocalOpenAiProxySmoke(local?: LocalProxySmokeProvision, su
     walletReset,
     keyDisabled,
     error: errors.length > 0 ? errors.join("; ") : null
+  };
+}
+
+async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limit: number }) {
+  const checkedAt = new Date();
+  const cutoff = new Date(checkedAt.getTime() - input.ageMinutes * 60 * 1000);
+  const smokeUser = await prisma.user.findUnique({
+    where: { email: localProxySmokeUserEmail },
+    include: { wallet: true }
+  });
+
+  if (!smokeUser) {
+    return {
+      checkedAt: checkedAt.toISOString(),
+      cutoff: cutoff.toISOString(),
+      smokeUserFound: false,
+      rentalsMatched: 0,
+      rentalsClosed: 0,
+      ordersClosed: 0,
+      apiKeysDeactivated: 0,
+      walletReset: false,
+      sub2KeysDisableAttempted: 0,
+      sub2KeysDisabled: 0,
+      sub2DisableFailed: 0,
+      errors: [] as string[]
+    };
+  }
+
+  const staleRentals = await prisma.rental.findMany({
+    where: {
+      userId: smokeUser.id,
+      OR: [
+        { createdAt: { lte: cutoff } },
+        { endsAt: { lte: checkedAt } },
+        { apiKeys: { some: { status: { not: "inactive" }, createdAt: { lte: cutoff } } } },
+        { order: { status: { not: "closed" }, createdAt: { lte: cutoff } } }
+      ]
+    },
+    select: {
+      id: true,
+      orderId: true,
+      sub2KeyId: true
+    },
+    orderBy: { createdAt: "asc" },
+    take: input.limit
+  });
+
+  let rentalsClosed = 0;
+  let ordersClosed = 0;
+  let apiKeysDeactivated = 0;
+  let sub2KeysDisableAttempted = 0;
+  let sub2KeysDisabled = 0;
+  let sub2DisableFailed = 0;
+  const errors: string[] = [];
+
+  for (const rental of staleRentals) {
+    try {
+      const result = await prisma.apiKey.updateMany({
+        where: { rentalId: rental.id, status: { not: "inactive" } },
+        data: { status: "inactive" }
+      });
+      apiKeysDeactivated += result.count;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    try {
+      const result = await prisma.rental.updateMany({
+        where: { id: rental.id, status: { not: "closed" } },
+        data: { status: "closed", endsAt: checkedAt }
+      });
+      rentalsClosed += result.count;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    try {
+      const result = await prisma.order.updateMany({
+        where: { id: rental.orderId, status: { not: "closed" } },
+        data: { status: "closed" }
+      });
+      ordersClosed += result.count;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    if (rental.sub2KeyId) {
+      sub2KeysDisableAttempted += 1;
+      try {
+        await sub2Client.disableKey(localProxySmokeBuyerId, rental.sub2KeyId);
+        sub2KeysDisabled += 1;
+      } catch (error) {
+        sub2DisableFailed += 1;
+        errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+      }
+    }
+  }
+
+  const [staleOrders, staleApiKeys] = await Promise.all([
+    prisma.order.updateMany({
+      where: {
+        userId: smokeUser.id,
+        createdAt: { lte: cutoff },
+        status: { not: "closed" }
+      },
+      data: { status: "closed" }
+    }),
+    prisma.apiKey.updateMany({
+      where: {
+        userId: smokeUser.id,
+        createdAt: { lte: cutoff },
+        status: { not: "inactive" }
+      },
+      data: { status: "inactive" }
+    })
+  ]);
+  ordersClosed += staleOrders.count;
+  apiKeysDeactivated += staleApiKeys.count;
+
+  const freshActiveRentals = await prisma.rental.count({
+    where: {
+      userId: smokeUser.id,
+      status: "active",
+      createdAt: { gt: cutoff }
+    }
+  });
+  let walletReset = false;
+  if (smokeUser.wallet && freshActiveRentals === 0 && smokeUser.wallet.updatedAt.getTime() <= cutoff.getTime()) {
+    const wallet = await prisma.walletAccount.update({
+      where: { id: smokeUser.wallet.id },
+      data: {
+        availableBalance: new Prisma.Decimal(0),
+        frozenBalance: new Prisma.Decimal(0)
+      }
+    });
+    walletReset = wallet.availableBalance.eq(0) && wallet.frozenBalance.eq(0);
+  }
+
+  return {
+    checkedAt: checkedAt.toISOString(),
+    cutoff: cutoff.toISOString(),
+    smokeUserFound: true,
+    rentalsMatched: staleRentals.length,
+    rentalsClosed,
+    ordersClosed,
+    apiKeysDeactivated,
+    walletReset,
+    sub2KeysDisableAttempted,
+    sub2KeysDisabled,
+    sub2DisableFailed,
+    errors
   };
 }
 

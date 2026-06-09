@@ -56,6 +56,18 @@ user/apps/api/src/common/internal-records.ts
 
 自检完成后不会删除 smoke `api_key` 绑定。原因是 Sub2 usage 可能晚于自检完成同步回来，保留绑定可以让同步任务找到对应本地 smoke 租赁，并将该 usage 正确标记为 `ignored`，避免产生 unmatched usage。
 
+## Stale 数据清理
+
+系统维护入口 `POST /api/admin/system-maintenance/run` 默认会清理超过 30 分钟或已过期的 stale smoke 资源：
+
+- 停用本地 smoke API Key。
+- 关闭本地 smoke 租赁。
+- 关闭本地 smoke 订单。
+- 将 smoke 钱包余额归零。
+- 尽力停用对应 Sub2 Key。
+
+清理动作不会删除 smoke Sub2Binding，以保留延迟 usage 归因能力。详细规则见 `docs/stale-smoke-maintenance.md`。
+
 ## 验收方式
 
 本地验证：

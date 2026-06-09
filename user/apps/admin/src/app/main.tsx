@@ -183,6 +183,16 @@ interface SystemMaintenanceResult {
       apiKeyBindingsUpserted: number;
       conflicts: unknown[];
     };
+    cleanupSmokeData?: {
+      rentalsMatched: number;
+      rentalsClosed: number;
+      ordersClosed: number;
+      apiKeysDeactivated: number;
+      walletReset: boolean;
+      sub2KeysDisableAttempted: number;
+      sub2KeysDisabled: number;
+      sub2DisableFailed: number;
+    };
   };
   health: SystemHealthResult;
 }
@@ -1014,7 +1024,8 @@ function App() {
     const released = result.actions.releaseAvailableSettlements?.released ?? 0;
     const repaired = (result.actions.repairSub2Bindings?.userBindingsUpserted ?? 0)
       + (result.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0);
-    setMessage(`Maintenance done: expired ${expired}, released ${released}, repaired bindings ${repaired}`);
+    const smokeCleaned = result.actions.cleanupSmokeData?.rentalsClosed ?? 0;
+    setMessage(`Maintenance done: expired ${expired}, released ${released}, repaired bindings ${repaired}, cleaned smoke ${smokeCleaned}`);
   }
 
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
@@ -1606,6 +1617,8 @@ function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: 
             <div><span>过期租赁</span><strong>{maintenance.actions.expireOverdueRentals?.expired ?? 0}</strong></div>
             <div><span>释放结算</span><strong>{maintenance.actions.releaseAvailableSettlements?.released ?? 0}</strong></div>
             <div><span>修复绑定</span><strong>{(maintenance.actions.repairSub2Bindings?.userBindingsUpserted ?? 0) + (maintenance.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0)}</strong></div>
+            <div><span>清理自检</span><strong>{maintenance.actions.cleanupSmokeData?.rentalsClosed ?? 0}</strong></div>
+            <div><span>自检 Key</span><strong>{maintenance.actions.cleanupSmokeData ? `${maintenance.actions.cleanupSmokeData.sub2KeysDisabled}/${maintenance.actions.cleanupSmokeData.sub2KeysDisableAttempted}` : "-"}</strong></div>
             <div><span>完成时间</span><strong>{dateTime(maintenance.finishedAt)}</strong></div>
           </div>
         </div>
