@@ -229,6 +229,10 @@ interface WalletRow {
   transactions?: WalletTransactionRow[];
 }
 
+interface WalletDetailRow extends WalletRow {
+  transactionSummary?: AggregateSummary;
+}
+
 interface WalletTransactionRow {
   id: string;
   walletId: string;
@@ -687,6 +691,7 @@ function App() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
+  const [selectedWallet, setSelectedWallet] = useState<WalletDetailRow | null>(null);
   const [walletTransactions, setWalletTransactions] = useState<WalletTransactionRow[]>([]);
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -1014,6 +1019,7 @@ function App() {
     event.currentTarget.reset();
     setMessage("余额已调整");
     await refresh("wallets");
+    if (selectedWallet?.userId === userId) await openWalletDetail(selectedWallet.id);
     if (selectedUser?.id === userId) await openUserDetail(userId);
   }
 
@@ -1233,6 +1239,14 @@ function App() {
   async function openUserDetail(userId: string) {
     try {
       setSelectedUser(await api<UserDetailRow>(`/api/admin/users/${userId}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function openWalletDetail(walletId: string) {
+    try {
+      setSelectedWallet(await api<WalletDetailRow>(`/api/admin/wallets/${walletId}`));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -1519,10 +1533,13 @@ function App() {
         {view === "wallets" && (
           <WalletsView
             wallets={wallets}
+            selectedWallet={selectedWallet}
             users={users}
             query={listQueries.wallets}
             meta={listMeta.wallets}
             onAdjust={adjustWallet}
+            onDetail={openWalletDetail}
+            onCloseDetail={() => setSelectedWallet(null)}
             onDraft={(patch) => updateListDraft("wallets", patch)}
             onFilter={(event) => submitListFilters("wallets", event)}
             onClear={() => clearListFilters("wallets")}
@@ -2081,10 +2098,13 @@ function MiniTable({ headers, children }: { headers: string[]; children: React.R
   );
 }
 
-function WalletsView({ wallets, users, query, meta, onAdjust, onDraft, onFilter, onClear, onPage, onExport }: {
+function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   wallets: WalletRow[];
+  selectedWallet: WalletDetailRow | null;
   users: UserRow[];
   onAdjust: (event: FormEvent<HTMLFormElement>) => void;
+  onDetail: (walletId: string) => void;
+  onCloseDetail: () => void;
 } & ManagedListProps) {
   const userOptions = useMemo(() => {
     const seen = new Set(wallets.map((wallet) => wallet.userId));
@@ -2113,7 +2133,7 @@ function WalletsView({ wallets, users, query, meta, onAdjust, onDraft, onFilter,
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="余额管理" count={meta.total} headers={["用户", "可用", "冻结", "充值", "消费", "更新时间"]}>
+      <TablePanel title="余额管理" count={meta.total} headers={["用户", "可用", "冻结", "充值", "消费", "更新时间", "操作"]}>
         {wallets.map((wallet) => (
           <tr key={wallet.id}>
             <td><strong>{wallet.user?.email ?? wallet.userId}</strong><small>{wallet.userId}</small></td>
@@ -2122,9 +2142,55 @@ function WalletsView({ wallets, users, query, meta, onAdjust, onDraft, onFilter,
             <td>{money(wallet.totalRecharged)}</td>
             <td>{money(wallet.totalSpent)}</td>
             <td>{dateTime(wallet.updatedAt)}</td>
+            <td><button type="button" className="secondary mini" onClick={() => onDetail(wallet.id)}>详情</button></td>
           </tr>
         ))}
       </TablePanel>
+      {selectedWallet && <WalletDetailPanel wallet={selectedWallet} onClose={onCloseDetail} />}
+    </section>
+  );
+}
+
+function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClose: () => void }) {
+  const transactions = wallet.transactions ?? [];
+  return (
+    <section className="panel glass-panel wide detail-panel">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Wallet Detail</span>
+          <h2>{wallet.user?.email ?? wallet.userId}</h2>
+        </div>
+        <button className="secondary mini" onClick={onClose}>关闭</button>
+      </div>
+
+      <div className="diagnostic-grid">
+        <div><span>钱包 ID</span><strong>{wallet.id}</strong></div>
+        <div><span>用户 ID</span><strong>{wallet.userId}</strong></div>
+        <div><span>可用余额</span><strong>{money(wallet.availableBalance)}</strong></div>
+        <div><span>冻结余额</span><strong>{money(wallet.frozenBalance)}</strong></div>
+        <div><span>累计充值</span><strong>{money(wallet.totalRecharged)}</strong></div>
+        <div><span>累计消费</span><strong>{money(wallet.totalSpent)}</strong></div>
+        <div><span>流水数量</span><strong>{wallet.transactionSummary?._count ?? transactions.length}</strong></div>
+        <div><span>更新时间</span><strong>{dateTime(wallet.updatedAt)}</strong></div>
+      </div>
+
+      <DetailBlock title="最近余额流水">
+        <MiniTable headers={["类型", "金额", "余额后", "引用", "备注", "时间"]}>
+          {transactions.slice(0, 20).map((transaction) => (
+            <tr key={transaction.id}>
+              <td><StatusPill status={transaction.type} /></td>
+              <td>{money(transaction.amount)}</td>
+              <td>{money(transaction.balanceAfter)}</td>
+              <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
+              <td><small>{transaction.note ?? "-"}</small></td>
+              <td>{dateTime(transaction.createdAt)}</td>
+            </tr>
+          ))}
+          {transactions.length === 0 && (
+            <tr><td colSpan={6}><small>暂无余额流水。</small></td></tr>
+          )}
+        </MiniTable>
+      </DetailBlock>
     </section>
   );
 }

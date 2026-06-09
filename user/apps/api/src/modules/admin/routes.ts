@@ -1081,6 +1081,28 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, paged(wallets, total, query));
   });
 
+  app.get("/api/admin/wallets/:id", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    const { id } = request.params as { id: string };
+    const wallet = await prisma.walletAccount.findUnique({
+      where: { id },
+      include: {
+        user: { include: { roles: true } },
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 100
+        }
+      }
+    });
+    if (!wallet) throw new AppError("wallet_not_found", "Wallet not found", 404);
+    const transactionSummary = await prisma.walletTransaction.aggregate({
+      where: { walletId: id },
+      _count: true,
+      _sum: { amount: true }
+    });
+    return adminOk(reply, { ...wallet, transactionSummary });
+  });
+
   app.get("/api/admin/wallet-transactions", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
