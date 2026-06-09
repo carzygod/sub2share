@@ -2397,10 +2397,20 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
             <td>{dateTime(withdrawal.createdAt)}</td>
             <td>
               <div className="row-actions">
-                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "approved")}>通过</button>
-                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "paid", window.prompt("Payout reference") ?? undefined)}>打款</button>
-                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "rejected")}>驳回</button>
-                <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+                {withdrawal.status === "pending" && (
+                  <>
+                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "approved")}>通过</button>
+                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "rejected")}>驳回</button>
+                    <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+                  </>
+                )}
+                {withdrawal.status === "approved" && (
+                  <>
+                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "paid", window.prompt("Payout reference") ?? undefined)}>打款</button>
+                    <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+                  </>
+                )}
+                {!["pending", "approved"].includes(withdrawal.status) && <small>-</small>}
               </div>
             </td>
           </tr>

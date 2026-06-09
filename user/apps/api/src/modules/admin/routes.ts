@@ -6,6 +6,7 @@ import { requireRole } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
+import { env } from "../../config/env.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
@@ -1505,10 +1506,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
     if (!supplier) throw new AppError("supplier_not_found", "Supplier not found", 404);
 
+    const amount = new Prisma.Decimal(input.amount);
+    ensureMinimumWithdrawalAmount(amount);
+    ensurePayoutRefForPaid(input.status, input.payoutRef);
+    if (reservesSupplierSettlement(input.status)) {
+      await ensureSupplierWithdrawableAmount(supplier.id, amount);
+    }
+
     const withdrawal = await prisma.withdrawal.create({
       data: {
         supplierId: supplier.id,
-        amount: new Prisma.Decimal(input.amount),
+        amount,
         currency: input.currency.toUpperCase(),
         status: input.status,
         payoutRef: input.payoutRef,
@@ -1536,6 +1544,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       include: { supplier: { include: { user: true } } }
     });
     if (!before) throw new AppError("withdrawal_not_found", "Withdrawal not found", 404);
+
+    ensureWithdrawalTransition(before.status, input.status);
+    ensurePayoutRefForPaid(input.status, input.payoutRef ?? before.payoutRef ?? undefined);
+    if (reservesSupplierSettlement(input.status)) {
+      await ensureSupplierWithdrawableAmount(before.supplierId, before.amount, id);
+    }
 
     const withdrawal = await prisma.withdrawal.update({
       where: { id },
@@ -1662,6 +1676,78 @@ function rentalLimitUpdateData(input: z.infer<typeof rentalLimitsSchema>): Prism
 function decimalOrNull(value: number | null | undefined) {
   if (value === undefined || value === null) return null;
   return new Prisma.Decimal(value);
+}
+
+function ensureMinimumWithdrawalAmount(amount: Prisma.Decimal) {
+  const minimum = new Prisma.Decimal(env.MIN_WITHDRAWAL_AMOUNT);
+  if (amount.lt(minimum)) {
+    throw new AppError("withdrawal_below_minimum", `Withdrawal amount must be at least ${minimum}`, 400, {
+      minimum: String(minimum)
+    });
+  }
+}
+
+function ensurePayoutRefForPaid(status: string, payoutRef?: string) {
+  if (status === "paid" && !payoutRef) {
+    throw new AppError("withdrawal_payout_ref_required", "Payout reference is required when marking withdrawal as paid", 400);
+  }
+}
+
+function ensureWithdrawalTransition(current: string, next: string) {
+  if (current === next) return;
+  const allowed: Record<string, string[]> = {
+    pending: ["approved", "rejected", "cancelled"],
+    approved: ["paid", "cancelled"],
+    rejected: [],
+    paid: [],
+    cancelled: []
+  };
+  if (!allowed[current]?.includes(next)) {
+    throw new AppError("withdrawal_invalid_transition", `Cannot change withdrawal from ${current} to ${next}`, 400);
+  }
+}
+
+function reservesSupplierSettlement(status: string) {
+  return ["pending", "approved", "paid"].includes(status);
+}
+
+async function ensureSupplierWithdrawableAmount(
+  supplierId: string,
+  amount: Prisma.Decimal,
+  excludeWithdrawalId?: string
+) {
+  const withdrawable = await supplierWithdrawableAmount(supplierId, excludeWithdrawalId);
+  if (withdrawable.lt(amount)) {
+    throw new AppError("insufficient_withdrawable_amount", "Supplier does not have enough available settlements", 400, {
+      withdrawable: String(withdrawable),
+      requested: String(amount)
+    });
+  }
+}
+
+async function supplierWithdrawableAmount(supplierId: string, excludeWithdrawalId?: string) {
+  const [settlements, reservedWithdrawals] = await Promise.all([
+    prisma.settlementRecord.aggregate({
+      where: {
+        status: "available",
+        supplierResource: { supplierId }
+      },
+      _sum: { amount: true }
+    }),
+    prisma.withdrawal.aggregate({
+      where: {
+        supplierId,
+        status: { in: ["pending", "approved", "paid"] },
+        ...(excludeWithdrawalId ? { id: { not: excludeWithdrawalId } } : {})
+      },
+      _sum: { amount: true }
+    })
+  ]);
+
+  const available = settlements._sum.amount ?? new Prisma.Decimal(0);
+  const reserved = reservedWithdrawals._sum.amount ?? new Prisma.Decimal(0);
+  const withdrawable = available.minus(reserved);
+  return withdrawable.gt(0) ? withdrawable : new Prisma.Decimal(0);
 }
 
 function parseListQuery(raw: unknown): ListQuery {
