@@ -25,6 +25,7 @@ const resourceTypes = ["codex", "claude_code", "gemini", "antigravity"] as const
 const productStatuses = ["draft", "active", "offline"] as const;
 const billingModes = ["pay_as_you_go", "daily", "weekly", "monthly"] as const;
 const usageStatuses = ["pending", "billed", "refunded", "ignored", "disputed"] as const;
+const supplierStatuses = ["pending", "active", "paused", "disabled"] as const;
 const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"] as const;
 const resourceLevels = ["L0", "L1", "L2", "L3", "L4"] as const;
 type ResourceStatus = (typeof resourceStatuses)[number];
@@ -237,6 +238,14 @@ const createResourceSchema = z.object({
   reserveRatio: z.coerce.number().min(0).max(1).default(0.2),
   dailyCap: z.coerce.number().positive().optional(),
   sub2AccountId: z.string().trim().min(1).optional()
+});
+
+const updateSupplierSchema = z.object({
+  displayName: nullableProfileText(64),
+  status: z.enum(supplierStatuses).optional(),
+  defaultShareRate: z.coerce.number().min(0).max(1).optional()
+}).refine((input) => Object.values(input).some((value) => value !== undefined), {
+  message: "At least one supplier field must be provided"
 });
 
 const sub2AccountParamsSchema = z.object({
@@ -1567,6 +1576,76 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       status: price.status
     });
     return adminOk(reply, price);
+  });
+
+  app.get("/api/admin/suppliers", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    const query = parseListQuery(request.query);
+    const status = oneOf(supplierStatuses, query.status);
+    const where: Prisma.SupplierWhereInput = {
+      ...(status ? { status } : {}),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { displayName: containsText(query.q) },
+          { userId: containsText(query.q) },
+          { user: { id: containsText(query.q) } },
+          { user: { email: containsText(query.q) } },
+          { user: { displayName: containsText(query.q) } },
+          ...(oneOf(supplierStatuses, query.q) ? [{ status: oneOf(supplierStatuses, query.q) }] : [])
+        ]
+      } : {})
+    };
+    const [suppliers, total] = await Promise.all([
+      prisma.supplier.findMany({
+        where,
+        include: {
+          user: { include: { roles: true } },
+          resources: { orderBy: { updatedAt: "desc" }, take: 5 },
+          _count: { select: { resources: true, withdrawals: true } }
+        },
+        orderBy: { updatedAt: "desc" },
+        ...pageArgs(query)
+      }),
+      prisma.supplier.count({ where })
+    ]);
+    return adminOk(reply, paged(suppliers, total, query));
+  });
+
+  app.patch("/api/admin/suppliers/:id", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = updateSupplierSchema.parse(request.body ?? {});
+    const before = await prisma.supplier.findUnique({
+      where: { id },
+      select: { id: true, userId: true, displayName: true, status: true, defaultShareRate: true }
+    });
+    if (!before) throw new AppError("supplier_not_found", "Supplier not found", 404);
+    const supplier = await prisma.supplier.update({
+      where: { id },
+      data: {
+        ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
+        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.defaultShareRate !== undefined ? { defaultShareRate: new Prisma.Decimal(input.defaultShareRate) } : {})
+      },
+      include: {
+        user: { include: { roles: true } },
+        resources: { orderBy: { updatedAt: "desc" }, take: 5 },
+        _count: { select: { resources: true, withdrawals: true } }
+      }
+    });
+    await writeAuditLog(request, actor.id, "admin.supplier.update", "supplier", id, {
+      userId: before.userId,
+      displayName: before.displayName,
+      status: before.status,
+      defaultShareRate: String(before.defaultShareRate)
+    }, {
+      userId: supplier.userId,
+      displayName: supplier.displayName,
+      status: supplier.status,
+      defaultShareRate: String(supplier.defaultShareRate)
+    });
+    return adminOk(reply, supplier);
   });
 
   app.get("/api/admin/resources", async (request, reply) => {

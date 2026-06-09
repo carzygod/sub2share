@@ -28,8 +28,8 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -425,11 +425,19 @@ interface WithdrawalSettlementRow {
 
 interface SupplierDetailRow {
   id: string;
+  userId?: string;
   displayName?: string | null;
   status: string;
   defaultShareRate: string;
+  createdAt?: string;
+  updatedAt?: string;
+  user?: UserRow;
   resources?: ResourceRow[];
   withdrawals?: WithdrawalRow[];
+  _count?: {
+    resources: number;
+    withdrawals: number;
+  };
 }
 
 interface ApiKeyRow {
@@ -686,7 +694,7 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "proxyRequests", "resources", "settlements", "withdrawals", "audit"];
+const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
@@ -696,6 +704,7 @@ const billingModeOptions = ["pay_as_you_go", "daily", "weekly", "monthly"];
 const usageStatusOptions = ["pending", "billed", "refunded", "ignored", "disputed"];
 const orderStatusOptions = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"];
 const rentalStatusOptions = ["active", "low_balance", "limited", "suspended", "expired", "refunded", "closed"];
+const supplierStatusOptions = ["pending", "active", "paused", "disabled"];
 const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"];
 const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
 const withdrawalStatusOptions = ["pending", "approved", "rejected", "paid", "cancelled"];
@@ -723,6 +732,7 @@ function App() {
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
+  const [suppliers, setSuppliers] = useState<SupplierDetailRow[]>([]);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const [withdrawalSummary, setWithdrawalSummary] = useState<AggregateSummary | null>(null);
@@ -825,6 +835,7 @@ function App() {
       if (nextView === "rentals") await loadPaged("rentals", "/api/admin/rentals", setRentals, queryOverride);
       if (nextView === "sub2") await loadSub2View();
       if (nextView === "proxyRequests") await loadPaged("proxyRequests", "/api/admin/proxy-requests", setProxyRequests, queryOverride);
+      if (nextView === "suppliers") await loadPaged("suppliers", "/api/admin/suppliers", setSuppliers, queryOverride);
       if (nextView === "resources") await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
       if (nextView === "settlements") await loadPaged("settlements", "/api/admin/settlements", setSettlements, queryOverride);
       if (nextView === "withdrawals") await loadWithdrawals(queryOverride);
@@ -936,6 +947,11 @@ function App() {
       if (listView === "proxyRequests") {
         const { rows, total } = await fetchAllListPages<ProxyRequestLogRow>(listView, "/api/admin/proxy-requests", query);
         exportProxyRequestsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "suppliers") {
+        const { rows, total } = await fetchAllListPages<SupplierDetailRow>(listView, "/api/admin/suppliers", query);
+        exportSuppliersCsv(rows, "filtered-all");
         exported = total;
       }
       if (listView === "resources") {
@@ -1437,6 +1453,24 @@ function App() {
     await openResourceDetail(resource.id);
   }
 
+  async function updateSupplierConfig(event: FormEvent<HTMLFormElement>, supplierId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认更新供给方配置？", `供给方 ID：${supplierId}\n显示名：${nullableFormString(form, "displayName") ?? "-"}\n状态：${form.get("status")}\n默认分成：${form.get("defaultShareRate")}`)) return;
+    await api(`/api/admin/suppliers/${supplierId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        displayName: nullableFormString(form, "displayName"),
+        status: form.get("status"),
+        defaultShareRate: form.get("defaultShareRate")
+      })
+    });
+    setMessage("供给方配置已更新");
+    await refresh("suppliers");
+    if (selectedResource?.supplier?.id === supplierId) await openResourceDetail(selectedResource.id);
+    if (selectedUser?.supplier?.id === supplierId) await openUserDetail(selectedUser.id);
+  }
+
   async function refreshSub2Account(accountId: number) {
     const result = await api<{ ok: boolean; error?: string | null }>(`/api/admin/sub2/accounts/${accountId}/refresh`, {
       method: "POST",
@@ -1561,6 +1595,7 @@ function App() {
           <NavButton active={view === "rentals"} onClick={() => refresh("rentals")} icon={<ShieldCheck size={18} />}>租赁</NavButton>
           <NavButton active={view === "sub2"} onClick={() => refresh("sub2")} icon={<Activity size={18} />}>反代状态</NavButton>
           <NavButton active={view === "proxyRequests"} onClick={() => refresh("proxyRequests")} icon={<ScrollText size={18} />}>反代请求</NavButton>
+          <NavButton active={view === "suppliers"} onClick={() => refresh("suppliers")} icon={<Users size={18} />}>供给方</NavButton>
           <NavButton active={view === "resources"} onClick={() => refresh("resources")} icon={<Boxes size={18} />}>共享资源</NavButton>
           <NavButton active={view === "settlements"} onClick={() => refresh("settlements")} icon={<CircleDollarSign size={18} />}>结算</NavButton>
           <NavButton active={view === "withdrawals"} onClick={() => refresh("withdrawals")} icon={<WalletCards size={18} />}>提现</NavButton>
@@ -1756,6 +1791,19 @@ function App() {
             onClear={() => clearListFilters("proxyRequests")}
             onPage={(page) => changeListPage("proxyRequests", page)}
             onExport={() => exportFilteredList("proxyRequests")}
+          />
+        )}
+        {view === "suppliers" && (
+          <SuppliersView
+            suppliers={suppliers}
+            query={listQueries.suppliers}
+            meta={listMeta.suppliers}
+            onUpdate={updateSupplierConfig}
+            onDraft={(patch) => updateListDraft("suppliers", patch)}
+            onFilter={(event) => submitListFilters("suppliers", event)}
+            onClear={() => clearListFilters("suppliers")}
+            onPage={(page) => changeListPage("suppliers", page)}
+            onExport={() => exportFilteredList("suppliers")}
           />
         )}
         {view === "resources" && (
@@ -3213,6 +3261,56 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
   );
 }
 
+function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, onClear, onPage, onExport }: {
+  suppliers: SupplierDetailRow[];
+  onUpdate: (event: FormEvent<HTMLFormElement>, supplierId: string) => void;
+} & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="supplier / email / user id"
+        statusOptions={supplierStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="供给方管理" count={meta.total} headers={["供给方", "状态", "默认分成", "资源 / 提现", "最近资源", "配置"]}>
+        {suppliers.map((supplier) => (
+          <tr key={supplier.id}>
+            <td>
+              <strong>{supplier.user?.email ?? supplier.userId ?? "-"}</strong>
+              <small>{supplier.displayName ?? supplier.user?.displayName ?? supplier.id}</small>
+            </td>
+            <td><StatusPill status={supplier.status} /></td>
+            <td>{supplier.defaultShareRate}</td>
+            <td>{supplier._count?.resources ?? supplier.resources?.length ?? 0} / {supplier._count?.withdrawals ?? supplier.withdrawals?.length ?? 0}</td>
+            <td>
+              {(supplier.resources ?? []).slice(0, 3).map((resource) => (
+                <small key={resource.id}>{resource.resourceType} / {resource.status} / {resource.sub2AccountId ?? "-"}</small>
+              ))}
+              {(supplier.resources ?? []).length === 0 && <small>-</small>}
+            </td>
+            <td>
+              <form className="limits-form" key={`${supplier.id}-${supplier.updatedAt ?? ""}`} onSubmit={(event) => onUpdate(event, supplier.id)}>
+                <input name="displayName" defaultValue={supplier.displayName ?? ""} placeholder="显示名，留空清除" />
+                <select name="status" defaultValue={supplier.status} required>
+                  {supplierStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+                <input name="defaultShareRate" type="number" step="0.01" min={0} max={1} defaultValue={supplier.defaultShareRate} placeholder="默认分成" required />
+                <button type="submit" className="secondary mini">保存供给方</button>
+              </form>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
 function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
@@ -3683,6 +3781,7 @@ function titleFor(view: View) {
     rentals: "租赁通道",
     sub2: "反代状态",
     proxyRequests: "反代请求",
+    suppliers: "供给方管理",
     resources: "共享资源",
     settlements: "结算管理",
     withdrawals: "提现管理",
@@ -3862,6 +3961,19 @@ function exportResourcesCsv(rows: ResourceRow[], scope = "current-page") {
     resource.sub2AccountId,
     resource.lastCheckedAt,
     resource.updatedAt
+  ]));
+}
+
+function exportSuppliersCsv(rows: SupplierDetailRow[], scope = "current-page") {
+  downloadCsv(`suppliers-${scope}`, ["id", "email", "displayName", "status", "defaultShareRate", "resources", "withdrawals", "updatedAt"], rows.map((supplier) => [
+    supplier.id,
+    supplier.user?.email,
+    supplier.displayName,
+    supplier.status,
+    supplier.defaultShareRate,
+    supplier._count?.resources ?? supplier.resources?.length ?? 0,
+    supplier._count?.withdrawals ?? supplier.withdrawals?.length ?? 0,
+    supplier.updatedAt
   ]));
 }
 
