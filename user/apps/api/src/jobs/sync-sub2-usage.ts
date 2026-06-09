@@ -9,6 +9,14 @@ interface SyncSub2UsageOptions {
   persistCursor?: boolean;
 }
 
+interface BillingRule {
+  source: "product_price" | "default_discount_rate";
+  priceId: string | null;
+  tierCode: string | null;
+  discountRate: Prisma.Decimal;
+  tierMultiplier: Prisma.Decimal;
+}
+
 export async function syncSub2UsageOnce(cursor?: string, options: SyncSub2UsageOptions = {}) {
   if (options.persistCursor) {
     return syncSub2UsageWithState(cursor);
@@ -133,7 +141,8 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
     : null;
 
   const apiEquivalentCost = new Prisma.Decimal(record.apiEquivalentCost);
-  const buyerCharge = apiEquivalentCost.mul(env.DEFAULT_DISCOUNT_RATE);
+  const billingRule = await resolveBillingRule(rental);
+  const buyerCharge = calculateBuyerCharge(apiEquivalentCost, billingRule);
   const shareRate = supplierResource?.shareRate ?? new Prisma.Decimal(0);
   const supplierIncome = buyerCharge.mul(shareRate);
 
@@ -190,7 +199,7 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
             balanceAfter: wallet.availableBalance,
             refType: "usage",
             refId: usage.id,
-            note: "sub2 usage billing"
+            note: billingNote(billingRule)
           }
         });
         await tx.usageRecord.update({ where: { id: usage.id }, data: { status: "billed" } });
@@ -226,7 +235,10 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
 async function findRentalForUsage(sub2KeyId: string) {
   const currentRental = await prisma.rental.findFirst({
     where: { sub2KeyId },
-    include: { limits: true }
+    include: {
+      limits: true,
+      order: { include: { items: true } }
+    }
   });
   if (currentRental) return currentRental;
 
@@ -245,8 +257,59 @@ async function findRentalForUsage(sub2KeyId: string) {
 
   return prisma.rental.findUnique({
     where: { id: rentalId },
-    include: { limits: true }
+    include: {
+      limits: true,
+      order: { include: { items: true } }
+    }
   });
+}
+
+async function resolveBillingRule(rental: NonNullable<Awaited<ReturnType<typeof findRentalForUsage>>>): Promise<BillingRule> {
+  const orderItem = rental.order.items.find((item) => item.productId === rental.productId && item.priceId)
+    ?? rental.order.items.find((item) => item.priceId);
+
+  if (!orderItem?.priceId) return defaultBillingRule();
+
+  const price = await prisma.productPrice.findUnique({
+    where: { id: orderItem.priceId },
+    select: {
+      id: true,
+      tierCode: true,
+      discountRate: true,
+      tierMultiplier: true
+    }
+  });
+
+  if (!price) return defaultBillingRule();
+
+  return {
+    source: "product_price",
+    priceId: price.id,
+    tierCode: price.tierCode,
+    discountRate: price.discountRate,
+    tierMultiplier: price.tierMultiplier
+  };
+}
+
+function defaultBillingRule(): BillingRule {
+  return {
+    source: "default_discount_rate",
+    priceId: null,
+    tierCode: null,
+    discountRate: new Prisma.Decimal(env.DEFAULT_DISCOUNT_RATE),
+    tierMultiplier: new Prisma.Decimal(1)
+  };
+}
+
+function calculateBuyerCharge(apiEquivalentCost: Prisma.Decimal, rule: BillingRule) {
+  return apiEquivalentCost.mul(rule.discountRate).mul(rule.tierMultiplier);
+}
+
+function billingNote(rule: BillingRule) {
+  if (rule.source === "product_price") {
+    return `sub2 usage billing product_price:${rule.tierCode ?? rule.priceId}`;
+  }
+  return "sub2 usage billing default_discount_rate";
 }
 
 function rentalIdFromBinding(binding: { objectType: string; objectId: string; meta: Prisma.JsonValue | null }) {
