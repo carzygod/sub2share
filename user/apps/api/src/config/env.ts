@@ -35,6 +35,7 @@ const envSchema = z.object({
   SUB2_SMOKE_MODEL: optionalNonEmptyString.default("gpt-5.3-codex"),
   OPENAI_PROXY_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
   OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
+  OPENAI_PROXY_MIN_WALLET_BALANCE: z.coerce.number().nonnegative().default(0),
   DEFAULT_DISCOUNT_RATE: z.coerce.number().default(0.2),
   MIN_RECHARGE_AMOUNT: z.coerce.number().default(10),
   MIN_WITHDRAWAL_AMOUNT: z.coerce.number().default(20),

@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { prisma } from "../../common/prisma.js";
@@ -102,7 +103,11 @@ async function findActiveLocalKey(apiKey: string) {
   const record = await prisma.apiKey.findFirst({
     where: { keyHash },
     include: {
-      user: true,
+      user: {
+        include: {
+          wallet: true
+        }
+      },
       rental: {
         include: {
           product: true,
@@ -118,6 +123,10 @@ async function findActiveLocalKey(apiKey: string) {
   if (record.user.status !== "active") {
     return failure(403, "user_not_active", "User is not active");
   }
+  const minimumBalance = new Prisma.Decimal(env.OPENAI_PROXY_MIN_WALLET_BALANCE);
+  if (!record.user.wallet || record.user.wallet.availableBalance.lte(minimumBalance)) {
+    return failure(402, "insufficient_balance", "Wallet balance is not enough to use this API key");
+  }
   if (!record.rental || record.rental.status !== "active") {
     return failure(403, "rental_not_active", "Rental is not active");
   }
@@ -129,6 +138,9 @@ async function findActiveLocalKey(apiKey: string) {
   }
   if (record.rental.product.resourceType !== "codex") {
     return failure(403, "unsupported_resource_type", "This endpoint requires a Codex/OpenAI rental");
+  }
+  if (record.rental.limits?.remainingSpend && record.rental.limits.remainingSpend.lte(0)) {
+    return failure(402, "spend_limit_exhausted", "Rental spend limit has been exhausted");
   }
 
   return { ok: true as const, apiKey: record };
