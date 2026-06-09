@@ -162,6 +162,31 @@ interface SystemHealthResult {
   checks: SystemHealthCheckRow[];
 }
 
+interface SystemMaintenanceResult {
+  startedAt: string;
+  finishedAt: string;
+  actions: {
+    expireOverdueRentals?: {
+      matched: number;
+      expired: number;
+      apiKeysDeactivated: number;
+      sub2DisableFailed: number;
+    };
+    releaseAvailableSettlements?: {
+      matched: number;
+      released: number;
+      amountMatched: string;
+    };
+    repairSub2Bindings?: {
+      rentalsScanned: number;
+      userBindingsUpserted: number;
+      apiKeyBindingsUpserted: number;
+      conflicts: unknown[];
+    };
+  };
+  health: SystemHealthResult;
+}
+
 interface RoleRow {
   role: string;
 }
@@ -634,6 +659,7 @@ function App() {
   const [view, setView] = useState<View>("dashboard");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealthResult | null>(null);
+  const [systemMaintenance, setSystemMaintenance] = useState<SystemMaintenanceResult | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -966,6 +992,20 @@ function App() {
     await refresh("rentals");
   }
 
+  async function runSystemMaintenance() {
+    const result = await api<SystemMaintenanceResult>("/api/admin/system-maintenance/run", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSystemMaintenance(result);
+    setSystemHealth(result.health);
+    const expired = result.actions.expireOverdueRentals?.expired ?? 0;
+    const released = result.actions.releaseAvailableSettlements?.released ?? 0;
+    const repaired = (result.actions.repairSub2Bindings?.userBindingsUpserted ?? 0)
+      + (result.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0);
+    setMessage(`Maintenance done: expired ${expired}, released ${released}, repaired bindings ${repaired}`);
+  }
+
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1248,7 +1288,9 @@ function App() {
         {view === "systemHealth" && (
           <SystemHealthView
             health={systemHealth}
+            maintenance={systemMaintenance}
             onRefresh={() => refresh("systemHealth")}
+            onRunMaintenance={runSystemMaintenance}
           />
         )}
         {view === "users" && (
@@ -1523,9 +1565,11 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, onRefresh }: {
+function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: {
   health: SystemHealthResult | null;
+  maintenance: SystemMaintenanceResult | null;
   onRefresh: () => void;
+  onRunMaintenance: () => void;
 }) {
   const checks = health?.checks ?? [];
   return (
@@ -1539,8 +1583,22 @@ function SystemHealthView({ health, onRefresh }: {
           </div>
           {health && <small>检查时间 {dateTime(health.checkedAt)}</small>}
         </div>
-        <button className="secondary" onClick={onRefresh}><RefreshCw size={16} />重新巡检</button>
+        <div className="row-actions">
+          <button className="secondary" onClick={onRefresh}><RefreshCw size={16} />重新巡检</button>
+          <button className="secondary" onClick={onRunMaintenance}><ShieldCheck size={16} />运行安全维护</button>
+        </div>
       </div>
+      {maintenance && (
+        <div className="panel glass-panel">
+          <span className="eyebrow">Last maintenance</span>
+          <div className="diagnostic-grid">
+            <div><span>过期租赁</span><strong>{maintenance.actions.expireOverdueRentals?.expired ?? 0}</strong></div>
+            <div><span>释放结算</span><strong>{maintenance.actions.releaseAvailableSettlements?.released ?? 0}</strong></div>
+            <div><span>修复绑定</span><strong>{(maintenance.actions.repairSub2Bindings?.userBindingsUpserted ?? 0) + (maintenance.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0)}</strong></div>
+            <div><span>完成时间</span><strong>{dateTime(maintenance.finishedAt)}</strong></div>
+          </div>
+        </div>
+      )}
       <section className="cards compact-cards">
         <Metric label="检查项" value={health?.summary.totalChecks ?? 0} />
         <Metric label="正常" value={health?.summary.ok ?? 0} />

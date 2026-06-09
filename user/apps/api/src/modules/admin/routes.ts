@@ -221,6 +221,14 @@ const releaseSettlementsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(1000).default(200)
 });
 
+const systemMaintenanceSchema = z.object({
+  expireOverdueRentals: z.boolean().default(true),
+  expireOverdueRentalsLimit: z.coerce.number().int().min(1).max(500).default(200),
+  releaseAvailableSettlements: z.boolean().default(true),
+  releaseAvailableSettlementsLimit: z.coerce.number().int().min(1).max(1000).default(500),
+  repairSub2Bindings: z.boolean().default(true)
+});
+
 const createWithdrawalSchema = z.object({
   supplierEmail: z.string().email(),
   amount: z.coerce.number().positive(),
@@ -278,6 +286,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/system-health", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     return adminOk(reply, await buildSystemHealthReport());
+  });
+
+  app.post("/api/admin/system-maintenance/run", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const input = systemMaintenanceSchema.parse(request.body ?? {});
+    const result = await runSystemMaintenance(input);
+    await writeAuditLog(request, actor.id, "admin.system.maintenance_run", "system", undefined, null, result);
+    return adminOk(reply, result);
   });
 
   app.post("/api/admin/users", async (request, reply) => {
@@ -2180,6 +2196,35 @@ async function buildSystemHealthReport() {
       error: checks.filter((check) => check.status === "error").length
     },
     checks
+  };
+}
+
+async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchema>) {
+  const startedAt = new Date();
+  const actions: Record<string, unknown> = {};
+
+  if (input.expireOverdueRentals) {
+    actions.expireOverdueRentals = await expireOverdueRentals({
+      limit: input.expireOverdueRentalsLimit
+    });
+  }
+
+  if (input.releaseAvailableSettlements) {
+    actions.releaseAvailableSettlements = await releaseAvailableSettlements({
+      limit: input.releaseAvailableSettlementsLimit
+    });
+  }
+
+  if (input.repairSub2Bindings) {
+    actions.repairSub2Bindings = await repairSub2Bindings();
+  }
+
+  const health = await buildSystemHealthReport();
+  return {
+    startedAt: startedAt.toISOString(),
+    finishedAt: new Date().toISOString(),
+    actions,
+    health
   };
 }
 
