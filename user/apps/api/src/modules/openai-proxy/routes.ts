@@ -142,6 +142,10 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           rentalId: keyRecord.apiKey.rentalId,
           activeProxyRequests: concurrencyLease.activeCount,
           proxyConcurrencyLimit: concurrencyLease.limit,
+          proxyRequestLimit: limitCheck.requestLimit,
+          proxyRequestUsed: limitCheck.requestUsed,
+          proxyUsageRecordCount: limitCheck.usageRecordCount,
+          proxyLedgerRequestCount: limitCheck.proxyRequestCount,
           proxyRpmLimit: rateLimitCheck.rpmLimit,
           proxyRpmUsed: rateLimitCheck.rpmUsed,
           proxyTpmLimit: rateLimitCheck.tpmLimit,
@@ -277,23 +281,63 @@ async function checkRentalRequestLimit(
   rental: ActiveApiKeyRecord["rental"],
   request: FastifyRequest
 ) {
-  const requestLimit = rental?.limits?.requestLimit;
-  if (!requestLimit || isMetadataRequest(request)) {
-    return { ok: true as const };
+  const requestLimit = rental?.limits?.requestLimit ?? null;
+  if (!rental || !requestLimit || isMetadataRequest(request)) {
+    return {
+      ok: true as const,
+      requestLimit,
+      requestUsed: null,
+      usageRecordCount: null,
+      proxyRequestCount: null
+    };
   }
 
-  const usedRequests = await prisma.usageRecord.count({
-    where: {
-      rentalId: rental.id,
-      status: { in: ["pending", "billed", "disputed"] }
-    }
-  });
+  const [usageRecordCount, proxyRequestCount] = await Promise.all([
+    prisma.usageRecord.count({
+      where: {
+        rentalId: rental.id,
+        status: { in: ["pending", "billed", "disputed"] }
+      }
+    }),
+    prisma.proxyRequestLog.count({
+      where: {
+        rentalId: rental.id,
+        upstreamStatusCode: { not: null },
+        NOT: metadataProxyRequestLogFilters()
+      }
+    })
+  ]);
 
-  if (usedRequests >= requestLimit) {
+  const requestUsed = Math.max(usageRecordCount, proxyRequestCount);
+  if (requestUsed >= requestLimit) {
     return failure(429, "request_limit_exceeded", "Rental request limit has been exhausted");
   }
 
-  return { ok: true as const };
+  return {
+    ok: true as const,
+    requestLimit,
+    requestUsed,
+    usageRecordCount,
+    proxyRequestCount
+  };
+}
+
+function metadataProxyRequestLogFilters(): Prisma.ProxyRequestLogWhereInput[] {
+  const metadataMethods = ["GET", "HEAD"];
+  return [
+    {
+      method: { in: metadataMethods },
+      path: { in: ["/v1/models", "/v1/models/"] }
+    },
+    {
+      method: { in: metadataMethods },
+      path: { startsWith: "/v1/models?" }
+    },
+    {
+      method: { in: metadataMethods },
+      path: { startsWith: "/v1/models/" }
+    }
+  ];
 }
 
 function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
