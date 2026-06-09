@@ -36,6 +36,10 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
     if (rental.sub2KeyId) await disableSub2KeyBestEffort(rental.userId, rental.sub2KeyId);
     throw new AppError("rental_expired", "Rental has expired", 403);
   }
+  const remainingSpend = effectiveRemainingSpend(rental.limits);
+  if (remainingSpend && remainingSpend.lte(0)) {
+    throw new AppError("spend_limit_exhausted", "Rental spend limit has been exhausted", 402);
+  }
 
   const previousSub2KeyId = rental.sub2KeyId;
   const previousApiKeyIds = rental.apiKeys.map((apiKey) => apiKey.id);
@@ -46,7 +50,7 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
     resourceType: rental.resourceType,
     maxConcurrency: rental.limits?.maxConcurrency ?? 1,
     requestLimit: rental.limits?.requestLimit ?? null,
-    spendLimit: rental.limits?.spendLimit ? String(rental.limits.spendLimit) : null
+    spendLimit: remainingSpend ? String(remainingSpend) : null
   });
 
   try {
@@ -191,6 +195,10 @@ async function disableSub2KeyBestEffort(buyerId: string, keyId: string) {
 
 function hashSecret(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function effectiveRemainingSpend(limits: { remainingSpend?: Prisma.Decimal | null; spendLimit?: Prisma.Decimal | null } | null) {
+  return limits?.remainingSpend ?? limits?.spendLimit ?? null;
 }
 
 function redactSensitiveText(value: string) {

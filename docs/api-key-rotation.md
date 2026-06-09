@@ -22,6 +22,7 @@ Authorization: Bearer <user-token>
 - 只能轮换自己的租赁。
 - 租赁必须是 `active`。
 - 租赁已过期时会被标记为 `expired`，本地 Key 会被停用，并返回 `rental_expired`。
+- 若租赁剩余额度已耗尽，会返回 `spend_limit_exhausted`，不能通过轮换重新获得额度。
 - 响应中的新 API Key 只返回一次。
 
 ### 管理员代操作
@@ -42,6 +43,9 @@ Authorization: Bearer <admin-token>
 1. 读取租赁、用户、产品、限额和历史 API Key。
 2. 校验租赁存在、归属正确、状态为 `active` 且未过期。
 3. 通过 Sub2API 为该买家创建新的自定义 Key。
+   - 若存在 `remainingSpend`，新 Sub2 Key 使用剩余额度作为 quota。
+   - 若不存在 `remainingSpend` 但存在 `spendLimit`，新 Sub2 Key 使用原始额度作为 quota。
+   - 若剩余额度小于或等于 `0`，拒绝轮换。
 4. 在本地事务中：
    - 停用该租赁下旧的本地 API Key。
    - 更新 `Rental.sub2KeyId`、`Rental.sub2KeyHash`、`Rental.endpointUrl`。
@@ -63,6 +67,7 @@ Authorization: Bearer <admin-token>
 - 旧 Sub2 Key 禁用错误会先脱敏再返回或写入审计。
 - 审计记录不会持久化新 API Key 明文。
 - 旧 Sub2 Key 历史绑定会保留租赁 ID，避免轮换前产生但尚未同步的 usage 变成 unmatched。
+- 新 Sub2 Key 不会重置套餐剩余额度，避免通过轮换绕过 `spendLimit`。
 
 ## 验收方式
 
@@ -84,6 +89,7 @@ Authorization: Bearer <admin-token>
 5. 使用旧 Key 请求 `GET /v1/models`，预期被本地代理拒绝。
 6. 在后台审计中确认存在 `admin.rental.rotate_key`。
 7. 若旧 Key 在轮换前已有未同步 usage，触发 usage 同步后应能归属到原租赁。
+8. 若租赁已有 `remainingSpend`，轮换创建的新 Sub2 Key quota 应等于剩余额度。
 
 ## 当前限制
 
