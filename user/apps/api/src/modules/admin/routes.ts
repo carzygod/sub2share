@@ -116,6 +116,16 @@ const createUserSchema = z.object({
   roles: z.array(z.enum(userRoles)).min(1).default(["buyer"])
 });
 
+const nullableProfileText = (max: number) => z.union([z.string().trim().min(1).max(max), z.null()]).optional();
+
+const updateUserSchema = z.object({
+  displayName: nullableProfileText(64),
+  phone: nullableProfileText(32),
+  password: z.string().min(8).max(200).optional()
+}).refine((input) => Object.values(input).some((value) => value !== undefined), {
+  message: "At least one user field must be provided"
+});
+
 const userRolesSchema = z.object({
   roles: z.array(z.enum(userRoles)).min(1)
 });
@@ -388,6 +398,46 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
     });
     if (!user) throw new AppError("user_not_found", "User not found", 404);
+    return adminOk(reply, user);
+  });
+
+  app.patch("/api/admin/users/:id", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = updateUserSchema.parse(request.body ?? {});
+    const before = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, email: true, displayName: true, phone: true, status: true }
+    });
+    if (!before) throw new AppError("user_not_found", "User not found", 404);
+
+    const data: Prisma.UserUpdateInput = {};
+    if (input.displayName !== undefined) data.displayName = input.displayName;
+    if (input.phone !== undefined) data.phone = input.phone;
+    if (input.password !== undefined) data.passwordHash = await bcrypt.hash(input.password, 12);
+
+    const user = await prisma.user.update({
+      where: { id },
+      data,
+      include: {
+        roles: true,
+        wallet: true,
+        supplier: true,
+        _count: { select: { orders: true, rentals: true, apiKeys: true } }
+      }
+    });
+    await writeAuditLog(request, actor.id, "admin.user.update", "user", id, {
+      email: before.email,
+      displayName: before.displayName,
+      phone: before.phone,
+      status: before.status
+    }, {
+      email: user.email,
+      displayName: user.displayName,
+      phone: user.phone,
+      status: user.status,
+      passwordReset: input.password !== undefined
+    });
     return adminOk(reply, user);
   });
 

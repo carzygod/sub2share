@@ -205,6 +205,7 @@ interface UserRow {
   id: string;
   email: string;
   displayName?: string | null;
+  phone?: string | null;
   status: UserStatus;
   roles: RoleRow[];
   wallet?: WalletRow | null;
@@ -982,6 +983,24 @@ function App() {
     if (selectedUser?.id === userId) await openUserDetail(userId);
   }
 
+  async function updateUserProfile(event: FormEvent<HTMLFormElement>, userId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const password = optionalFormString(form, "password");
+    if (!confirmAdminAction("确认更新用户资料？", `用户 ID：${userId}\n显示名：${nullableFormString(form, "displayName") ?? "-"}\n手机号：${nullableFormString(form, "phone") ?? "-"}\n重置密码：${password ? "是" : "否"}`)) return;
+    await api<UserRow>(`/api/admin/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        displayName: nullableFormString(form, "displayName"),
+        phone: nullableFormString(form, "phone"),
+        password
+      })
+    });
+    setMessage("用户资料已更新");
+    await refresh("users");
+    if (selectedUser?.id === userId) await openUserDetail(userId);
+  }
+
   async function adjustWallet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1486,6 +1505,7 @@ function App() {
             meta={listMeta.users}
             onCreate={createUser}
             onStatus={setUserStatus}
+            onUpdate={updateUserProfile}
             onRoles={setUserRoles}
             onDetail={openUserDetail}
             onCloseDetail={() => setSelectedUser(null)}
@@ -1819,11 +1839,12 @@ function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: 
   );
 }
 
-function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onRoles, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpdate, onRoles, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   users: UserRow[];
   selectedUser: UserDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onStatus: (userId: string, status: UserStatus) => void;
+  onUpdate: (event: FormEvent<HTMLFormElement>, userId: string) => void;
   onRoles: (userId: string, roles: string[]) => void;
   onDetail: (userId: string) => void;
   onCloseDetail: () => void;
@@ -1868,12 +1889,17 @@ function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onRol
           </tr>
         ))}
       </TablePanel>
-      {selectedUser && <UserDetailPanel user={selectedUser} onRoles={onRoles} onClose={onCloseDetail} />}
+      {selectedUser && <UserDetailPanel user={selectedUser} onUpdate={onUpdate} onRoles={onRoles} onClose={onCloseDetail} />}
     </section>
   );
 }
 
-function UserDetailPanel({ user, onRoles, onClose }: { user: UserDetailRow; onRoles: (userId: string, roles: string[]) => void; onClose: () => void }) {
+function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
+  user: UserDetailRow;
+  onUpdate: (event: FormEvent<HTMLFormElement>, userId: string) => void;
+  onRoles: (userId: string, roles: string[]) => void;
+  onClose: () => void;
+}) {
   const transactions = user.wallet?.transactions ?? [];
   const orders = user.orders ?? [];
   const rentals = user.rentals ?? [];
@@ -1897,6 +1923,8 @@ function UserDetailPanel({ user, onRoles, onClose }: { user: UserDetailRow; onRo
 
       <div className="diagnostic-grid">
         <div><span>用户 ID</span><strong>{user.id}</strong></div>
+        <div><span>显示名</span><strong>{user.displayName ?? "-"}</strong></div>
+        <div><span>手机号</span><strong>{user.phone ?? "-"}</strong></div>
         <div><span>角色</span><strong>{user.roles.map((role) => role.role).join(", ") || "-"}</strong></div>
         <div><span>可用余额</span><strong>{money(user.wallet?.availableBalance)}</strong></div>
         <div><span>累计消费</span><strong>{money(user.wallet?.totalSpent)}</strong></div>
@@ -1905,6 +1933,14 @@ function UserDetailPanel({ user, onRoles, onClose }: { user: UserDetailRow; onRo
         <div><span>供给资源</span><strong>{resources.length}</strong></div>
         <div><span>创建时间</span><strong>{dateTime(user.createdAt)}</strong></div>
       </div>
+
+      <form className="inline-form" key={`${user.id}-${user.updatedAt ?? ""}-profile`} onSubmit={(event) => onUpdate(event, user.id)}>
+        <span className="eyebrow">Profile</span>
+        <input name="displayName" defaultValue={user.displayName ?? ""} placeholder="显示名称，留空清除" />
+        <input name="phone" defaultValue={user.phone ?? ""} placeholder="手机号，留空清除" />
+        <input name="password" type="password" minLength={8} placeholder="新密码，可选" autoComplete="new-password" />
+        <button>保存资料</button>
+      </form>
 
       <form
         className="inline-form"
@@ -3331,10 +3367,11 @@ function promptAdminNote(title: string, fallback: string) {
 type CsvCell = string | number | null | undefined;
 
 function exportUsersCsv(rows: UserRow[], scope = "current-page") {
-  downloadCsv(`users-${scope}`, ["id", "email", "displayName", "status", "roles", "balance", "orders", "rentals", "createdAt"], rows.map((user) => [
+  downloadCsv(`users-${scope}`, ["id", "email", "displayName", "phone", "status", "roles", "balance", "orders", "rentals", "createdAt"], rows.map((user) => [
     user.id,
     user.email,
     user.displayName,
+    user.phone,
     user.status,
     user.roles.map((role) => role.role).join("|"),
     user.wallet?.availableBalance,
