@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { prisma } from "../../common/prisma.js";
 import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
+import { estimateProxyInputTokens, isMetadataProxyRequest, proxyBodyByteLength, proxyBodyText } from "./helpers.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
@@ -475,27 +476,15 @@ function pruneRateWindow(window: ProxyRateWindow, now: number) {
 }
 
 function estimateInputTokens(request: FastifyRequest) {
-  if (["GET", "HEAD"].includes(request.method.toUpperCase())) return 1;
-  const body = requestBodyText(request);
-  if (!body) return 1;
-  return Math.max(1, Math.ceil(body.length / 4));
+  return estimateProxyInputTokens(request.method, request.body);
 }
 
 function requestBodyText(request: FastifyRequest) {
-  const body = request.body;
-  if (body === undefined || body === null) return "";
-  if (typeof body === "string") return body;
-  if (Buffer.isBuffer(body)) return body.toString("utf8");
-  if (body instanceof Uint8Array) return Buffer.from(body).toString("utf8");
-  return JSON.stringify(body);
+  return proxyBodyText(request.body);
 }
 
 function requestBodyByteLength(request: FastifyRequest) {
-  const body = request.body;
-  if (body === undefined || body === null) return 0;
-  if (typeof body === "string") return Buffer.byteLength(body);
-  if (Buffer.isBuffer(body) || body instanceof Uint8Array) return body.byteLength;
-  return Buffer.byteLength(JSON.stringify(body));
+  return proxyBodyByteLength(request.body);
 }
 
 function proxyRequestPath(request: FastifyRequest) {
@@ -557,10 +546,7 @@ function trackForwardedUpstreamStream(
 }
 
 function isMetadataRequest(request: FastifyRequest) {
-  const method = request.method.toUpperCase();
-  if (!["GET", "HEAD"].includes(method)) return false;
-  const path = (request.raw.url ?? request.url).split("?")[0]?.replace(/\/+$/, "");
-  return path === "/v1/models" || Boolean(path?.match(/^\/v1\/models\/[^/]+$/));
+  return isMetadataProxyRequest(request.method, request.raw.url ?? request.url);
 }
 
 async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: string, apiKey: string) {

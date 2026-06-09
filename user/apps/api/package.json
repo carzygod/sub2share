@@ -10,7 +10,7 @@
     "start": "node dist/main.js",
     "lint": "eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "echo \"api tests pending\""
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
@@ -29,4 +29,3 @@
     "typescript": "^5.7.2"
   }
 }
-
