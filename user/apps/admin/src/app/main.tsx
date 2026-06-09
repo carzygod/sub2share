@@ -28,8 +28,8 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "systemHealth" | "systemHealthHistory" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "systemHealthHistory" | "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -737,7 +737,7 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "apiKeys", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
+const managedListViews: ManagedListView[] = ["systemHealthHistory", "users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "apiKeys", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
@@ -748,6 +748,7 @@ const usageStatusOptions = ["pending", "billed", "refunded", "ignored", "dispute
 const orderStatusOptions = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"];
 const rentalStatusOptions = ["active", "low_balance", "limited", "suspended", "expired", "refunded", "closed"];
 const apiKeyStatusOptions = ["active", "inactive"];
+const systemHealthStatusOptions = ["ok", "warning", "error"];
 const supplierStatusOptions = ["pending", "active", "paused", "disabled"];
 const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"];
 const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
@@ -762,6 +763,7 @@ function App() {
   const [systemHealth, setSystemHealth] = useState<SystemHealthResult | null>(null);
   const [systemMaintenance, setSystemMaintenance] = useState<SystemMaintenanceResult | null>(null);
   const [systemHealthSnapshots, setSystemHealthSnapshots] = useState<SystemHealthSnapshotRow[]>([]);
+  const [systemHealthHistory, setSystemHealthHistory] = useState<SystemHealthSnapshotRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -877,6 +879,7 @@ function App() {
       setView(nextView);
       if (nextView === "dashboard") setDashboard(await api<Dashboard>("/api/admin/dashboard"));
       if (nextView === "systemHealth") await loadSystemHealthView();
+      if (nextView === "systemHealthHistory") await loadPaged("systemHealthHistory", "/api/admin/system-health/snapshots", setSystemHealthHistory, queryOverride);
       if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
@@ -961,6 +964,11 @@ function App() {
       if (listView === "users") {
         const { rows, total } = await fetchAllListPages<UserRow>(listView, "/api/admin/users", query);
         exportUsersCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "systemHealthHistory") {
+        const { rows, total } = await fetchAllListPages<SystemHealthSnapshotRow>(listView, "/api/admin/system-health/snapshots", query);
+        exportSystemHealthSnapshotsCsv(rows, "filtered-all");
         exported = total;
       }
       if (listView === "wallets") {
@@ -1674,6 +1682,7 @@ function App() {
         <nav>
           <NavButton active={view === "dashboard"} onClick={() => refresh("dashboard")} icon={<BarChart3 size={18} />}>经营看板</NavButton>
           <NavButton active={view === "systemHealth"} onClick={() => refresh("systemHealth")} icon={<ShieldCheck size={18} />}>可用性巡检</NavButton>
+          <NavButton active={view === "systemHealthHistory"} onClick={() => refresh("systemHealthHistory")} icon={<ScrollText size={18} />}>巡检历史</NavButton>
           <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户管理</NavButton>
           <NavButton active={view === "wallets"} onClick={() => refresh("wallets")} icon={<WalletCards size={18} />}>余额管理</NavButton>
           <NavButton active={view === "walletTransactions"} onClick={() => refresh("walletTransactions")} icon={<ReceiptText size={18} />}>余额流水</NavButton>
@@ -1716,6 +1725,18 @@ function App() {
             snapshots={systemHealthSnapshots}
             onRefresh={() => refresh("systemHealth")}
             onRunMaintenance={runSystemMaintenance}
+          />
+        )}
+        {view === "systemHealthHistory" && (
+          <SystemHealthHistoryView
+            snapshots={systemHealthHistory}
+            query={listQueries.systemHealthHistory}
+            meta={listMeta.systemHealthHistory}
+            onDraft={(patch) => updateListDraft("systemHealthHistory", patch)}
+            onFilter={(event) => submitListFilters("systemHealthHistory", event)}
+            onClear={() => clearListFilters("systemHealthHistory")}
+            onPage={(page) => changeListPage("systemHealthHistory", page)}
+            onExport={() => exportFilteredList("systemHealthHistory")}
           />
         )}
         {view === "users" && (
@@ -2094,6 +2115,43 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
         )}
       </TablePanel>
       <TablePanel title="巡检历史" count={snapshots.length} headers={["状态", "来源", "摘要", "操作者", "时间"]}>
+        {snapshots.map((snapshot) => (
+          <tr key={snapshot.id}>
+            <td><StatusPill status={healthStatusTone(snapshot.status)} /></td>
+            <td><strong>{snapshot.source}</strong><small>{snapshot.id}</small></td>
+            <td>
+              <strong>{snapshot.summary.ok ?? 0} ok / {snapshot.summary.warning ?? 0} warning / {snapshot.summary.error ?? 0} error</strong>
+              <small>{snapshot.summary.totalChecks ?? 0} checks</small>
+            </td>
+            <td><strong>{snapshot.actor?.email ?? "-"}</strong><small>{snapshot.actor?.displayName ?? snapshot.actor?.id ?? "-"}</small></td>
+            <td>{dateTime(snapshot.createdAt)}</td>
+          </tr>
+        ))}
+        {snapshots.length === 0 && (
+          <tr><td colSpan={5}><small>暂无巡检历史。</small></td></tr>
+        )}
+      </TablePanel>
+    </section>
+  );
+}
+
+function SystemHealthHistoryView({ snapshots, query, meta, onDraft, onFilter, onClear, onPage, onExport }: {
+  snapshots: SystemHealthSnapshotRow[];
+} & ManagedListProps) {
+  return (
+    <section className="stack">
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="快照 / 来源 / 操作者"
+        statusOptions={systemHealthStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="巡检历史" count={meta.total} headers={["状态", "来源", "摘要", "操作者", "时间"]}>
         {snapshots.map((snapshot) => (
           <tr key={snapshot.id}>
             <td><StatusPill status={healthStatusTone(snapshot.status)} /></td>
@@ -3968,6 +4026,7 @@ function titleFor(view: View) {
   const map: Record<View, string> = {
     dashboard: "经营看板",
     systemHealth: "可用性巡检",
+    systemHealthHistory: "巡检历史",
     users: "用户管理",
     wallets: "余额管理",
     walletTransactions: "余额流水",
@@ -4047,6 +4106,21 @@ function exportUsersCsv(rows: UserRow[], scope = "current-page") {
     user._count?.orders,
     user._count?.rentals,
     user.createdAt
+  ]));
+}
+
+function exportSystemHealthSnapshotsCsv(rows: SystemHealthSnapshotRow[], scope = "current-page") {
+  downloadCsv(`system-health-snapshots-${scope}`, ["id", "status", "source", "totalChecks", "ok", "warning", "error", "actorEmail", "actorId", "createdAt"], rows.map((snapshot) => [
+    snapshot.id,
+    snapshot.status,
+    snapshot.source,
+    snapshot.summary.totalChecks ?? 0,
+    snapshot.summary.ok ?? 0,
+    snapshot.summary.warning ?? 0,
+    snapshot.summary.error ?? 0,
+    snapshot.actor?.email,
+    snapshot.actor?.id,
+    snapshot.createdAt
   ]));
 }
 
