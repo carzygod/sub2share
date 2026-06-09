@@ -454,6 +454,18 @@ interface ApiKeyRow {
   rental?: RentalRow | null;
 }
 
+interface ApiKeyBulkStatusResult {
+  matched: number;
+  processed: number;
+  changed: number;
+  skippedAlreadyStatus: number;
+  truncated: boolean;
+  limit: number;
+  targetStatus: string;
+  sub2SyncAttempted: number;
+  sub2SyncFailed: number;
+}
+
 interface ProxyRequestLogRow {
   id: string;
   requestId: string;
@@ -1235,6 +1247,34 @@ function App() {
     }
   }
 
+  async function bulkSetApiKeyStatus(status: string) {
+    const query = listQueries.apiKeys;
+    const actionText = status === "active" ? "启用" : "停用";
+    if (!confirmAdminAction(
+      `确认批量${actionText}当前筛选 API Key？`,
+      [
+        `目标状态：${status}`,
+        `命中总数：${listMeta.apiKeys.total}`,
+        `搜索：${query.q || "-"}`,
+        `当前状态：${query.status || "-"}`,
+        `资源类型：${query.resourceType || "-"}`,
+        "单次最多处理：500"
+      ].join("\n")
+    )) return;
+    const result = await api<ApiKeyBulkStatusResult>("/api/admin/api-keys/bulk-status", {
+      method: "POST",
+      body: JSON.stringify({
+        status,
+        q: query.q || undefined,
+        currentStatus: query.status || undefined,
+        resourceType: query.resourceType || undefined,
+        limit: 500
+      })
+    });
+    setMessage(`Bulk API key status updated: ${result.changed}/${result.processed}${result.truncated ? ` (limited to ${result.limit}/${result.matched})` : ""}${result.sub2SyncFailed ? `, ${result.sub2SyncFailed} Sub2 sync failures need review` : ""}`);
+    await refresh("apiKeys");
+  }
+
   async function rotateRentalKey(rentalId: string) {
     if (!confirmAdminAction("确认轮换租赁 API Key？", `租赁 ID：${rentalId}\n旧 Key 将被停用或需要人工复查。`)) return;
     const result = await api<{ apiKey: string; oldSub2KeyDisabled: boolean }>(`/api/admin/rentals/${rentalId}/rotate-key`, {
@@ -1787,6 +1827,7 @@ function App() {
             query={listQueries.apiKeys}
             meta={listMeta.apiKeys}
             onStatus={setApiKeyStatus}
+            onBulkStatus={bulkSetApiKeyStatus}
             onDraft={(patch) => updateListDraft("apiKeys", patch)}
             onFilter={(event) => submitListFilters("apiKeys", event)}
             onClear={() => clearListFilters("apiKeys")}
@@ -2981,12 +3022,30 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
   );
 }
 
-function ApiKeysView({ apiKeys, query, meta, onStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onDraft, onFilter, onClear, onPage, onExport }: {
   apiKeys: ApiKeyRow[];
   onStatus: (apiKeyId: string, status: string) => void;
+  onBulkStatus: (status: string) => void;
 } & ManagedListProps) {
+  const filterSummary = [
+    `${meta.total} matched`,
+    query.q ? `q=${query.q}` : null,
+    query.status ? `status=${query.status}` : null,
+    query.resourceType ? `resource=${query.resourceType}` : null
+  ].filter(Boolean).join(" / ");
   return (
     <>
+      <div className="panel glass-panel export-strip">
+        <div>
+          <span className="eyebrow">Maintenance</span>
+          <strong>当前筛选 API Key</strong>
+          <small>{filterSummary}</small>
+        </div>
+        <div className="row-actions">
+          <button type="button" className="secondary" onClick={() => onBulkStatus("active")}>批量启用</button>
+          <button type="button" className="danger" onClick={() => onBulkStatus("inactive")}>批量停用</button>
+        </div>
+      </div>
       <ListControls
         query={query}
         meta={meta}
@@ -2999,7 +3058,7 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onDraft, onFilter, onClea
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="API Key Management" count={meta.total} headers={["User", "Key", "Rental", "Status", "Last Used", "Actions"]}>
+      <TablePanel title="API Key 管理" count={meta.total} headers={["用户", "Key", "租赁", "状态", "最近使用", "操作"]}>
         {apiKeys.map((apiKey) => (
           <tr key={apiKey.id}>
             <td>
@@ -3018,18 +3077,18 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onDraft, onFilter, onClea
             <td><StatusPill status={apiKey.status} /></td>
             <td>
               <strong>{dateTime(apiKey.lastUsedAt)}</strong>
-              <small>Created {dateTime(apiKey.createdAt)}</small>
+              <small>创建 {dateTime(apiKey.createdAt)}</small>
             </td>
             <td>
               <div className="row-actions">
-                <button type="button" className="secondary mini" onClick={() => onStatus(apiKey.id, "active")}>Enable</button>
-                <button type="button" className="danger mini" onClick={() => onStatus(apiKey.id, "inactive")}>Disable</button>
+                <button type="button" className="secondary mini" onClick={() => onStatus(apiKey.id, "active")}>启用</button>
+                <button type="button" className="danger mini" onClick={() => onStatus(apiKey.id, "inactive")}>停用</button>
               </div>
             </td>
           </tr>
         ))}
         {apiKeys.length === 0 && (
-          <tr><td colSpan={6}><small>No API keys match the current filters.</small></td></tr>
+          <tr><td colSpan={6}><small>当前筛选没有匹配的 API Key。</small></td></tr>
         )}
       </TablePanel>
     </>

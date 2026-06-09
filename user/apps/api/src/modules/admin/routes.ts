@@ -164,6 +164,14 @@ const apiKeyStatusSchema = z.object({
   status: z.enum(apiKeyStatuses)
 });
 
+const apiKeyBulkStatusSchema = z.object({
+  status: z.enum(apiKeyStatuses),
+  q: z.string().trim().max(160).optional(),
+  currentStatus: z.enum(apiKeyStatuses).optional(),
+  resourceType: z.enum(resourceTypes).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(500)
+});
+
 const createProductSchema = z.object({
   name: z.string().trim().min(1).max(120),
   resourceType: z.enum(resourceTypes),
@@ -1137,28 +1145,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(apiKeyStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
-    const where: Prisma.ApiKeyWhereInput = {
-      user: nonSmokeUserWhere(),
-      ...(status ? { status } : {}),
-      ...(resourceType ? { rental: { resourceType } } : {}),
-      ...(query.q ? {
-        OR: [
-          { id: containsText(query.q) },
-          { name: containsText(query.q) },
-          { keyPrefix: containsText(query.q) },
-          { userId: containsText(query.q) },
-          { user: { id: containsText(query.q) } },
-          { user: { email: containsText(query.q) } },
-          { user: { displayName: containsText(query.q) } },
-          { rentalId: containsText(query.q) },
-          { rental: { id: containsText(query.q) } },
-          { rental: { sub2KeyId: containsText(query.q) } },
-          { rental: { endpointUrl: containsText(query.q) } },
-          { rental: { product: { name: containsText(query.q) } } },
-          ...(oneOf(resourceTypes, query.q) ? [{ rental: { resourceType: oneOf(resourceTypes, query.q) } }] : [])
-        ]
-      } : {})
-    };
+    const where = apiKeyListWhere({ q: query.q, status, resourceType });
     const [apiKeys, total] = await Promise.all([
       prisma.apiKey.findMany({
         where,
@@ -1172,6 +1159,82 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       prisma.apiKey.count({ where })
     ]);
     return adminOk(reply, paged(apiKeys, total, query));
+  });
+
+  app.post("/api/admin/api-keys/bulk-status", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const input = apiKeyBulkStatusSchema.parse(request.body ?? {});
+    const where = apiKeyListWhere({
+      q: nonEmpty(input.q),
+      status: input.currentStatus,
+      resourceType: input.resourceType
+    });
+    const [total, candidates] = await Promise.all([
+      prisma.apiKey.count({ where }),
+      prisma.apiKey.findMany({
+        where,
+        include: { user: true, rental: true },
+        orderBy: { createdAt: "desc" },
+        take: input.limit
+      })
+    ]);
+    const targetKeys = candidates.filter((apiKey) => apiKey.status !== input.status);
+    const inactiveRentalKeys = input.status === "active"
+      ? targetKeys.filter((apiKey) => apiKey.rental?.status !== "active")
+      : [];
+    if (inactiveRentalKeys.length) {
+      throw new AppError("rental_not_active", "Cannot activate API keys for inactive rentals", 400, {
+        count: inactiveRentalKeys.length,
+        apiKeyIds: inactiveRentalKeys.slice(0, 20).map((apiKey) => apiKey.id)
+      });
+    }
+
+    const sub2SyncResults = [];
+    for (const apiKey of targetKeys) {
+      const sub2Sync = await syncSub2KeyForRental(apiKey.rental?.userId ?? apiKey.userId, apiKey.rental?.sub2KeyId, input.status === "active");
+      sub2SyncResults.push({
+        apiKeyId: apiKey.id,
+        rentalId: apiKey.rentalId,
+        sub2KeyId: apiKey.rental?.sub2KeyId,
+        ...sub2Sync
+      });
+    }
+    const failedSub2Sync = sub2SyncResults.filter((result) => !result.ok);
+    if (input.status === "active" && failedSub2Sync.length) {
+      throw new AppError("sub2_key_enable_failed", "One or more Sub2 keys could not be enabled", 502, {
+        failed: failedSub2Sync.slice(0, 20)
+      });
+    }
+
+    const updated = targetKeys.length
+      ? await prisma.apiKey.updateMany({
+        where: { id: { in: targetKeys.map((apiKey) => apiKey.id) } },
+        data: { status: input.status }
+      })
+      : { count: 0 };
+    const result = {
+      matched: total,
+      processed: candidates.length,
+      changed: updated.count,
+      skippedAlreadyStatus: candidates.length - targetKeys.length,
+      truncated: total > candidates.length,
+      limit: input.limit,
+      targetStatus: input.status,
+      sub2SyncAttempted: sub2SyncResults.length,
+      sub2SyncFailed: failedSub2Sync.length,
+      sub2SyncFailures: failedSub2Sync.slice(0, 20)
+    };
+    await writeAuditLog(request, actor.id, "admin.api_key.bulk_status", "api_key", undefined, {
+      filters: {
+        q: nonEmpty(input.q),
+        currentStatus: input.currentStatus,
+        resourceType: input.resourceType,
+        limit: input.limit
+      },
+      matched: total,
+      processed: candidates.length
+    }, result);
+    return adminOk(reply, result);
   });
 
   app.patch("/api/admin/api-keys/:id/status", async (request, reply) => {
@@ -3287,6 +3350,36 @@ function paged<T>(items: T[], total: number, query: ListQuery) {
 
 function containsText(value: string) {
   return { contains: value, mode: Prisma.QueryMode.insensitive };
+}
+
+function apiKeyListWhere(input: {
+  q?: string;
+  status?: (typeof apiKeyStatuses)[number];
+  resourceType?: (typeof resourceTypes)[number];
+}): Prisma.ApiKeyWhereInput {
+  const queryResourceType = oneOf(resourceTypes, input.q);
+  return {
+    user: nonSmokeUserWhere(),
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.resourceType ? { rental: { resourceType: input.resourceType } } : {}),
+    ...(input.q ? {
+      OR: [
+        { id: containsText(input.q) },
+        { name: containsText(input.q) },
+        { keyPrefix: containsText(input.q) },
+        { userId: containsText(input.q) },
+        { user: { id: containsText(input.q) } },
+        { user: { email: containsText(input.q) } },
+        { user: { displayName: containsText(input.q) } },
+        { rentalId: containsText(input.q) },
+        { rental: { id: containsText(input.q) } },
+        { rental: { sub2KeyId: containsText(input.q) } },
+        { rental: { endpointUrl: containsText(input.q) } },
+        { rental: { product: { name: containsText(input.q) } } },
+        ...(queryResourceType ? [{ rental: { resourceType: queryResourceType } }] : [])
+      ]
+    } : {})
+  };
 }
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined): T | undefined {
