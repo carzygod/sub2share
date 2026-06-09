@@ -15,6 +15,7 @@ import {
   PackagePlus,
   ReceiptText,
   RefreshCw,
+  Scale,
   ScrollText,
   Search,
   ShieldCheck,
@@ -27,7 +28,7 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "resources" | "settlements" | "withdrawals" | "audit";
 type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
@@ -81,6 +82,38 @@ interface UsageSyncStateResult {
 
 interface PagedWithdrawalResult extends PagedResult<WithdrawalRow> {
   summary?: AggregateSummary;
+}
+
+interface ReconciliationSummary {
+  billedUsageMissingWalletTransactions: number;
+  walletTransactionsMissingUsage: number;
+  usageSettlementMismatches: number;
+  settlementOverallocated: number;
+  withdrawalAllocationMismatches: number;
+  totalIssues: number;
+  returnedIssues: number;
+}
+
+interface ReconciliationIssue {
+  id: string;
+  severity: "warning" | "error";
+  type: string;
+  message: string;
+  refType: string;
+  refId: string;
+  amount?: string;
+  expected?: string;
+  actual?: string;
+  createdAt?: string;
+}
+
+interface ReconciliationResult {
+  checkedAt: string;
+  ok: boolean;
+  scanLimit: number;
+  summary: ReconciliationSummary;
+  scanned: Record<string, number>;
+  issues: ReconciliationIssue[];
 }
 
 interface ListQueryState {
@@ -524,6 +557,7 @@ function App() {
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
   const [withdrawalSummary, setWithdrawalSummary] = useState<AggregateSummary | null>(null);
   const [sales, setSales] = useState<SalesData | null>(null);
+  const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
   const [sub2Status, setSub2Status] = useState<Sub2Status | null>(null);
   const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
   const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
@@ -591,6 +625,7 @@ function App() {
       if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
+      if (nextView === "reconciliation") setReconciliation(await api<ReconciliationResult>("/api/admin/reconciliation"));
       if (nextView === "sales") setSales(await api<SalesData>("/api/admin/sales"));
       if (nextView === "usages") await loadUsages(queryOverride);
       if (nextView === "products") await loadPaged("products", "/api/admin/products", setProducts, queryOverride);
@@ -1056,6 +1091,7 @@ function App() {
           <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户管理</NavButton>
           <NavButton active={view === "wallets"} onClick={() => refresh("wallets")} icon={<WalletCards size={18} />}>余额管理</NavButton>
           <NavButton active={view === "walletTransactions"} onClick={() => refresh("walletTransactions")} icon={<ReceiptText size={18} />}>余额流水</NavButton>
+          <NavButton active={view === "reconciliation"} onClick={() => refresh("reconciliation")} icon={<Scale size={18} />}>账务对账</NavButton>
           <NavButton active={view === "sales"} onClick={() => refresh("sales")} icon={<TrendingUp size={18} />}>售出情况</NavButton>
           <NavButton active={view === "usages"} onClick={() => refresh("usages")} icon={<Activity size={18} />}>用量</NavButton>
           <NavButton active={view === "products"} onClick={() => refresh("products")} icon={<PackagePlus size={18} />}>商品</NavButton>
@@ -1126,6 +1162,12 @@ function App() {
             onClear={() => clearListFilters("walletTransactions")}
             onPage={(page) => changeListPage("walletTransactions", page)}
             onExport={() => exportWalletTransactionsCsv(walletTransactions)}
+          />
+        )}
+        {view === "reconciliation" && (
+          <ReconciliationView
+            reconciliation={reconciliation}
+            onRefresh={() => refresh("reconciliation")}
           />
         )}
         {view === "sales" && (
@@ -1639,6 +1681,60 @@ function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, 
         ))}
       </TablePanel>
     </>
+  );
+}
+
+function ReconciliationView({ reconciliation, onRefresh }: {
+  reconciliation: ReconciliationResult | null;
+  onRefresh: () => void;
+}) {
+  const summary = reconciliation?.summary;
+  const issues = reconciliation?.issues ?? [];
+  return (
+    <section className="stack">
+      <div className="panel glass-panel export-strip">
+        <div>
+          <span className="eyebrow">Billing reconciliation</span>
+          <div className={reconciliation?.ok ? "health-row" : "health-row warning"}>
+            {reconciliation?.ok ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            <strong>{reconciliation ? (reconciliation.ok ? "账务一致" : "发现账务问题") : "等待巡检"}</strong>
+          </div>
+          {reconciliation && <small>扫描上限 {reconciliation.scanLimit}，检查时间 {dateTime(reconciliation.checkedAt)}</small>}
+        </div>
+        <button className="secondary" onClick={onRefresh}><RefreshCw size={16} />重新对账</button>
+      </div>
+      <section className="cards compact-cards">
+        <Metric label="问题总数" value={summary?.totalIssues ?? 0} />
+        <Metric label="缺少扣费流水" value={summary?.billedUsageMissingWalletTransactions ?? 0} />
+        <Metric label="流水引用缺失" value={summary?.walletTransactionsMissingUsage ?? 0} />
+        <Metric label="用量结算不平" value={summary?.usageSettlementMismatches ?? 0} />
+        <Metric label="结算超分配" value={summary?.settlementOverallocated ?? 0} />
+        <Metric label="提现分配不平" value={summary?.withdrawalAllocationMismatches ?? 0} />
+      </section>
+      <TablePanel title="账务问题明细" count={summary?.totalIssues ?? 0} headers={["级别", "类型", "引用", "金额", "期望/实际", "说明", "时间"]}>
+        {issues.map((issue) => (
+          <tr key={issue.id}>
+            <td><StatusPill status={issue.severity} /></td>
+            <td><strong>{issue.type}</strong></td>
+            <td><strong>{issue.refType}</strong><small>{issue.refId}</small></td>
+            <td>{issue.amount ? money(issue.amount) : "-"}</td>
+            <td><strong>{issue.expected ? money(issue.expected) : "-"}</strong><small>{issue.actual ? money(issue.actual) : "-"}</small></td>
+            <td><small>{issue.message}</small></td>
+            <td>{dateTime(issue.createdAt)}</td>
+          </tr>
+        ))}
+        {reconciliation && issues.length === 0 && (
+          <tr>
+            <td colSpan={7}><small>当前扫描范围内未发现账务一致性问题。</small></td>
+          </tr>
+        )}
+        {!reconciliation && (
+          <tr>
+            <td colSpan={7}><small>点击重新对账开始扫描。</small></td>
+          </tr>
+        )}
+      </TablePanel>
+    </section>
   );
 }
 
@@ -2568,6 +2664,7 @@ function titleFor(view: View) {
     users: "用户管理",
     wallets: "余额管理",
     walletTransactions: "余额流水",
+    reconciliation: "账务对账",
     sales: "售出情况",
     usages: "用量记录",
     products: "商品管理",

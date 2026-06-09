@@ -473,7 +473,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
   font-size: 12px;
 }
 .status-active, .status-online, .status-paid { color: var(--success); }
-.status-pending, .status-testing, .status-provisioning { color: var(--warning); }
+.status-pending, .status-testing, .status-provisioning, .status-warning { color: var(--warning); }
 .status-failed, .status-error, .status-disabled, .status-banned { color: var(--danger); }
 
 @media (max-width: 1020px) {

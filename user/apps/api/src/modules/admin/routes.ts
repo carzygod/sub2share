@@ -27,6 +27,8 @@ const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abn
 type ResourceStatus = (typeof resourceStatuses)[number];
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
+const reconciliationScanLimit = 500;
+const reconciliationIssueLimit = 50;
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -38,6 +40,19 @@ const listQuerySchema = z.object({
 });
 
 type ListQuery = z.infer<typeof listQuerySchema>;
+
+interface BillingReconciliationIssue {
+  id: string;
+  severity: "warning" | "error";
+  type: string;
+  message: string;
+  refType: string;
+  refId: string;
+  amount?: string;
+  expected?: string;
+  actual?: string;
+  createdAt?: string;
+}
 
 const orderDetailInclude = {
   user: { include: { roles: true, wallet: true } },
@@ -1003,6 +1018,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
   });
 
+  app.get("/api/admin/reconciliation", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    return adminOk(reply, await findBillingReconciliationIssues());
+  });
+
   app.get("/api/admin/usages", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
@@ -1915,6 +1935,211 @@ function settlementStatusForAmounts(amount: Prisma.Decimal, reservedAmount: Pris
 
 function decimalMax(left: Prisma.Decimal, right: Prisma.Decimal) {
   return left.gte(right) ? left : right;
+}
+
+async function findBillingReconciliationIssues() {
+  const [
+    billedUsages,
+    consumptionTransactions,
+    usageSettlementCandidates,
+    settlementCandidates,
+    withdrawalCandidates
+  ] = await Promise.all([
+    prisma.usageRecord.findMany({
+      where: { status: "billed", buyerCharge: { gt: 0 } },
+      select: { id: true, buyerCharge: true, occurredAt: true },
+      orderBy: { occurredAt: "desc" },
+      take: reconciliationScanLimit
+    }),
+    prisma.walletTransaction.findMany({
+      where: { type: "consume", refType: "usage", refId: { not: null } },
+      select: { id: true, amount: true, refId: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: reconciliationScanLimit
+    }),
+    prisma.usageRecord.findMany({
+      where: { status: "billed", supplierIncome: { gt: 0 } },
+      select: {
+        id: true,
+        supplierIncome: true,
+        occurredAt: true,
+        settlements: { select: { id: true, amount: true, status: true } }
+      },
+      orderBy: { occurredAt: "desc" },
+      take: reconciliationScanLimit
+    }),
+    prisma.settlementRecord.findMany({
+      select: {
+        id: true,
+        amount: true,
+        reservedAmount: true,
+        withdrawnAmount: true,
+        status: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: "desc" },
+      take: reconciliationScanLimit
+    }),
+    prisma.withdrawal.findMany({
+      where: { status: { in: ["pending", "approved", "paid"] } },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        createdAt: true,
+        settlements: { select: { amount: true, status: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: reconciliationScanLimit
+    })
+  ]);
+
+  const usageWalletTransactions = await prisma.walletTransaction.findMany({
+    where: {
+      type: "consume",
+      refType: "usage",
+      refId: { in: billedUsages.map((usage) => usage.id) }
+    },
+    select: { refId: true }
+  });
+  const transactionUsageRefs = new Set(usageWalletTransactions.flatMap((transaction) => transaction.refId ? [transaction.refId] : []));
+  const billedUsageMissingWalletTransactions = billedUsages
+    .filter((usage) => !transactionUsageRefs.has(usage.id))
+    .map((usage) => reconciliationIssue({
+      type: "billed_usage_missing_wallet_transaction",
+      refType: "usage",
+      refId: usage.id,
+      amount: decimalText(usage.buyerCharge),
+      createdAt: usage.occurredAt.toISOString(),
+      message: "Billed usage has buyerCharge but no consume wallet transaction."
+    }));
+
+  const usageIdsForTransactions = [
+    ...new Set(consumptionTransactions.flatMap((transaction) => transaction.refId ? [transaction.refId] : []))
+  ];
+  const usagesForTransactions = usageIdsForTransactions.length > 0
+    ? await prisma.usageRecord.findMany({
+      where: { id: { in: usageIdsForTransactions } },
+      select: { id: true }
+    })
+    : [];
+  const usageIds = new Set(usagesForTransactions.map((usage) => usage.id));
+  const walletTransactionsMissingUsage = consumptionTransactions
+    .filter((transaction) => transaction.refId && !usageIds.has(transaction.refId))
+    .map((transaction) => reconciliationIssue({
+      type: "wallet_transaction_missing_usage",
+      refType: "wallet_transaction",
+      refId: transaction.id,
+      amount: decimalText(transaction.amount),
+      createdAt: transaction.createdAt.toISOString(),
+      message: `Consume wallet transaction references missing usage ${transaction.refId}.`
+    }));
+
+  const usageSettlementMismatches = usageSettlementCandidates
+    .map((usage) => {
+      const actual = decimalSum(usage.settlements.map((settlement) => settlement.amount));
+      if (decimalEquals(actual, usage.supplierIncome)) return undefined;
+      return reconciliationIssue({
+        type: "usage_settlement_mismatch",
+        refType: "usage",
+        refId: usage.id,
+        expected: decimalText(usage.supplierIncome),
+        actual: decimalText(actual),
+        createdAt: usage.occurredAt.toISOString(),
+        message: "Usage supplierIncome does not match settlement record amount sum."
+      });
+    })
+    .filter(isReconciliationIssue);
+
+  const settlementOverallocated = settlementCandidates
+    .filter((settlement) => settlement.reservedAmount.plus(settlement.withdrawnAmount).gt(settlement.amount))
+    .map((settlement) => reconciliationIssue({
+      type: "settlement_overallocated",
+      refType: "settlement",
+      refId: settlement.id,
+      amount: decimalText(settlement.amount),
+      actual: decimalText(settlement.reservedAmount.plus(settlement.withdrawnAmount)),
+      createdAt: settlement.createdAt.toISOString(),
+      message: `Settlement reserved plus withdrawn exceeds amount while status is ${settlement.status}.`
+    }));
+
+  const withdrawalAllocationMismatches = withdrawalCandidates
+    .map((withdrawal) => {
+      const allocated = decimalSum(
+        withdrawal.settlements
+          .filter((allocation) => ["reserved", "paid"].includes(allocation.status))
+          .map((allocation) => allocation.amount)
+      );
+      if (decimalEquals(allocated, withdrawal.amount)) return undefined;
+      return reconciliationIssue({
+        type: "withdrawal_allocation_mismatch",
+        refType: "withdrawal",
+        refId: withdrawal.id,
+        expected: decimalText(withdrawal.amount),
+        actual: decimalText(allocated),
+        createdAt: withdrawal.createdAt.toISOString(),
+        message: `Active withdrawal status ${withdrawal.status} does not match active allocation sum.`
+      });
+    })
+    .filter(isReconciliationIssue);
+
+  const groups = {
+    billedUsageMissingWalletTransactions,
+    walletTransactionsMissingUsage,
+    usageSettlementMismatches,
+    settlementOverallocated,
+    withdrawalAllocationMismatches
+  };
+  const allIssues = Object.values(groups).flat();
+  return {
+    checkedAt: new Date().toISOString(),
+    ok: allIssues.length === 0,
+    scanLimit: reconciliationScanLimit,
+    summary: {
+      billedUsageMissingWalletTransactions: billedUsageMissingWalletTransactions.length,
+      walletTransactionsMissingUsage: walletTransactionsMissingUsage.length,
+      usageSettlementMismatches: usageSettlementMismatches.length,
+      settlementOverallocated: settlementOverallocated.length,
+      withdrawalAllocationMismatches: withdrawalAllocationMismatches.length,
+      totalIssues: allIssues.length,
+      returnedIssues: Math.min(allIssues.length, reconciliationIssueLimit)
+    },
+    scanned: {
+      billedUsages: billedUsages.length,
+      usageWalletTransactions: usageWalletTransactions.length,
+      walletTransactions: consumptionTransactions.length,
+      usageSettlementCandidates: usageSettlementCandidates.length,
+      settlements: settlementCandidates.length,
+      withdrawals: withdrawalCandidates.length
+    },
+    issues: allIssues.slice(0, reconciliationIssueLimit)
+  };
+}
+
+function reconciliationIssue(input: Omit<BillingReconciliationIssue, "id" | "severity"> & {
+  severity?: BillingReconciliationIssue["severity"];
+}) {
+  return {
+    id: `${input.type}:${input.refType}:${input.refId}`,
+    severity: input.severity ?? "error",
+    ...input
+  };
+}
+
+function isReconciliationIssue(issue: BillingReconciliationIssue | undefined): issue is BillingReconciliationIssue {
+  return Boolean(issue);
+}
+
+function decimalSum(values: Prisma.Decimal[]) {
+  return values.reduce((sum, value) => sum.plus(value), new Prisma.Decimal(0));
+}
+
+function decimalEquals(left: Prisma.Decimal, right: Prisma.Decimal) {
+  return left.toFixed(6) === right.toFixed(6);
+}
+
+function decimalText(value: Prisma.Decimal) {
+  return value.toFixed(6);
 }
 
 function parseListQuery(raw: unknown): ListQuery {
