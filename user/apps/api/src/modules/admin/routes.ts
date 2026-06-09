@@ -12,6 +12,7 @@ import { syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash"]);
+const userRoles = ["buyer", "supplier", "operator", "admin"] as const;
 const userStatuses = ["active", "disabled", "banned"] as const;
 const orderStatuses = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"] as const;
 const rentalStatuses = ["active", "low_balance", "limited", "suspended", "expired", "refunded", "closed"] as const;
@@ -43,7 +44,11 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   displayName: z.string().min(1).max(64).optional(),
-  roles: z.array(z.enum(["buyer", "supplier", "operator", "admin"])).min(1).default(["buyer"])
+  roles: z.array(z.enum(userRoles)).min(1).default(["buyer"])
+});
+
+const userRolesSchema = z.object({
+  roles: z.array(z.enum(userRoles)).min(1)
 });
 
 const walletAdjustSchema = z.object({
@@ -214,7 +219,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { email: containsText(query.q) },
           { displayName: containsText(query.q) },
           { phone: containsText(query.q) },
-          { roles: { some: { role: oneOf(["buyer", "supplier", "operator", "admin"] as const, query.q) } } }
+          { roles: { some: { role: oneOf(userRoles, query.q) } } }
         ]
       } : {})
     };
@@ -265,6 +270,53 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       include: { roles: true, wallet: true }
     });
     await writeAuditLog(request, actor.id, "admin.user.status", "user", id, before, { status: user.status });
+    return adminOk(reply, user);
+  });
+
+  app.patch("/api/admin/users/:id/roles", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = userRolesSchema.parse(request.body ?? {});
+    const roles = [...new Set(input.roles)];
+    const before = await prisma.user.findUnique({
+      where: { id },
+      include: { roles: true }
+    });
+    if (!before) throw new AppError("user_not_found", "User not found", 404);
+
+    const previousRoles = before.roles.map((role) => role.role);
+    if (previousRoles.includes("admin") && !roles.includes("admin")) {
+      if (actor.id === id) {
+        throw new AppError("cannot_remove_own_admin_role", "Cannot remove your own admin role", 400);
+      }
+      const adminCount = await prisma.userRole.count({ where: { role: "admin" } });
+      if (adminCount <= 1) {
+        throw new AppError("last_admin_role_required", "At least one admin user must remain", 400);
+      }
+    }
+
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({
+        where: {
+          userId: id,
+          role: { notIn: roles }
+        }
+      });
+      await tx.userRole.createMany({
+        data: roles.map((role) => ({ userId: id, role })),
+        skipDuplicates: true
+      });
+      return tx.user.findUniqueOrThrow({
+        where: { id },
+        include: {
+          roles: true,
+          wallet: true,
+          supplier: true,
+          _count: { select: { orders: true, rentals: true, apiKeys: true } }
+        }
+      });
+    });
+    await writeAuditLog(request, actor.id, "admin.user.roles", "user", id, { roles: previousRoles }, { roles });
     return adminOk(reply, user);
   });
 

@@ -606,6 +606,16 @@ function App() {
     if (selectedUser?.id === userId) await openUserDetail(userId);
   }
 
+  async function setUserRoles(userId: string, roles: string[]) {
+    await api(`/api/admin/users/${userId}/roles`, {
+      method: "PATCH",
+      body: JSON.stringify({ roles })
+    });
+    setMessage("User roles updated");
+    await refresh("users");
+    if (selectedUser?.id === userId) await openUserDetail(userId);
+  }
+
   async function adjustWallet(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -970,6 +980,7 @@ function App() {
             meta={listMeta.users}
             onCreate={createUser}
             onStatus={setUserStatus}
+            onRoles={setUserRoles}
             onDetail={openUserDetail}
             onCloseDetail={() => setSelectedUser(null)}
             onDraft={(patch) => updateListDraft("users", patch)}
@@ -1205,11 +1216,12 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onRoles, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   users: UserRow[];
   selectedUser: UserDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onStatus: (userId: string, status: UserStatus) => void;
+  onRoles: (userId: string, roles: string[]) => void;
   onDetail: (userId: string) => void;
   onCloseDetail: () => void;
 } & ManagedListProps) {
@@ -1253,12 +1265,12 @@ function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onDet
           </tr>
         ))}
       </TablePanel>
-      {selectedUser && <UserDetailPanel user={selectedUser} onClose={onCloseDetail} />}
+      {selectedUser && <UserDetailPanel user={selectedUser} onRoles={onRoles} onClose={onCloseDetail} />}
     </section>
   );
 }
 
-function UserDetailPanel({ user, onClose }: { user: UserDetailRow; onClose: () => void }) {
+function UserDetailPanel({ user, onRoles, onClose }: { user: UserDetailRow; onRoles: (userId: string, roles: string[]) => void; onClose: () => void }) {
   const transactions = user.wallet?.transactions ?? [];
   const orders = user.orders ?? [];
   const rentals = user.rentals ?? [];
@@ -1290,6 +1302,23 @@ function UserDetailPanel({ user, onClose }: { user: UserDetailRow; onClose: () =
         <div><span>供给资源</span><strong>{resources.length}</strong></div>
         <div><span>创建时间</span><strong>{dateTime(user.createdAt)}</strong></div>
       </div>
+
+      <form
+        className="inline-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const roles = String(form.get("roles") || "")
+            .split(",")
+            .map((role) => role.trim())
+            .filter(Boolean);
+          onRoles(user.id, roles);
+        }}
+      >
+        <span className="eyebrow">Roles</span>
+        <input name="roles" defaultValue={user.roles.map((role) => role.role).join(", ")} />
+        <button>Update roles</button>
+      </form>
 
       <section className="detail-grid">
         <DetailBlock title="最近钱包流水">
