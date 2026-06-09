@@ -2105,6 +2105,8 @@ async function buildSystemHealthReport() {
     proxyRecentClientErrors,
     proxyRecentServerErrors,
     proxyRecentLocalErrors,
+    proxyRecentClientDisconnects,
+    proxyRecentStreamErrors,
     billingSync,
     reconciliation,
     sub2Bindings
@@ -2130,6 +2132,8 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 400, lt: 500 } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 500 } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: "client_disconnected" } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed"] } } }),
     getSub2UsageSyncState(),
     findBillingReconciliationIssues(),
     findSub2BindingIssues()
@@ -2211,11 +2215,11 @@ async function buildSystemHealthReport() {
     systemHealthCheck(
       "proxy",
       "反代请求",
-      proxyRecentServerErrors > 0 ? "error" : proxyRecentClientErrors > 0 || proxyRecentLocalErrors > 0 ? "warning" : "ok",
+      proxyRecentServerErrors > 0 || proxyRecentStreamErrors > 0 ? "error" : proxyRecentClientErrors > 0 || proxyRecentLocalErrors > 0 || proxyRecentClientDisconnects > 0 ? "warning" : "ok",
       proxyRecentTotal === 0
         ? "最近 1 小时无反代请求"
-        : `${proxyRecentTotal} 次请求，${proxyRecentServerErrors} 次 5xx，${proxyRecentClientErrors} 次 4xx`,
-      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors }
+        : `${proxyRecentTotal} 次请求，${proxyRecentServerErrors} 次 5xx，${proxyRecentClientErrors} 次 4xx，${proxyRecentClientDisconnects} 次客户端断开，${proxyRecentStreamErrors} 次上游流异常`,
+      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors }
     ),
     billingSyncHealthCheck(billingSync, checkedAt),
     systemHealthCheck(
