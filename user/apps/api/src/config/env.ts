@@ -64,11 +64,24 @@ const envSchema = z.object({
 
 export const env = envSchema.parse(process.env);
 
-export const openAiProxyPublicEndpoint = (
-  env.OPENAI_PROXY_PUBLIC_ENDPOINT ??
-  `${(env.API_PUBLIC_URL ?? env.APP_PUBLIC_URL).replace(/\/$/, "")}/v1`
-).replace(/\/$/, "");
+export const openAiProxyPublicEndpoint = resolveOpenAiProxyPublicEndpoint();
 
 if (!env.SUB2_ADMIN_TOKEN && (!env.SUB2_ADMIN_EMAIL || !env.SUB2_ADMIN_PASSWORD)) {
   throw new Error("Either SUB2_ADMIN_TOKEN or SUB2_ADMIN_EMAIL/SUB2_ADMIN_PASSWORD must be configured");
+}
+
+function resolveOpenAiProxyPublicEndpoint() {
+  if (env.OPENAI_PROXY_PUBLIC_ENDPOINT) {
+    return env.OPENAI_PROXY_PUBLIC_ENDPOINT.replace(/\/$/, "");
+  }
+
+  if (env.API_PUBLIC_URL) {
+    return `${env.API_PUBLIC_URL.replace(/\/$/, "")}/v1`;
+  }
+
+  if (env.NODE_ENV === "production") {
+    throw new Error("Either OPENAI_PROXY_PUBLIC_ENDPOINT or API_PUBLIC_URL must be configured in production");
+  }
+
+  return `http://localhost:${env.API_PORT}/v1`;
 }

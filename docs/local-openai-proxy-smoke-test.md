@@ -93,7 +93,7 @@ POST /api/admin/sub2/proxy-smoke-test
 
 线上验证建议：
 
-1. 确认 `OPENAI_PROXY_PUBLIC_ENDPOINT` 指向当前 API 服务的 `/v1`。
+1. 确认 `OPENAI_PROXY_PUBLIC_ENDPOINT` 指向当前 API 服务的 `/v1`；如果未配置该变量，则必须配置 `API_PUBLIC_URL`，生产环境不再从前端 `APP_PUBLIC_URL` 推导反代入口。
 2. 管理员登录后台，进入 `反代状态`。
 3. 点击 `端到端自检`。
 4. 确认页面显示：
