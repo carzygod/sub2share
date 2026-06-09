@@ -216,6 +216,7 @@ interface ProductPriceRow {
   durationDays?: number | null;
   maxConcurrency: number;
   requestLimit?: number | null;
+  spendLimit?: string | null;
   status: string;
   createdAt?: string;
   updatedAt?: string;
@@ -719,6 +720,7 @@ function App() {
         durationDays: optionalFormString(form, "durationDays"),
         maxConcurrency: form.get("maxConcurrency"),
         requestLimit: optionalFormString(form, "requestLimit"),
+        spendLimit: optionalFormString(form, "spendLimit"),
         discountRate: form.get("discountRate"),
         tierMultiplier: form.get("tierMultiplier"),
         status: form.get("status")
@@ -1751,6 +1753,7 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
         <input name="durationDays" type="number" min={1} placeholder="租期天数，可选" />
         <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={1} placeholder="并发" required />
         <input name="requestLimit" type="number" min={1} placeholder="请求数，可选" />
+        <input name="spendLimit" type="number" step="0.000001" min={0.000001} placeholder="消费上限，可选" />
         <input name="discountRate" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="折扣率" required />
         <input name="tierMultiplier" type="number" step="0.01" min={0.01} defaultValue={1} placeholder="倍率" required />
         <select name="status" defaultValue="active" required>
@@ -1782,7 +1785,7 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
               {(product.prices ?? []).map((price) => (
                 <div className="price-line" key={price.id}>
                   <strong>{price.displayName} / {money(price.fixedPrice)}</strong>
-                  <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / 请求 {price.requestLimit ?? "-"}</small>
+                  <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / 请求 {price.requestLimit ?? "-"} / 消费 {price.spendLimit ?? "-"}</small>
                   <div className="row-actions">
                     <StatusPill status={price.status} />
                     <button className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>

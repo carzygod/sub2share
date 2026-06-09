@@ -227,6 +227,7 @@ model ProductPrice {
   durationDays   Int?
   maxConcurrency Int           @default(1)
   requestLimit   Int?
+  spendLimit     Decimal?      @db.Decimal(18, 6)
   status         ProductStatus @default(active)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

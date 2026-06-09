@@ -122,7 +122,9 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             limits: {
               create: {
                 maxConcurrency: price.maxConcurrency,
-                requestLimit: price.requestLimit
+                requestLimit: price.requestLimit,
+                spendLimit: price.spendLimit,
+                remainingSpend: price.spendLimit
               }
             }
           }
@@ -150,7 +152,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
         resourceType: price.product.resourceType,
         maxConcurrency: price.maxConcurrency,
         requestLimit: price.requestLimit,
-        spendLimit: null
+        spendLimit: price.spendLimit ? String(price.spendLimit) : null
       });
 
       const updatedRental = await prisma.$transaction(async (tx) => {

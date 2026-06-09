@@ -100,6 +100,7 @@ const createProductPriceSchema = z.object({
   durationDays: z.coerce.number().int().positive().optional(),
   maxConcurrency: z.coerce.number().int().min(1).max(200).default(1),
   requestLimit: z.coerce.number().int().positive().optional(),
+  spendLimit: z.coerce.number().positive().optional(),
   discountRate: z.coerce.number().min(0).max(1).default(0.2),
   tierMultiplier: z.coerce.number().positive().default(1),
   status: z.enum(productStatuses).default("active")
@@ -1126,6 +1127,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         durationDays: input.durationDays,
         maxConcurrency: input.maxConcurrency,
         requestLimit: input.requestLimit,
+        spendLimit: input.spendLimit !== undefined ? new Prisma.Decimal(input.spendLimit) : undefined,
         discountRate: new Prisma.Decimal(input.discountRate),
         tierMultiplier: new Prisma.Decimal(input.tierMultiplier),
         status: input.status
@@ -1136,6 +1138,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       tierCode: price.tierCode,
       displayName: price.displayName,
       fixedPrice: String(price.fixedPrice),
+      spendLimit: price.spendLimit ? String(price.spendLimit) : null,
       status: price.status
     });
     return adminOk(reply, price);
@@ -1155,6 +1158,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         durationDays: true,
         maxConcurrency: true,
         requestLimit: true,
+        spendLimit: true,
         discountRate: true,
         tierMultiplier: true,
         status: true
@@ -1169,6 +1173,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ...(input.durationDays !== undefined ? { durationDays: input.durationDays } : {}),
         ...(input.maxConcurrency !== undefined ? { maxConcurrency: input.maxConcurrency } : {}),
         ...(input.requestLimit !== undefined ? { requestLimit: input.requestLimit } : {}),
+        ...(input.spendLimit !== undefined ? { spendLimit: new Prisma.Decimal(input.spendLimit) } : {}),
         ...(input.discountRate !== undefined ? { discountRate: new Prisma.Decimal(input.discountRate) } : {}),
         ...(input.tierMultiplier !== undefined ? { tierMultiplier: new Prisma.Decimal(input.tierMultiplier) } : {}),
         ...(input.status !== undefined ? { status: input.status } : {})
@@ -1178,6 +1183,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       productId: price.productId,
       displayName: price.displayName,
       fixedPrice: String(price.fixedPrice),
+      spendLimit: price.spendLimit ? String(price.spendLimit) : null,
       status: price.status
     });
     return adminOk(reply, price);

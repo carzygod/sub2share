@@ -44,6 +44,7 @@ interface ProductPrice {
   durationDays?: number;
   maxConcurrency: number;
   requestLimit?: number;
+  spendLimit?: string | null;
 }
 
 interface Product {
@@ -470,6 +471,7 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                 <dt>周期</dt><dd>{price.durationDays ?? "-"} 天</dd>
                 <dt>并发</dt><dd>{price.maxConcurrency}</dd>
                 <dt>请求量</dt><dd>{price.requestLimit ?? "不限"}</dd>
+                <dt>消费上限</dt><dd>{price.spendLimit ?? "不限"}</dd>
               </dl>
               <button onClick={() => onBuy(product.id, price.id)}>购买并开通<ArrowRight size={18} /></button>
             </div>
