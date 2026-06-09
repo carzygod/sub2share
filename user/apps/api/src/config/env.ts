@@ -17,6 +17,16 @@ const optionalPositiveInteger = z.preprocess((value) => {
   return value;
 }, z.coerce.number().int().positive().optional());
 
+const booleanString = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off", ""].includes(normalized)) return false;
+  }
+
+  return value;
+}, z.boolean());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().default(4000),
@@ -33,6 +43,8 @@ const envSchema = z.object({
   SUB2_PUBLIC_ENDPOINT: z.string().url(),
   SUB2_DEFAULT_GROUP_ID: optionalPositiveInteger,
   SUB2_SMOKE_MODEL: optionalNonEmptyString.default("gpt-5.3-codex"),
+  SUB2_USAGE_SYNC_INTERVAL_MS: z.coerce.number().int().nonnegative().default(0),
+  SUB2_USAGE_SYNC_ON_START: booleanString.default(false),
   OPENAI_PROXY_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
   OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
   OPENAI_PROXY_MIN_WALLET_BALANCE: z.coerce.number().nonnegative().default(0),

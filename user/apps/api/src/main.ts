@@ -14,6 +14,7 @@ import { registerSupplierRoutes } from "./modules/suppliers/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { registerOpenAiProxyRoutes } from "./modules/openai-proxy/routes.js";
+import { startSub2UsageSyncScheduler } from "./jobs/sub2-usage-scheduler.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -46,5 +47,9 @@ export async function buildServer() {
 
 if (process.env.NODE_ENV !== "test") {
   const app = await buildServer();
+  const stopSub2UsageSyncScheduler = startSub2UsageSyncScheduler(app.log);
+  app.addHook("onClose", async () => {
+    stopSub2UsageSyncScheduler();
+  });
   await app.listen({ host: "0.0.0.0", port: env.API_PORT });
 }
