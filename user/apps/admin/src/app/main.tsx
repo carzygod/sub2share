@@ -172,6 +172,18 @@ interface SystemMaintenanceResult {
       apiKeysDeactivated: number;
       sub2DisableFailed: number;
     };
+    deactivateInvalidProxyApiKeys?: {
+      matched: number;
+      scanned: number;
+      deactivated: number;
+      truncated: boolean;
+      limit: number;
+      missingRentals: number;
+      inactiveRentals: number;
+      expiredRentals: number;
+      keyRentalMismatches: number;
+      sampleApiKeyIds?: string[];
+    };
     releaseAvailableSettlements?: {
       matched: number;
       released: number;
@@ -1305,7 +1317,7 @@ function App() {
   }
 
   async function runSystemMaintenance() {
-    if (!confirmAdminAction("确认运行系统维护？", "系统会批量处理过期租赁、释放结算、修复绑定并清理过期自检数据。")) return;
+    if (!confirmAdminAction("确认运行系统维护？", "系统会批量处理过期租赁、停用确定不可用的反代 Key、释放结算、修复绑定并清理过期自检数据。")) return;
     const result = await api<SystemMaintenanceResult>("/api/admin/system-maintenance/run", {
       method: "POST",
       body: JSON.stringify({})
@@ -1313,11 +1325,12 @@ function App() {
     setSystemMaintenance(result);
     setSystemHealth(result.health);
     const expired = result.actions.expireOverdueRentals?.expired ?? 0;
+    const deactivatedKeys = result.actions.deactivateInvalidProxyApiKeys?.deactivated ?? 0;
     const released = result.actions.releaseAvailableSettlements?.released ?? 0;
     const repaired = (result.actions.repairSub2Bindings?.userBindingsUpserted ?? 0)
       + (result.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0);
     const smokeCleaned = result.actions.cleanupSmokeData?.rentalsClosed ?? 0;
-    setMessage(`Maintenance done: expired ${expired}, released ${released}, repaired bindings ${repaired}, cleaned smoke ${smokeCleaned}`);
+    setMessage(`Maintenance done: expired ${expired}, deactivated keys ${deactivatedKeys}, released ${released}, repaired bindings ${repaired}, cleaned smoke ${smokeCleaned}`);
   }
 
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
@@ -2024,6 +2037,7 @@ function SystemHealthView({ health, maintenance, onRefresh, onRunMaintenance }: 
           <span className="eyebrow">Last maintenance</span>
           <div className="diagnostic-grid">
             <div><span>过期租赁</span><strong>{maintenance.actions.expireOverdueRentals?.expired ?? 0}</strong></div>
+            <div><span>异常 Key</span><strong>{maintenance.actions.deactivateInvalidProxyApiKeys?.deactivated ?? 0}</strong></div>
             <div><span>释放结算</span><strong>{maintenance.actions.releaseAvailableSettlements?.released ?? 0}</strong></div>
             <div><span>修复绑定</span><strong>{(maintenance.actions.repairSub2Bindings?.userBindingsUpserted ?? 0) + (maintenance.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0)}</strong></div>
             <div><span>清理自检</span><strong>{maintenance.actions.cleanupSmokeData?.rentalsClosed ?? 0}</strong></div>

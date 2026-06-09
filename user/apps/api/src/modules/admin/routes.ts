@@ -299,6 +299,8 @@ const releaseSettlementsSchema = z.object({
 const systemMaintenanceSchema = z.object({
   expireOverdueRentals: z.boolean().default(true),
   expireOverdueRentalsLimit: z.coerce.number().int().min(1).max(500).default(200),
+  deactivateInvalidProxyApiKeys: z.boolean().default(true),
+  deactivateInvalidProxyApiKeysLimit: z.coerce.number().int().min(1).max(1000).default(500),
   releaseAvailableSettlements: z.boolean().default(true),
   releaseAvailableSettlementsLimit: z.coerce.number().int().min(1).max(1000).default(500),
   repairSub2Bindings: z.boolean().default(true),
@@ -2717,6 +2719,12 @@ async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchem
     });
   }
 
+  if (input.deactivateInvalidProxyApiKeys) {
+    actions.deactivateInvalidProxyApiKeys = await deactivateInvalidProxyApiKeys({
+      limit: input.deactivateInvalidProxyApiKeysLimit
+    });
+  }
+
   if (input.releaseAvailableSettlements) {
     actions.releaseAvailableSettlements = await releaseAvailableSettlements({
       limit: input.releaseAvailableSettlementsLimit
@@ -3342,6 +3350,73 @@ async function inspectOpenAiProxyApiKeys(checkedAt: Date) {
       issueSamples: issues.length,
       ...counters
     }
+  };
+}
+
+async function deactivateInvalidProxyApiKeys(input: { limit: number }) {
+  const checkedAt = new Date();
+  const openAiProxyKeyWhere: Prisma.ApiKeyWhereInput = {
+    status: "active",
+    user: nonSmokeUserWhere(),
+    OR: [
+      { rentalId: null },
+      { rental: { resourceType: "codex" } },
+      { rental: { product: { resourceType: "codex" } } }
+    ]
+  };
+  const [matched, apiKeys] = await Promise.all([
+    prisma.apiKey.count({ where: openAiProxyKeyWhere }),
+    prisma.apiKey.findMany({
+      where: openAiProxyKeyWhere,
+      include: { rental: { include: { product: true } } },
+      orderBy: { createdAt: "desc" },
+      take: input.limit
+    })
+  ]);
+  const invalidIds = new Set<string>();
+  const counters = {
+    missingRentals: 0,
+    inactiveRentals: 0,
+    expiredRentals: 0,
+    keyRentalMismatches: 0
+  };
+
+  for (const apiKey of apiKeys) {
+    if (!apiKey.rental) {
+      counters.missingRentals += 1;
+      invalidIds.add(apiKey.id);
+      continue;
+    }
+    if (apiKey.rental.status !== "active") {
+      counters.inactiveRentals += 1;
+      invalidIds.add(apiKey.id);
+    }
+    if (apiKey.rental.endsAt && apiKey.rental.endsAt.getTime() <= checkedAt.getTime()) {
+      counters.expiredRentals += 1;
+      invalidIds.add(apiKey.id);
+    }
+    if (apiKey.rental.sub2KeyHash && apiKey.rental.sub2KeyHash !== apiKey.keyHash) {
+      counters.keyRentalMismatches += 1;
+      invalidIds.add(apiKey.id);
+    }
+  }
+
+  const apiKeyIds = Array.from(invalidIds);
+  const update = apiKeyIds.length
+    ? await prisma.apiKey.updateMany({
+      where: { id: { in: apiKeyIds }, status: "active" },
+      data: { status: "inactive" }
+    })
+    : { count: 0 };
+
+  return {
+    matched,
+    scanned: apiKeys.length,
+    deactivated: update.count,
+    truncated: matched > apiKeys.length,
+    limit: input.limit,
+    sampleApiKeyIds: apiKeyIds.slice(0, 20),
+    ...counters
   };
 }
 
