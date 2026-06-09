@@ -25,6 +25,7 @@ const resourceTypes = ["codex", "claude_code", "gemini", "antigravity"] as const
 const productStatuses = ["draft", "active", "offline"] as const;
 const billingModes = ["pay_as_you_go", "daily", "weekly", "monthly"] as const;
 const usageStatuses = ["pending", "billed", "refunded", "ignored", "disputed"] as const;
+const apiKeyStatuses = ["active", "inactive"] as const;
 const supplierStatuses = ["pending", "active", "paused", "disabled"] as const;
 const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"] as const;
 const resourceLevels = ["L0", "L1", "L2", "L3", "L4"] as const;
@@ -160,7 +161,7 @@ const rentalLimitsSchema = z.object({
 });
 
 const apiKeyStatusSchema = z.object({
-  status: z.enum(["active", "inactive"])
+  status: z.enum(apiKeyStatuses)
 });
 
 const createProductSchema = z.object({
@@ -1129,6 +1130,48 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       oldSub2KeyDisableError: result.oldSub2KeyDisableError ? redactSensitiveText(result.oldSub2KeyDisableError) : null
     });
     return adminOk(reply, result);
+  });
+
+  app.get("/api/admin/api-keys", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    const query = parseListQuery(request.query);
+    const status = oneOf(apiKeyStatuses, query.status);
+    const resourceType = oneOf(resourceTypes, query.resourceType);
+    const where: Prisma.ApiKeyWhereInput = {
+      user: nonSmokeUserWhere(),
+      ...(status ? { status } : {}),
+      ...(resourceType ? { rental: { resourceType } } : {}),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { name: containsText(query.q) },
+          { keyPrefix: containsText(query.q) },
+          { userId: containsText(query.q) },
+          { user: { id: containsText(query.q) } },
+          { user: { email: containsText(query.q) } },
+          { user: { displayName: containsText(query.q) } },
+          { rentalId: containsText(query.q) },
+          { rental: { id: containsText(query.q) } },
+          { rental: { sub2KeyId: containsText(query.q) } },
+          { rental: { endpointUrl: containsText(query.q) } },
+          { rental: { product: { name: containsText(query.q) } } },
+          ...(oneOf(resourceTypes, query.q) ? [{ rental: { resourceType: oneOf(resourceTypes, query.q) } }] : [])
+        ]
+      } : {})
+    };
+    const [apiKeys, total] = await Promise.all([
+      prisma.apiKey.findMany({
+        where,
+        include: {
+          user: { include: { roles: true } },
+          rental: { include: { product: true, order: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        ...pageArgs(query)
+      }),
+      prisma.apiKey.count({ where })
+    ]);
+    return adminOk(reply, paged(apiKeys, total, query));
   });
 
   app.patch("/api/admin/api-keys/:id/status", async (request, reply) => {

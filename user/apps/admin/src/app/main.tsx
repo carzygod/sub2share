@@ -28,8 +28,8 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -442,11 +442,16 @@ interface SupplierDetailRow {
 
 interface ApiKeyRow {
   id: string;
+  userId?: string;
+  rentalId?: string | null;
   name: string;
   keyPrefix: string;
   status: string;
   lastUsedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  user?: UserRow;
+  rental?: RentalRow | null;
 }
 
 interface ProxyRequestLogRow {
@@ -694,7 +699,7 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
+const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "apiKeys", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
@@ -704,6 +709,7 @@ const billingModeOptions = ["pay_as_you_go", "daily", "weekly", "monthly"];
 const usageStatusOptions = ["pending", "billed", "refunded", "ignored", "disputed"];
 const orderStatusOptions = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"];
 const rentalStatusOptions = ["active", "low_balance", "limited", "suspended", "expired", "refunded", "closed"];
+const apiKeyStatusOptions = ["active", "inactive"];
 const supplierStatusOptions = ["pending", "active", "paused", "disabled"];
 const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"];
 const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
@@ -727,6 +733,7 @@ function App() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDetailRow | null>(null);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [selectedRental, setSelectedRental] = useState<RentalDetailRow | null>(null);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
   const [usages, setUsages] = useState<UsageRecordRow[]>([]);
   const [usageSummary, setUsageSummary] = useState<AggregateSummary | null>(null);
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
@@ -833,6 +840,7 @@ function App() {
       if (nextView === "products") await loadPaged("products", "/api/admin/products", setProducts, queryOverride);
       if (nextView === "orders") await loadPaged("orders", "/api/admin/orders", setOrders, queryOverride);
       if (nextView === "rentals") await loadPaged("rentals", "/api/admin/rentals", setRentals, queryOverride);
+      if (nextView === "apiKeys") await loadPaged("apiKeys", "/api/admin/api-keys", setApiKeys, queryOverride);
       if (nextView === "sub2") await loadSub2View();
       if (nextView === "proxyRequests") await loadPaged("proxyRequests", "/api/admin/proxy-requests", setProxyRequests, queryOverride);
       if (nextView === "suppliers") await loadPaged("suppliers", "/api/admin/suppliers", setSuppliers, queryOverride);
@@ -942,6 +950,11 @@ function App() {
       if (listView === "rentals") {
         const { rows, total } = await fetchAllListPages<RentalRow>(listView, "/api/admin/rentals", query);
         exportRentalsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "apiKeys") {
+        const { rows, total } = await fetchAllListPages<ApiKeyRow>(listView, "/api/admin/api-keys", query);
+        exportApiKeysCsv(rows, "filtered-all");
         exported = total;
       }
       if (listView === "proxyRequests") {
@@ -1210,7 +1223,7 @@ function App() {
       body: JSON.stringify({ status })
     });
     setMessage("API key status updated");
-    await refresh("rentals");
+    await refresh(view === "apiKeys" ? "apiKeys" : "rentals");
     if (selectedOrder?.rentals.some((rental) => (rental.apiKeys ?? []).some((apiKey) => apiKey.id === apiKeyId))) {
       await openOrderDetail(selectedOrder.id);
     }
@@ -1593,6 +1606,7 @@ function App() {
           <NavButton active={view === "products"} onClick={() => refresh("products")} icon={<PackagePlus size={18} />}>商品</NavButton>
           <NavButton active={view === "orders"} onClick={() => refresh("orders")} icon={<KeyRound size={18} />}>订单</NavButton>
           <NavButton active={view === "rentals"} onClick={() => refresh("rentals")} icon={<ShieldCheck size={18} />}>租赁</NavButton>
+          <NavButton active={view === "apiKeys"} onClick={() => refresh("apiKeys")} icon={<KeyRound size={18} />}>API Key</NavButton>
           <NavButton active={view === "sub2"} onClick={() => refresh("sub2")} icon={<Activity size={18} />}>反代状态</NavButton>
           <NavButton active={view === "proxyRequests"} onClick={() => refresh("proxyRequests")} icon={<ScrollText size={18} />}>反代请求</NavButton>
           <NavButton active={view === "suppliers"} onClick={() => refresh("suppliers")} icon={<Users size={18} />}>供给方</NavButton>
@@ -1765,6 +1779,19 @@ function App() {
             onClear={() => clearListFilters("rentals")}
             onPage={(page) => changeListPage("rentals", page)}
             onExport={() => exportFilteredList("rentals")}
+          />
+        )}
+        {view === "apiKeys" && (
+          <ApiKeysView
+            apiKeys={apiKeys}
+            query={listQueries.apiKeys}
+            meta={listMeta.apiKeys}
+            onStatus={setApiKeyStatus}
+            onDraft={(patch) => updateListDraft("apiKeys", patch)}
+            onFilter={(event) => submitListFilters("apiKeys", event)}
+            onClear={() => clearListFilters("apiKeys")}
+            onPage={(page) => changeListPage("apiKeys", page)}
+            onExport={() => exportFilteredList("apiKeys")}
           />
         )}
         {view === "sub2" && (
@@ -2954,6 +2981,61 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
   );
 }
 
+function ApiKeysView({ apiKeys, query, meta, onStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+  apiKeys: ApiKeyRow[];
+  onStatus: (apiKeyId: string, status: string) => void;
+} & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="key / user / rental / product"
+        statusOptions={apiKeyStatusOptions}
+        resourceTypeOptions={resourceTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="API Key Management" count={meta.total} headers={["User", "Key", "Rental", "Status", "Last Used", "Actions"]}>
+        {apiKeys.map((apiKey) => (
+          <tr key={apiKey.id}>
+            <td>
+              <strong>{apiKey.user?.email ?? apiKey.userId ?? "-"}</strong>
+              <small>{apiKey.user?.displayName ?? apiKey.user?.id ?? "-"}</small>
+            </td>
+            <td>
+              <strong>{apiKey.name}</strong>
+              <small>{apiKey.keyPrefix}</small>
+            </td>
+            <td>
+              <strong>{apiKey.rental?.product?.name ?? apiKey.rental?.resourceType ?? "-"}</strong>
+              <small>{apiKey.rental?.id ?? apiKey.rentalId ?? "-"}</small>
+              <small>{apiKey.rental?.endpointUrl ?? "-"}</small>
+            </td>
+            <td><StatusPill status={apiKey.status} /></td>
+            <td>
+              <strong>{dateTime(apiKey.lastUsedAt)}</strong>
+              <small>Created {dateTime(apiKey.createdAt)}</small>
+            </td>
+            <td>
+              <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onStatus(apiKey.id, "active")}>Enable</button>
+                <button type="button" className="danger mini" onClick={() => onStatus(apiKey.id, "inactive")}>Disable</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+        {apiKeys.length === 0 && (
+          <tr><td colSpan={6}><small>No API keys match the current filters.</small></td></tr>
+        )}
+      </TablePanel>
+    </>
+  );
+}
+
 function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClose: () => void }) {
   const apiKeys = rental.apiKeys ?? [];
   const usages = rental.usages ?? [];
@@ -3779,6 +3861,7 @@ function titleFor(view: View) {
     products: "商品管理",
     orders: "订单管理",
     rentals: "租赁通道",
+    apiKeys: "API Key 管理",
     sub2: "反代状态",
     proxyRequests: "反代请求",
     suppliers: "供给方管理",
@@ -3944,6 +4027,22 @@ function exportRentalsCsv(rows: RentalRow[], scope = "current-page") {
     (rental.apiKeys ?? []).map((apiKey) => `${apiKey.keyPrefix}:${apiKey.status}`).join("|"),
     rental.createdAt,
     rental.endsAt
+  ]));
+}
+
+function exportApiKeysCsv(rows: ApiKeyRow[], scope = "current-page") {
+  downloadCsv(`api-keys-${scope}`, ["id", "email", "name", "keyPrefix", "status", "rentalId", "product", "resourceType", "endpointUrl", "lastUsedAt", "createdAt"], rows.map((apiKey) => [
+    apiKey.id,
+    apiKey.user?.email,
+    apiKey.name,
+    apiKey.keyPrefix,
+    apiKey.status,
+    apiKey.rental?.id ?? apiKey.rentalId,
+    apiKey.rental?.product?.name,
+    apiKey.rental?.resourceType,
+    apiKey.rental?.endpointUrl,
+    apiKey.lastUsedAt,
+    apiKey.createdAt
   ]));
 }
 
