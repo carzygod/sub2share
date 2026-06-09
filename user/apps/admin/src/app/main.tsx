@@ -47,6 +47,38 @@ interface PagedUsageResult extends PagedResult<UsageRecordRow> {
   summary?: AggregateSummary;
 }
 
+interface BillingSyncStateRow {
+  id: string;
+  cursor?: string | null;
+  lastStatus?: string | null;
+  lastError?: string | null;
+  lastImported: number;
+  lastSkipped: number;
+  lastUnmatched: number;
+  lastStartedAt?: string | null;
+  lastFinishedAt?: string | null;
+  updatedAt?: string;
+}
+
+interface BillingSyncRunRow {
+  id: string;
+  source: string;
+  cursorIn?: string | null;
+  cursorOut?: string | null;
+  status: string;
+  imported: number;
+  skipped: number;
+  unmatched: number;
+  error?: string | null;
+  startedAt: string;
+  finishedAt?: string | null;
+}
+
+interface UsageSyncStateResult {
+  state?: BillingSyncStateRow | null;
+  runs: BillingSyncRunRow[];
+}
+
 interface PagedWithdrawalResult extends PagedResult<WithdrawalRow> {
   summary?: AggregateSummary;
 }
@@ -461,6 +493,7 @@ function App() {
   const [rentals, setRentals] = useState<RentalRow[]>([]);
   const [usages, setUsages] = useState<UsageRecordRow[]>([]);
   const [usageSummary, setUsageSummary] = useState<AggregateSummary | null>(null);
+  const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
@@ -504,9 +537,13 @@ function App() {
   }
 
   async function loadUsages(queryOverride?: ListQueryState) {
-    const page = await api<PagedUsageResult>(buildListUrl("/api/admin/usages", queryOverride ?? listQueries.usages));
+    const [page, syncState] = await Promise.all([
+      api<PagedUsageResult>(buildListUrl("/api/admin/usages", queryOverride ?? listQueries.usages)),
+      api<UsageSyncStateResult>("/api/admin/usages/sync-state")
+    ]);
     setUsages(page.items);
     setUsageSummary(page.summary ?? null);
+    setUsageSyncState(syncState);
     setListMeta((current) => ({
       ...current,
       usages: { total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages }
@@ -744,11 +781,11 @@ function App() {
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await api<{ imported: number; skipped: number; unmatched: number; nextCursor?: string }>("/api/admin/usages/sync-sub2", {
+    const result = await api<{ imported: number; skipped: number; unmatched: number; nextCursor?: string; runId?: string; cursorOut?: string }>("/api/admin/usages/sync-sub2", {
       method: "POST",
       body: JSON.stringify({ cursor: optionalFormString(form, "cursor") })
     });
-    setMessage(`Usage sync imported ${result.imported}, skipped ${result.skipped}, unmatched ${result.unmatched}`);
+    setMessage(`Usage sync imported ${result.imported}, skipped ${result.skipped}, unmatched ${result.unmatched}${result.cursorOut ? ` / cursor ${result.cursorOut}` : ""}`);
     await refresh("usages");
   }
 
@@ -1050,6 +1087,7 @@ function App() {
           <UsagesView
             usages={usages}
             summary={usageSummary}
+            syncState={usageSyncState}
             query={listQueries.usages}
             meta={listMeta.usages}
             onSync={syncSub2Usages}
@@ -1573,11 +1611,14 @@ function SalesView({ sales, selectedOrder, onDetail, onCancel, onRefund, onClose
   );
 }
 
-function UsagesView({ usages, summary, query, meta, onSync, onDraft, onFilter, onClear, onPage, onExport }: {
+function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, onFilter, onClear, onPage, onExport }: {
   usages: UsageRecordRow[];
   summary: AggregateSummary | null;
+  syncState: UsageSyncStateResult | null;
   onSync: (event: FormEvent<HTMLFormElement>) => void;
 } & ManagedListProps) {
+  const state = syncState?.state;
+  const runs = syncState?.runs ?? [];
   return (
     <section className="stack">
       <section className="cards compact-cards">
@@ -1585,6 +1626,35 @@ function UsagesView({ usages, summary, query, meta, onSync, onDraft, onFilter, o
         <Metric label="买家计费" value={money(summary?._sum?.buyerCharge)} />
         <Metric label="供给收入" value={money(summary?._sum?.supplierIncome)} />
         <Metric label="Tokens" value={`${Number(summary?._sum?.inputUnits ?? 0).toFixed(0)} / ${Number(summary?._sum?.outputUnits ?? 0).toFixed(0)}`} />
+      </section>
+      <section className="panel glass-panel wide">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Sub2 usage cursor</span>
+            <h2>同步状态</h2>
+          </div>
+          <StatusPill status={state?.lastStatus ?? "idle"} />
+        </div>
+        <div className="diagnostic-grid">
+          <div><span>Cursor</span><strong>{state?.cursor ?? "-"}</strong></div>
+          <div><span>最近开始</span><strong>{dateTime(state?.lastStartedAt)}</strong></div>
+          <div><span>最近完成</span><strong>{dateTime(state?.lastFinishedAt)}</strong></div>
+          <div><span>最近结果</span><strong>{state ? `${state.lastImported}/${state.lastSkipped}/${state.lastUnmatched}` : "-"}</strong></div>
+          <div><span>最近错误</span><strong>{state?.lastError ?? "-"}</strong></div>
+        </div>
+        {runs.length > 0 && (
+          <MiniTable headers={["批次", "状态", "导入/跳过/未匹配", "Cursor", "时间"]}>
+            {runs.slice(0, 5).map((run) => (
+              <tr key={run.id}>
+                <td><small>{run.id}</small></td>
+                <td><StatusPill status={run.status} /></td>
+                <td>{run.imported} / {run.skipped} / {run.unmatched}</td>
+                <td><small>{run.cursorIn ?? "-"} → {run.cursorOut ?? "-"}</small></td>
+                <td>{dateTime(run.finishedAt ?? run.startedAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        )}
       </section>
       <form className="panel glass-panel inline-form usage-sync-form" onSubmit={onSync}>
         <span className="eyebrow">Sub2 usage</span>

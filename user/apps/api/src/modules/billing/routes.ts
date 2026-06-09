@@ -7,7 +7,7 @@ import { syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 export async function registerBillingRoutes(app: FastifyInstance) {
   app.post("/api/billing/sync-sub2-usage", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
-    const result = await syncSub2UsageOnce();
+    const result = await syncSub2UsageOnce(undefined, { persistCursor: true });
     return ok(reply, result);
   });
 
@@ -21,4 +21,3 @@ export async function registerBillingRoutes(app: FastifyInstance) {
     return ok(reply, usages);
   });
 }
-

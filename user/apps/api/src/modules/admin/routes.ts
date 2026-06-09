@@ -8,7 +8,7 @@ import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
-import { syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
+import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash"]);
@@ -822,9 +822,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.post("/api/admin/usages/sync-sub2", async (request, reply) => {
     const actor = await requireRole(request, ["operator", "admin"]);
     const input = usageSyncSchema.parse(request.body ?? {});
-    const result = await syncSub2UsageOnce(input.cursor);
+    const result = await syncSub2UsageOnce(input.cursor, { persistCursor: true });
     await writeAuditLog(request, actor.id, "admin.usage.sync_sub2", "usage_sync", undefined, null, result);
     return adminOk(reply, result);
+  });
+
+  app.get("/api/admin/usages/sync-state", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    return adminOk(reply, await getSub2UsageSyncState());
   });
 
   app.get("/api/admin/products", async (request, reply) => {

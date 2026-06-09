@@ -3,7 +3,114 @@ import { env } from "../config/env.js";
 import { prisma } from "../common/prisma.js";
 import { sub2Client, type Sub2UsageRecord } from "../integrations/sub2/client.js";
 
-export async function syncSub2UsageOnce(cursor?: string) {
+const SUB2_USAGE_SYNC_SOURCE = "sub2_usage";
+
+interface SyncSub2UsageOptions {
+  persistCursor?: boolean;
+}
+
+export async function syncSub2UsageOnce(cursor?: string, options: SyncSub2UsageOptions = {}) {
+  if (options.persistCursor) {
+    return syncSub2UsageWithState(cursor);
+  }
+
+  return syncSub2UsageFromCursor(cursor);
+}
+
+export async function getSub2UsageSyncState() {
+  const [state, runs] = await Promise.all([
+    prisma.billingSyncState.findUnique({ where: { id: SUB2_USAGE_SYNC_SOURCE } }),
+    prisma.billingSyncRun.findMany({
+      where: { source: SUB2_USAGE_SYNC_SOURCE },
+      orderBy: { startedAt: "desc" },
+      take: 10
+    })
+  ]);
+
+  return { state, runs };
+}
+
+async function syncSub2UsageWithState(cursor?: string) {
+  const startedAt = new Date();
+  const state = await prisma.billingSyncState.upsert({
+    where: { id: SUB2_USAGE_SYNC_SOURCE },
+    update: {
+      lastStartedAt: startedAt,
+      lastStatus: "running",
+      lastError: null
+    },
+    create: {
+      id: SUB2_USAGE_SYNC_SOURCE,
+      lastStartedAt: startedAt,
+      lastStatus: "running"
+    }
+  });
+  const cursorIn = cursor ?? state.cursor ?? undefined;
+  const run = await prisma.billingSyncRun.create({
+    data: {
+      source: SUB2_USAGE_SYNC_SOURCE,
+      cursorIn,
+      status: "running",
+      startedAt
+    }
+  });
+
+  try {
+    const result = await syncSub2UsageFromCursor(cursorIn);
+    const finishedAt = new Date();
+    const cursorOut = result.nextCursor ?? cursorIn;
+    await prisma.$transaction([
+      prisma.billingSyncRun.update({
+        where: { id: run.id },
+        data: {
+          status: "success",
+          imported: result.imported,
+          skipped: result.skipped,
+          unmatched: result.unmatched,
+          cursorOut,
+          finishedAt
+        }
+      }),
+      prisma.billingSyncState.update({
+        where: { id: SUB2_USAGE_SYNC_SOURCE },
+        data: {
+          cursor: cursorOut,
+          lastStatus: "success",
+          lastError: null,
+          lastImported: result.imported,
+          lastSkipped: result.skipped,
+          lastUnmatched: result.unmatched,
+          lastFinishedAt: finishedAt
+        }
+      })
+    ]);
+    return { ...result, cursorIn, cursorOut, runId: run.id };
+  } catch (error) {
+    const finishedAt = new Date();
+    const message = redactSensitiveText(error instanceof Error ? error.message : String(error)).slice(0, 2000);
+    await prisma.$transaction([
+      prisma.billingSyncRun.update({
+        where: { id: run.id },
+        data: {
+          status: "failed",
+          error: message,
+          finishedAt
+        }
+      }),
+      prisma.billingSyncState.update({
+        where: { id: SUB2_USAGE_SYNC_SOURCE },
+        data: {
+          lastStatus: "failed",
+          lastError: message,
+          lastFinishedAt: finishedAt
+        }
+      })
+    ]);
+    throw error;
+  }
+}
+
+async function syncSub2UsageFromCursor(cursor?: string) {
   const result = await sub2Client.fetchUsageSince(cursor);
   let imported = 0;
   let skipped = 0;
@@ -152,6 +259,14 @@ function rentalIdFromBinding(binding: { objectType: string; objectId: string; me
 
   const separatorIndex = binding.objectId.indexOf(":");
   return separatorIndex > 0 ? binding.objectId.slice(0, separatorIndex) : null;
+}
+
+function redactSensitiveText(value: string) {
+  return value
+    .replace(/(access_token|refresh_token|id_token|token|key|password)\s*[:=]\s*[^,}\s]+/gi, "$1:[REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/g, "Bearer [REDACTED]")
+    .replace(/(zyz_[A-Za-z0-9]{8})[A-Za-z0-9]+/g, "$1[REDACTED]")
+    .replace(/(sk-[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+/g, "$1[REDACTED]");
 }
 
 async function updateRentalLimitsAfterUsage(
