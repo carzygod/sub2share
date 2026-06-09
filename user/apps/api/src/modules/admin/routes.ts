@@ -280,13 +280,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const { id } = request.params as { id: string };
     const input = userStatusSchema.parse(request.body);
-    const before = await prisma.user.findUnique({ where: { id }, select: { id: true, status: true } });
+    const before = await prisma.user.findUnique({
+      where: { id },
+      include: { roles: true }
+    });
+    if (!before) throw new AppError("user_not_found", "User not found", 404);
+
+    const isAdminTarget = before.roles.some((role) => role.role === "admin");
+    if (isAdminTarget && input.status !== "active") {
+      if (actor.id === id) {
+        throw new AppError("cannot_disable_self", "Cannot disable or ban your own admin account", 400);
+      }
+      if (before.status === "active") {
+        const activeAdminCount = await prisma.user.count({
+          where: {
+            status: "active",
+            roles: { some: { role: "admin" } }
+          }
+        });
+        if (activeAdminCount <= 1) {
+          throw new AppError("last_active_admin_required", "At least one active admin user must remain", 400);
+        }
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id },
       data: { status: input.status },
       include: { roles: true, wallet: true }
     });
-    await writeAuditLog(request, actor.id, "admin.user.status", "user", id, before, { status: user.status });
+    await writeAuditLog(request, actor.id, "admin.user.status", "user", id, {
+      status: before.status,
+      roles: before.roles.map((role) => role.role)
+    }, { status: user.status });
     return adminOk(reply, user);
   });
 
