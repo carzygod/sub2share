@@ -178,6 +178,8 @@ const createProductPriceSchema = z.object({
   fixedPrice: z.coerce.number().positive(),
   durationDays: z.coerce.number().int().positive().optional(),
   maxConcurrency: z.coerce.number().int().min(1).max(200).default(1),
+  rpmLimit: z.coerce.number().int().positive().optional(),
+  tpmLimit: z.coerce.number().int().positive().optional(),
   requestLimit: z.coerce.number().int().positive().optional(),
   spendLimit: z.coerce.number().positive().optional(),
   discountRate: z.coerce.number().min(0).max(1).default(0.2),
@@ -1472,6 +1474,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         fixedPrice: new Prisma.Decimal(input.fixedPrice),
         durationDays: input.durationDays,
         maxConcurrency: input.maxConcurrency,
+        rpmLimit: input.rpmLimit,
+        tpmLimit: input.tpmLimit,
         requestLimit: input.requestLimit,
         spendLimit: input.spendLimit !== undefined ? new Prisma.Decimal(input.spendLimit) : undefined,
         discountRate: new Prisma.Decimal(input.discountRate),
@@ -1484,6 +1488,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       tierCode: price.tierCode,
       displayName: price.displayName,
       fixedPrice: String(price.fixedPrice),
+      rpmLimit: price.rpmLimit,
+      tpmLimit: price.tpmLimit,
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
       status: price.status
     });
@@ -1503,6 +1509,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         fixedPrice: true,
         durationDays: true,
         maxConcurrency: true,
+        rpmLimit: true,
+        tpmLimit: true,
         requestLimit: true,
         spendLimit: true,
         discountRate: true,
@@ -1518,6 +1526,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ...(input.fixedPrice !== undefined ? { fixedPrice: new Prisma.Decimal(input.fixedPrice) } : {}),
         ...(input.durationDays !== undefined ? { durationDays: input.durationDays } : {}),
         ...(input.maxConcurrency !== undefined ? { maxConcurrency: input.maxConcurrency } : {}),
+        ...(input.rpmLimit !== undefined ? { rpmLimit: input.rpmLimit } : {}),
+        ...(input.tpmLimit !== undefined ? { tpmLimit: input.tpmLimit } : {}),
         ...(input.requestLimit !== undefined ? { requestLimit: input.requestLimit } : {}),
         ...(input.spendLimit !== undefined ? { spendLimit: new Prisma.Decimal(input.spendLimit) } : {}),
         ...(input.discountRate !== undefined ? { discountRate: new Prisma.Decimal(input.discountRate) } : {}),
@@ -1529,6 +1539,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       productId: price.productId,
       displayName: price.displayName,
       fixedPrice: String(price.fixedPrice),
+      rpmLimit: price.rpmLimit,
+      tpmLimit: price.tpmLimit,
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
       status: price.status
     });

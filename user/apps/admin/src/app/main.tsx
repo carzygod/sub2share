@@ -309,6 +309,8 @@ interface ProductPriceRow {
   fixedPrice?: string | null;
   durationDays?: number | null;
   maxConcurrency: number;
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
   requestLimit?: number | null;
   spendLimit?: string | null;
   status: string;
@@ -1082,6 +1084,8 @@ function App() {
         fixedPrice: form.get("fixedPrice"),
         durationDays: optionalFormString(form, "durationDays"),
         maxConcurrency: form.get("maxConcurrency"),
+        rpmLimit: optionalFormString(form, "rpmLimit"),
+        tpmLimit: optionalFormString(form, "tpmLimit"),
         requestLimit: optionalFormString(form, "requestLimit"),
         spendLimit: optionalFormString(form, "spendLimit"),
         discountRate: form.get("discountRate"),
@@ -2488,6 +2492,8 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
         <input name="fixedPrice" type="number" step="0.01" min={0.01} placeholder="固定价格" required />
         <input name="durationDays" type="number" min={1} placeholder="租期天数，可选" />
         <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={1} placeholder="并发" required />
+        <input name="rpmLimit" type="number" min={1} placeholder="RPM，可选" />
+        <input name="tpmLimit" type="number" min={1} placeholder="TPM，可选" />
         <input name="requestLimit" type="number" min={1} placeholder="请求数，可选" />
         <input name="spendLimit" type="number" step="0.000001" min={0.000001} placeholder="消费上限，可选" />
         <input name="discountRate" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="折扣率" required />
@@ -2521,7 +2527,7 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
               {(product.prices ?? []).map((price) => (
                 <div className="price-line" key={price.id}>
                   <strong>{price.displayName} / {money(price.fixedPrice)}</strong>
-                  <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / 请求 {price.requestLimit ?? "-"} / 消费 {price.spendLimit ?? "-"}</small>
+                  <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / RPM {price.rpmLimit ?? "-"} / TPM {price.tpmLimit ?? "-"} / 请求 {price.requestLimit ?? "-"} / 消费 {price.spendLimit ?? "-"}</small>
                   <div className="row-actions">
                     <StatusPill status={price.status} />
                     <button className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>
@@ -3717,17 +3723,24 @@ function exportUsagesCsv(rows: UsageRecordRow[], scope = "current-page") {
 }
 
 function exportProductsCsv(rows: ProductRow[], scope = "current-page") {
-  downloadCsv(`products-${scope}`, ["id", "name", "resourceType", "billingMode", "status", "priceCount", "orders", "rentals", "updatedAt"], rows.map((product) => [
+  downloadCsv(`products-${scope}`, ["id", "name", "resourceType", "billingMode", "status", "priceCount", "priceLimits", "orders", "rentals", "updatedAt"], rows.map((product) => [
     product.id,
     product.name,
     product.resourceType,
     product.billingMode,
     product.status,
     product._count?.prices ?? product.prices?.length ?? 0,
+    productPriceLimitSummary(product.prices),
     product._count?.orders,
     product._count?.rentals,
     product.updatedAt
   ]));
+}
+
+function productPriceLimitSummary(prices?: ProductPriceRow[]) {
+  return (prices ?? [])
+    .map((price) => `${price.tierCode}: concurrency=${price.maxConcurrency}, rpm=${price.rpmLimit ?? "-"}, tpm=${price.tpmLimit ?? "-"}, requests=${price.requestLimit ?? "-"}, spend=${price.spendLimit ?? "-"}`)
+    .join(" | ");
 }
 
 function exportOrdersCsv(rows: OrderRow[], filename = "orders", scope = "current-page") {

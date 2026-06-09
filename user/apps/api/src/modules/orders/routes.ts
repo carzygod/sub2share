@@ -122,6 +122,8 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             limits: {
               create: {
                 maxConcurrency: price.maxConcurrency,
+                rpmLimit: price.rpmLimit,
+                tpmLimit: price.tpmLimit,
                 requestLimit: price.requestLimit,
                 spendLimit: price.spendLimit,
                 remainingSpend: price.spendLimit

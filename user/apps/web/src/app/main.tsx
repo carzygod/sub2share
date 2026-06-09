@@ -43,7 +43,9 @@ interface ProductPrice {
   fixedPrice: string;
   durationDays?: number;
   maxConcurrency: number;
-  requestLimit?: number;
+  rpmLimit?: number | null;
+  tpmLimit?: number | null;
+  requestLimit?: number | null;
   spendLimit?: string | null;
 }
 
@@ -470,6 +472,8 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                 <dt>套餐</dt><dd>{price.displayName}</dd>
                 <dt>周期</dt><dd>{price.durationDays ?? "-"} 天</dd>
                 <dt>并发</dt><dd>{price.maxConcurrency}</dd>
+                <dt>RPM</dt><dd>{price.rpmLimit ?? "不限"}</dd>
+                <dt>TPM</dt><dd>{price.tpmLimit ?? "不限"}</dd>
                 <dt>请求量</dt><dd>{price.requestLimit ?? "不限"}</dd>
                 <dt>消费上限</dt><dd>{price.spendLimit ?? "不限"}</dd>
               </dl>

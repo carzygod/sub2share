@@ -53,6 +53,8 @@ async function main() {
       discountRate: 0.2,
       tierMultiplier: 1,
       maxConcurrency: 1,
+      rpmLimit: 60,
+      tpmLimit: 120000,
       requestLimit: 1000,
       status: "active"
     },
@@ -65,6 +67,8 @@ async function main() {
       discountRate: 0.2,
       tierMultiplier: 1,
       maxConcurrency: 1,
+      rpmLimit: 60,
+      tpmLimit: 120000,
       requestLimit: 1000,
       status: "active"
     }
