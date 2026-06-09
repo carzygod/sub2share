@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { prisma } from "../../common/prisma.js";
 import { env } from "../../config/env.js";
+import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const hopByHopHeaders = new Set([
@@ -138,6 +139,7 @@ async function findActiveLocalKey(apiKey: string) {
     return failure(403, "rental_not_active", "Rental is not active");
   }
   if (record.rental.endsAt && record.rental.endsAt.getTime() <= Date.now()) {
+    await expireOverdueRental(record.rental.id);
     return failure(403, "rental_expired", "Rental has expired");
   }
   if (record.rental.sub2KeyHash && record.rental.sub2KeyHash !== keyHash) {

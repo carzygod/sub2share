@@ -717,6 +717,20 @@ function App() {
     }
   }
 
+  async function expireOverdueRentals() {
+    const result = await api<{
+      matched: number;
+      expired: number;
+      apiKeysDeactivated: number;
+      sub2DisableFailed: number;
+    }>("/api/admin/rentals/expire-overdue", {
+      method: "POST",
+      body: JSON.stringify({ limit: 200 })
+    });
+    setMessage(`Expired ${result.expired}/${result.matched} rentals, disabled ${result.apiKeysDeactivated} local keys${result.sub2DisableFailed ? `, ${result.sub2DisableFailed} Sub2 disables need review` : ""}`);
+    await refresh("rentals");
+  }
+
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1043,6 +1057,7 @@ function App() {
             onRentalStatus={setRentalStatus}
             onApiKeyStatus={setApiKeyStatus}
             onRotateKey={rotateRentalKey}
+            onExpireOverdue={expireOverdueRentals}
             onDraft={(patch) => updateListDraft("rentals", patch)}
             onFilter={(event) => submitListFilters("rentals", event)}
             onClear={() => clearListFilters("rentals")}
@@ -1772,14 +1787,19 @@ function OrderDetailPanel({ order, onClose }: { order: OrderDetailRow; onClose: 
   );
 }
 
-function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onRotateKey, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   onRentalStatus: (rentalId: string, status: string) => void;
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
   onRotateKey: (rentalId: string) => void;
+  onExpireOverdue: () => void;
 } & ManagedListProps) {
   return (
     <>
+      <div className="panel glass-panel export-strip">
+        <span className="eyebrow">Maintenance</span>
+        <button className="secondary" onClick={onExpireOverdue}><RefreshCw size={16} />Expire overdue rentals</button>
+      </div>
       <ListControls
         query={query}
         meta={meta}

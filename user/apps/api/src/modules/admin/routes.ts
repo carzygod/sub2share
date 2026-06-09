@@ -7,6 +7,7 @@ import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
+import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 
@@ -118,6 +119,10 @@ const sub2OpenAiRefreshTokenSchema = z.object({
 
 const usageSyncSchema = z.object({
   cursor: z.string().trim().min(1).max(500).optional()
+});
+
+const expireOverdueRentalsSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(500).default(100)
 });
 
 const createWithdrawalSchema = z.object({
@@ -387,6 +392,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       prisma.rental.count({ where })
     ]);
     return adminOk(reply, paged(rentals, total, query));
+  });
+
+  app.post("/api/admin/rentals/expire-overdue", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const input = expireOverdueRentalsSchema.parse(request.body ?? {});
+    const result = await expireOverdueRentals({ limit: input.limit });
+    await writeAuditLog(request, actor.id, "admin.rental.expire_overdue", "rental", undefined, null, result);
+    return adminOk(reply, result);
   });
 
   app.patch("/api/admin/rentals/:id/status", async (request, reply) => {
