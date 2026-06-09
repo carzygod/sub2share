@@ -959,6 +959,7 @@ function App() {
   }
 
   async function setUserStatus(userId: string, status: UserStatus) {
+    if (status !== "active" && !confirmAdminAction("确认调整用户状态？", `用户 ${userId}\n目标状态：${status}`)) return;
     await api(`/api/admin/users/${userId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -969,6 +970,9 @@ function App() {
   }
 
   async function setUserRoles(userId: string, roles: string[]) {
+    const user = selectedUser?.id === userId ? selectedUser : users.find((item) => item.id === userId);
+    const currentRoles = user?.roles.map((role) => role.role).join(", ") || "-";
+    if (!confirmAdminAction("确认更新用户角色？", `用户 ${user?.email ?? userId}\n当前角色：${currentRoles}\n目标角色：${roles.join(", ") || "-"}`)) return;
     await api(`/api/admin/users/${userId}/roles`, {
       method: "PATCH",
       body: JSON.stringify({ roles })
@@ -982,6 +986,8 @@ function App() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const userId = String(form.get("userId") || "");
+    const amount = String(form.get("amount") || "").trim();
+    if (!confirmAdminAction("确认手动调整余额？", `用户 ID：${userId}\n调整金额：${amount}\n备注：${optionalFormString(form, "note") ?? "-"}`)) return;
     await api(`/api/admin/users/${userId}/wallet-adjust`, {
       method: "POST",
       body: JSON.stringify({ amount: form.get("amount"), note: form.get("note") })
@@ -1011,6 +1017,7 @@ function App() {
   }
 
   async function setProductStatus(productId: string, status: string) {
+    if (status === "offline" && !confirmAdminAction("确认下线商品？", `商品 ID：${productId}`)) return;
     await api(`/api/admin/products/${productId}`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -1044,6 +1051,7 @@ function App() {
   }
 
   async function setProductPriceStatus(priceId: string, status: string) {
+    if (status === "offline" && !confirmAdminAction("确认下线价格档位？", `价格 ID：${priceId}`)) return;
     await api(`/api/admin/product-prices/${priceId}`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -1053,6 +1061,7 @@ function App() {
   }
 
   async function setRentalStatus(rentalId: string, status: string) {
+    if (status !== "active" && !confirmAdminAction("确认调整租赁状态？", `租赁 ID：${rentalId}\n目标状态：${status}`)) return;
     await api(`/api/admin/rentals/${rentalId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -1067,6 +1076,7 @@ function App() {
   async function updateRentalLimits(event: FormEvent<HTMLFormElement>, rentalId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认更新已售租赁限额？", `租赁 ID：${rentalId}\n并发：${form.get("maxConcurrency")}\nRPM：${nullableFormNumber(form, "rpmLimit") ?? "-"}\nTPM：${nullableFormNumber(form, "tpmLimit") ?? "-"}\n请求数：${nullableFormNumber(form, "requestLimit") ?? "-"}\n消费上限：${nullableFormNumber(form, "spendLimit") ?? "-"}\n剩余额度：${nullableFormNumber(form, "remainingSpend") ?? "-"}`)) return;
     await api(`/api/admin/rentals/${rentalId}/limits`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -1086,6 +1096,7 @@ function App() {
   }
 
   async function setApiKeyStatus(apiKeyId: string, status: string) {
+    if (status !== "active" && !confirmAdminAction("确认停用 API Key？", `API Key ID：${apiKeyId}`)) return;
     await api(`/api/admin/api-keys/${apiKeyId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -1101,6 +1112,7 @@ function App() {
   }
 
   async function rotateRentalKey(rentalId: string) {
+    if (!confirmAdminAction("确认轮换租赁 API Key？", `租赁 ID：${rentalId}\n旧 Key 将被停用或需要人工复查。`)) return;
     const result = await api<{ apiKey: string; oldSub2KeyDisabled: boolean }>(`/api/admin/rentals/${rentalId}/rotate-key`, {
       method: "POST"
     });
@@ -1112,6 +1124,7 @@ function App() {
   }
 
   async function expireOverdueRentals() {
+    if (!confirmAdminAction("确认批量处理过期租赁？", "系统会关闭过期租赁并停用对应本地 Key。")) return;
     const result = await api<{
       matched: number;
       expired: number;
@@ -1126,6 +1139,7 @@ function App() {
   }
 
   async function runSystemMaintenance() {
+    if (!confirmAdminAction("确认运行系统维护？", "系统会批量处理过期租赁、释放结算、修复绑定并清理过期自检数据。")) return;
     const result = await api<SystemMaintenanceResult>("/api/admin/system-maintenance/run", {
       method: "POST",
       body: JSON.stringify({})
@@ -1154,6 +1168,8 @@ function App() {
   async function createWithdrawal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const status = String(form.get("status") || "pending");
+    if (status !== "pending" && !confirmAdminAction("确认直接创建非待处理提现？", `供给方：${form.get("supplierEmail")}\n金额：${form.get("amount")}\n状态：${status}`)) return;
     await api("/api/admin/withdrawals", {
       method: "POST",
       body: JSON.stringify({
@@ -1171,6 +1187,7 @@ function App() {
   }
 
   async function releaseAvailableSettlements() {
+    if (!confirmAdminAction("确认释放到期结算？", "系统会批量把到期 pending/frozen 结算推进为 available。")) return;
     const result = await api<{ matched: number; released: number; amountMatched: string }>("/api/admin/settlements/release-available", {
       method: "POST",
       body: JSON.stringify({ limit: 200 })
@@ -1180,9 +1197,15 @@ function App() {
   }
 
   async function setWithdrawalStatus(withdrawalId: string, status: string, payoutRef?: string) {
+    if (status === "paid" && !payoutRef?.trim()) {
+      setMessage("打款引用必填");
+      return;
+    }
+    const note = promptAdminNote(`确认更新提现状态为 ${status}？`, `admin withdrawal ${status}`);
+    if (note === null) return;
     await api(`/api/admin/withdrawals/${withdrawalId}`, {
       method: "PATCH",
-      body: JSON.stringify({ status, payoutRef })
+      body: JSON.stringify({ status, payoutRef, note })
     });
     setMessage("Withdrawal status updated");
     await refresh("withdrawals");
@@ -1205,9 +1228,11 @@ function App() {
   }
 
   async function cancelOrder(orderId: string) {
+    const note = promptAdminNote("确认取消订单？", "admin cancelled order");
+    if (note === null) return;
     const result = await api<{ cancelled: boolean }>(`/api/admin/orders/${orderId}/cancel`, {
       method: "POST",
-      body: JSON.stringify({ note: "admin cancelled order" })
+      body: JSON.stringify({ note })
     });
     setMessage(result.cancelled ? "Order cancelled" : "Order was already cancelled");
     await refresh(view === "sales" ? "sales" : "orders");
@@ -1215,9 +1240,11 @@ function App() {
   }
 
   async function refundOrder(orderId: string) {
+    const note = promptAdminNote("确认退款订单？", "admin refunded order");
+    if (note === null) return;
     const result = await api<{ refundAmount: string; walletRefunded: boolean; sub2Sync: unknown[] }>(`/api/admin/orders/${orderId}/refund`, {
       method: "POST",
-      body: JSON.stringify({ note: "admin refunded order" })
+      body: JSON.stringify({ note })
     });
     setMessage(`Order refunded ${money(result.refundAmount)}${result.walletRefunded ? "" : " (wallet already had refund)"}`);
     await refresh(view === "sales" ? "sales" : "orders");
@@ -1233,6 +1260,7 @@ function App() {
   }
 
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
+    if (["paused", "abnormal", "disabled"].includes(status) && !confirmAdminAction("确认调整共享资源状态？", `资源 ID：${resourceId}\n目标状态：${status}`)) return;
     await api(`/api/admin/resources/${resourceId}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status })
@@ -1278,6 +1306,7 @@ function App() {
   async function updateResourceConfig(event: FormEvent<HTMLFormElement>, resourceId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认更新共享资源配置？", `资源 ID：${resourceId}\n状态：${form.get("status")}\n等级：${form.get("level")}\n并发：${form.get("maxConcurrency")}\n分成：${form.get("shareRate")}\n保留比例：${form.get("reserveRatio")}\n日上限：${nullableFormNumber(form, "dailyCap") ?? "-"}\nSub2 账号：${nullableFormString(form, "sub2AccountId") ?? "-"}`)) return;
     const resource = await api<ResourceRow>(`/api/admin/resources/${resourceId}`, {
       method: "PATCH",
       body: JSON.stringify({
@@ -1331,6 +1360,7 @@ function App() {
   }
 
   async function repairSub2Bindings() {
+    if (!confirmAdminAction("确认修复 Sub2 绑定？", "系统会根据本地用户、API Key 和租赁记录补齐缺失绑定。")) return;
     const result = await api<Sub2BindingRepairResult>("/api/admin/sub2/bindings/repair", {
       method: "POST",
       body: JSON.stringify({})
@@ -1346,6 +1376,7 @@ function App() {
     const accountId = String(form.get("accountId") || "");
     const clientId = String(form.get("clientId") || "").trim();
     const refreshToken = String(form.get("refreshToken") || "");
+    if (!confirmAdminAction("确认应用 OpenAI Refresh Token？", `Sub2 账号 ID：${accountId}\nClient ID：${clientId || "-"}`)) return;
     const result = await api<{ ok: boolean; error?: string | null }>(
       `/api/admin/sub2/accounts/${accountId}/apply-openai-refresh-token`,
       {
@@ -2996,6 +3027,17 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onStatus: (withdrawalId: string, status: string, payoutRef?: string) => void;
 } & ManagedListProps) {
+  function changeWithdrawalStatus(withdrawal: WithdrawalRow, status: string) {
+    let payoutRef: string | undefined;
+    if (status === "paid") {
+      const value = window.prompt("Payout reference", withdrawal.payoutRef ?? "");
+      if (value === null) return;
+      payoutRef = value.trim();
+      if (!payoutRef) return;
+    }
+    onStatus(withdrawal.id, status, payoutRef);
+  }
+
   return (
     <section className="stack">
       <section className="cards compact-cards">
@@ -3041,15 +3083,15 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
               <div className="row-actions">
                 {withdrawal.status === "pending" && (
                   <>
-                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "approved")}>通过</button>
-                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "rejected")}>驳回</button>
-                    <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "approved")}>通过</button>
+                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "rejected")}>驳回</button>
+                    <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
                   </>
                 )}
                 {withdrawal.status === "approved" && (
                   <>
-                    <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "paid", window.prompt("Payout reference") ?? undefined)}>打款</button>
-                    <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "paid")}>打款</button>
+                    <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
                   </>
                 )}
                 {!["pending", "approved"].includes(withdrawal.status) && <small>-</small>}
@@ -3274,6 +3316,16 @@ function nullableFormNumber(form: FormData, name: string) {
 function nullableFormString(form: FormData, name: string) {
   const value = String(form.get(name) || "").trim();
   return value || null;
+}
+
+function confirmAdminAction(title: string, detail?: string) {
+  return window.confirm([title, detail, "该操作会立即生效，并写入后台审计日志。"].filter(Boolean).join("\n\n"));
+}
+
+function promptAdminNote(title: string, fallback: string) {
+  const value = window.prompt(`${title}\n\n请输入审计备注；取消则不执行。`, fallback);
+  if (value === null) return null;
+  return value.trim() || fallback;
 }
 
 type CsvCell = string | number | null | undefined;
