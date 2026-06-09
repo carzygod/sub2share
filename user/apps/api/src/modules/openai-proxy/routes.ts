@@ -19,6 +19,8 @@ const hopByHopHeaders = new Set([
   "upgrade"
 ]);
 
+type ActiveApiKeyRecord = Extract<Awaited<ReturnType<typeof findActiveLocalKey>>, { ok: true }>["apiKey"];
+
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
   await app.register(async (proxy) => {
     proxy.removeAllContentTypeParsers();
@@ -42,6 +44,11 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         const keyRecord = await findActiveLocalKey(apiKey);
         if (!keyRecord.ok) {
           return openAiError(reply, keyRecord.statusCode, keyRecord.code, keyRecord.message);
+        }
+
+        const limitCheck = await checkRentalRequestLimit(keyRecord.apiKey.rental, request);
+        if (!limitCheck.ok) {
+          return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
         }
 
         await prisma.apiKey.update({
@@ -148,6 +155,36 @@ async function findActiveLocalKey(apiKey: string) {
 
 function failure(statusCode: number, code: string, message: string) {
   return { ok: false as const, statusCode, code, message };
+}
+
+async function checkRentalRequestLimit(
+  rental: ActiveApiKeyRecord["rental"],
+  request: FastifyRequest
+) {
+  const requestLimit = rental?.limits?.requestLimit;
+  if (!requestLimit || isMetadataRequest(request)) {
+    return { ok: true as const };
+  }
+
+  const usedRequests = await prisma.usageRecord.count({
+    where: {
+      rentalId: rental.id,
+      status: { in: ["pending", "billed", "disputed"] }
+    }
+  });
+
+  if (usedRequests >= requestLimit) {
+    return failure(429, "request_limit_exceeded", "Rental request limit has been exhausted");
+  }
+
+  return { ok: true as const };
+}
+
+function isMetadataRequest(request: FastifyRequest) {
+  const method = request.method.toUpperCase();
+  if (!["GET", "HEAD"].includes(method)) return false;
+  const path = (request.raw.url ?? request.url).split("?")[0]?.replace(/\/+$/, "");
+  return path === "/v1/models" || Boolean(path?.match(/^\/v1\/models\/[^/]+$/));
 }
 
 async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: string, apiKey: string) {

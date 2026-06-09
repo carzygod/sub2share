@@ -18,7 +18,10 @@ export async function syncSub2UsageOnce(cursor?: string) {
 }
 
 async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipped" | "unmatched"> {
-  const rental = await prisma.rental.findFirst({ where: { sub2KeyId: record.apiKeyId } });
+  const rental = await prisma.rental.findFirst({
+    where: { sub2KeyId: record.apiKeyId },
+    include: { limits: true }
+  });
   if (!rental) return "unmatched";
 
   const supplierResource = record.upstreamAccountId
@@ -59,9 +62,15 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
         }
       });
 
+      const limitStatus = await updateRentalLimitsAfterUsage(tx, rental.id, buyerCharge);
+
       if (!canBillWallet) {
         await tx.rental.update({ where: { id: rental.id }, data: { status: "low_balance" } });
         return "imported";
+      }
+
+      if (limitStatus.exhausted) {
+        await tx.rental.update({ where: { id: rental.id }, data: { status: "limited" } });
       }
 
       if (wallet && buyerCharge.gt(0)) {
@@ -107,4 +116,39 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
     }
     throw error;
   }
+}
+
+async function updateRentalLimitsAfterUsage(
+  tx: Prisma.TransactionClient,
+  rentalId: string,
+  buyerCharge: Prisma.Decimal
+) {
+  const limits = await tx.rentalLimit.findUnique({ where: { rentalId } });
+  if (!limits) return { exhausted: false };
+
+  let exhausted = false;
+  const data: Prisma.RentalLimitUpdateInput = {};
+
+  if (buyerCharge.gt(0) && (limits.spendLimit || limits.remainingSpend)) {
+    const currentRemaining = limits.remainingSpend ?? limits.spendLimit ?? new Prisma.Decimal(0);
+    const nextRemaining = currentRemaining.minus(buyerCharge);
+    data.remainingSpend = nextRemaining.gt(0) ? nextRemaining : new Prisma.Decimal(0);
+    if (nextRemaining.lte(0)) exhausted = true;
+  }
+
+  if (limits.requestLimit) {
+    const usedRequests = await tx.usageRecord.count({
+      where: {
+        rentalId,
+        status: { in: ["pending", "billed", "disputed"] }
+      }
+    });
+    if (usedRequests >= limits.requestLimit) exhausted = true;
+  }
+
+  if (Object.keys(data).length > 0) {
+    await tx.rentalLimit.update({ where: { rentalId }, data });
+  }
+
+  return { exhausted };
 }
