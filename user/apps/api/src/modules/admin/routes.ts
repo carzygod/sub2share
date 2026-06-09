@@ -36,6 +36,19 @@ const listQuerySchema = z.object({
 
 type ListQuery = z.infer<typeof listQuerySchema>;
 
+const orderDetailInclude = {
+  user: { include: { roles: true, wallet: true } },
+  items: { include: { product: true } },
+  rentals: {
+    include: {
+      product: true,
+      limits: true,
+      apiKeys: { orderBy: { createdAt: "desc" }, take: 20 }
+    },
+    orderBy: { createdAt: "desc" }
+  }
+} satisfies Prisma.OrderInclude;
+
 const userStatusSchema = z.object({
   status: z.enum(["active", "disabled", "banned"])
 });
@@ -54,6 +67,10 @@ const userRolesSchema = z.object({
 const walletAdjustSchema = z.object({
   amount: z.coerce.number().refine((value) => value !== 0, "Amount cannot be zero"),
   note: z.string().max(240).optional()
+});
+
+const orderActionSchema = z.object({
+  note: z.string().trim().max(500).optional()
 });
 
 const rentalStatusSchema = z.object({
@@ -395,21 +412,148 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const order = await prisma.order.findUnique({
       where: { id },
-      include: {
-        user: { include: { roles: true, wallet: true } },
-        items: { include: { product: true } },
-        rentals: {
-          include: {
-            product: true,
-            limits: true,
-            apiKeys: { orderBy: { createdAt: "desc" }, take: 20 }
-          },
-          orderBy: { createdAt: "desc" }
-        }
-      }
+      include: orderDetailInclude
     });
     if (!order) throw new AppError("order_not_found", "Order not found", 404);
     return adminOk(reply, order);
+  });
+
+  app.post("/api/admin/orders/:id/cancel", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = orderActionSchema.parse(request.body ?? {});
+    const before = await prisma.order.findUnique({
+      where: { id },
+      include: { rentals: true }
+    });
+    if (!before) throw new AppError("order_not_found", "Order not found", 404);
+    if (before.status === "cancelled") {
+      return adminOk(reply, { order: await prisma.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude }), cancelled: false });
+    }
+    if (before.paidAmount.gt(0) || before.rentals.length > 0) {
+      throw new AppError("order_requires_refund", "Paid or provisioned orders must be refunded instead of cancelled", 400);
+    }
+    if (!["pending", "failed"].includes(before.status)) {
+      throw new AppError("order_not_cancellable", `Order cannot be cancelled from ${before.status}`, 400);
+    }
+
+    const order = await prisma.order.update({
+      where: { id },
+      data: { status: "cancelled" },
+      include: orderDetailInclude
+    });
+    await writeAuditLog(request, actor.id, "admin.order.cancel", "order", id, {
+      status: before.status,
+      paidAmount: String(before.paidAmount),
+      rentalCount: before.rentals.length
+    }, {
+      status: order.status,
+      note: input.note
+    });
+    return adminOk(reply, { order, cancelled: true });
+  });
+
+  app.post("/api/admin/orders/:id/refund", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = orderActionSchema.parse(request.body ?? {});
+    const before = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        rentals: { include: { apiKeys: true } },
+        user: { include: { wallet: true } }
+      }
+    });
+    if (!before) throw new AppError("order_not_found", "Order not found", 404);
+    if (["refunded", "cancelled"].includes(before.status)) {
+      throw new AppError("order_already_terminal", `Order is already ${before.status}`, 400);
+    }
+    if (!["paid", "provisioning", "active", "failed", "refunding", "closed", "expired"].includes(before.status)) {
+      throw new AppError("order_not_refundable", `Order cannot be refunded from ${before.status}`, 400);
+    }
+    if (before.paidAmount.lte(0)) {
+      throw new AppError("order_has_no_paid_amount", "Order has no paid amount to refund", 400);
+    }
+
+    const existingRefund = await prisma.walletTransaction.findFirst({
+      where: { type: "refund", refType: "order", refId: id },
+      select: { id: true, amount: true }
+    });
+    const rentalIds = before.rentals.map((rental) => rental.id);
+    const refundAmount = existingRefund ? new Prisma.Decimal(0) : before.paidAmount;
+
+    const order = await prisma.$transaction(async (tx) => {
+      if (!existingRefund) {
+        const wallet = await tx.walletAccount.upsert({
+          where: { userId: before.userId },
+          update: {},
+          create: { userId: before.userId, currency: before.currency }
+        });
+        const nextBalance = wallet.availableBalance.plus(refundAmount);
+        const nextSpent = wallet.totalSpent.lessThan(refundAmount) ? new Prisma.Decimal(0) : wallet.totalSpent.minus(refundAmount);
+        await tx.walletAccount.update({
+          where: { id: wallet.id },
+          data: {
+            availableBalance: nextBalance,
+            totalSpent: nextSpent
+          }
+        });
+        await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "refund",
+            amount: refundAmount,
+            balanceAfter: nextBalance,
+            currency: before.currency,
+            refType: "order",
+            refId: id,
+            note: input.note ?? "admin order refund"
+          }
+        });
+      }
+
+      await tx.order.update({ where: { id }, data: { status: "refunded" } });
+      await tx.rental.updateMany({
+        where: { orderId: id, status: { not: "refunded" } },
+        data: { status: "refunded" }
+      });
+      if (rentalIds.length > 0) {
+        await tx.apiKey.updateMany({
+          where: { rentalId: { in: rentalIds } },
+          data: { status: "inactive" }
+        });
+      }
+      return tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude });
+    });
+
+    const sub2Sync = [];
+    for (const rental of before.rentals) {
+      sub2Sync.push({
+        rentalId: rental.id,
+        sub2KeyId: rental.sub2KeyId,
+        ...(await syncSub2KeyForRental(rental.userId, rental.sub2KeyId, false))
+      });
+    }
+    await writeAuditLog(request, actor.id, "admin.order.refund", "order", id, {
+      status: before.status,
+      paidAmount: String(before.paidAmount),
+      rentalStatuses: before.rentals.map((rental) => ({ id: rental.id, status: rental.status, sub2KeyId: rental.sub2KeyId })),
+      apiKeyStatuses: before.rentals.flatMap((rental) => rental.apiKeys.map((apiKey) => ({ id: apiKey.id, status: apiKey.status })))
+    }, {
+      status: order.status,
+      refundAmount: String(refundAmount),
+      walletRefunded: !existingRefund,
+      existingRefundId: existingRefund?.id,
+      sub2Sync,
+      note: input.note
+    });
+    return adminOk(reply, {
+      order,
+      refundAmount: String(refundAmount),
+      walletRefunded: !existingRefund,
+      existingRefundId: existingRefund?.id,
+      sub2Sync
+    });
   });
 
   app.get("/api/admin/rentals", async (request, reply) => {

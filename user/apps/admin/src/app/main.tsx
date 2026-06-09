@@ -796,6 +796,26 @@ function App() {
     }
   }
 
+  async function cancelOrder(orderId: string) {
+    const result = await api<{ cancelled: boolean }>(`/api/admin/orders/${orderId}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ note: "admin cancelled order" })
+    });
+    setMessage(result.cancelled ? "Order cancelled" : "Order was already cancelled");
+    await refresh(view === "sales" ? "sales" : "orders");
+    if (selectedOrder?.id === orderId) await openOrderDetail(orderId);
+  }
+
+  async function refundOrder(orderId: string) {
+    const result = await api<{ refundAmount: string; walletRefunded: boolean; sub2Sync: unknown[] }>(`/api/admin/orders/${orderId}/refund`, {
+      method: "POST",
+      body: JSON.stringify({ note: "admin refunded order" })
+    });
+    setMessage(`Order refunded ${money(result.refundAmount)}${result.walletRefunded ? "" : " (wallet already had refund)"}`);
+    await refresh(view === "sales" ? "sales" : "orders");
+    if (selectedOrder?.id === orderId) await openOrderDetail(orderId);
+  }
+
   async function openResourceDetail(resourceId: string) {
     try {
       setSelectedResource(await api<ResourceDetailRow>(`/api/admin/resources/${resourceId}`));
@@ -1021,6 +1041,8 @@ function App() {
             sales={sales}
             selectedOrder={selectedOrder}
             onDetail={openOrderDetail}
+            onCancel={cancelOrder}
+            onRefund={refundOrder}
             onCloseDetail={() => setSelectedOrder(null)}
           />
         )}
@@ -1061,6 +1083,8 @@ function App() {
             query={listQueries.orders}
             meta={listMeta.orders}
             onDetail={openOrderDetail}
+            onCancel={cancelOrder}
+            onRefund={refundOrder}
             onCloseDetail={() => setSelectedOrder(null)}
             onDraft={(patch) => updateListDraft("orders", patch)}
             onFilter={(event) => submitListFilters("orders", event)}
@@ -1523,10 +1547,12 @@ function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, 
   );
 }
 
-function SalesView({ sales, selectedOrder, onDetail, onCloseDetail }: {
+function SalesView({ sales, selectedOrder, onDetail, onCancel, onRefund, onCloseDetail }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
+  onCancel: (orderId: string) => void;
+  onRefund: (orderId: string) => void;
   onCloseDetail: () => void;
 }) {
   const orders = sales?.orders ?? [];
@@ -1542,7 +1568,7 @@ function SalesView({ sales, selectedOrder, onDetail, onCloseDetail }: {
         <span className="eyebrow">Export</span>
         <button className="secondary" onClick={() => exportOrdersCsv(orders, "sales-orders")}><Download size={16} />导出售出订单</button>
       </div>
-      <OrdersView orders={orders} title="售出订单" selectedOrder={selectedOrder} onDetail={onDetail} onCloseDetail={onCloseDetail} />
+      <OrdersView orders={orders} title="售出订单" selectedOrder={selectedOrder} onDetail={onDetail} onCancel={onCancel} onRefund={onRefund} onCloseDetail={onCloseDetail} />
     </section>
   );
 }
@@ -1698,11 +1724,13 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
   );
 }
 
-function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   orders: OrderRow[];
   title?: string;
   selectedOrder?: OrderDetailRow | null;
   onDetail?: (orderId: string) => void;
+  onCancel?: (orderId: string) => void;
+  onRefund?: (orderId: string) => void;
   onCloseDetail?: () => void;
 } & Partial<ManagedListProps>) {
   return (
@@ -1728,16 +1756,22 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
             <td>{money(order.paidAmount)} / {money(order.totalAmount)}</td>
             <td>{order.rentals?.length ?? 0}</td>
             <td>{dateTime(order.createdAt)}</td>
-            <td>{onDetail && <button className="secondary mini" onClick={() => onDetail(order.id)}>详情</button>}</td>
+            <td>
+              <div className="row-actions">
+                {onDetail && <button className="secondary mini" onClick={() => onDetail(order.id)}>详情</button>}
+                {onCancel && <button className="secondary mini" onClick={() => onCancel(order.id)}>取消</button>}
+                {onRefund && <button className="danger mini" onClick={() => onRefund(order.id)}>退款</button>}
+              </div>
+            </td>
           </tr>
         ))}
       </TablePanel>
-      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onClose={onCloseDetail} />}
+      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onCancel={onCancel} onRefund={onRefund} onClose={onCloseDetail} />}
     </>
   );
 }
 
-function OrderDetailPanel({ order, onClose }: { order: OrderDetailRow; onClose: () => void }) {
+function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onClose: () => void }) {
   return (
     <section className="panel glass-panel wide detail-panel">
       <div className="section-head">
@@ -1747,6 +1781,8 @@ function OrderDetailPanel({ order, onClose }: { order: OrderDetailRow; onClose: 
         </div>
         <div className="row-actions">
           <StatusPill status={order.status} />
+          {onCancel && <button className="secondary mini" onClick={() => onCancel(order.id)}>取消</button>}
+          {onRefund && <button className="danger mini" onClick={() => onRefund(order.id)}>退款</button>}
           <button className="secondary mini" onClick={onClose}>关闭</button>
         </div>
       </div>
