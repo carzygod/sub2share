@@ -13,6 +13,7 @@ import { sub2Client, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from ".
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
+import { normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 
@@ -2234,26 +2235,27 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
     const statusCode = numericStatusCode(query.status);
+    const proxyRequestLookup = normalizeProxyRequestLookup(query.q ?? "");
     const where: Prisma.ProxyRequestLogWhereInput = {
       ...(statusCode ? { statusCode } : {}),
       ...(query.action ? { errorCode: containsText(query.action) } : {}),
-      ...(query.q ? {
+      ...(proxyRequestLookup ? {
         OR: [
-          { id: containsText(query.q) },
-          { requestId: containsText(query.q) },
-          { userId: containsText(query.q) },
-          { rentalId: containsText(query.q) },
-          { apiKeyId: containsText(query.q) },
-          { apiKeyPrefix: containsText(query.q) },
-          { method: containsText(query.q) },
-          { path: containsText(query.q) },
-          { errorCode: containsText(query.q) },
-          { ipAddress: containsText(query.q) },
-          { userAgent: containsText(query.q) },
-          { user: { email: containsText(query.q) } },
-          { user: { displayName: containsText(query.q) } },
-          { rental: { product: { name: containsText(query.q) } } },
-          { apiKey: { name: containsText(query.q) } }
+          { id: containsText(proxyRequestLookup) },
+          { requestId: containsText(proxyRequestLookup) },
+          { userId: containsText(proxyRequestLookup) },
+          { rentalId: containsText(proxyRequestLookup) },
+          { apiKeyId: containsText(proxyRequestLookup) },
+          { apiKeyPrefix: containsText(proxyRequestLookup) },
+          { method: containsText(proxyRequestLookup) },
+          { path: containsText(proxyRequestLookup) },
+          { errorCode: containsText(proxyRequestLookup) },
+          { ipAddress: containsText(proxyRequestLookup) },
+          { userAgent: containsText(proxyRequestLookup) },
+          { user: { email: containsText(proxyRequestLookup) } },
+          { user: { displayName: containsText(proxyRequestLookup) } },
+          { rental: { product: { name: containsText(proxyRequestLookup) } } },
+          { apiKey: { name: containsText(proxyRequestLookup) } }
         ]
       } : {})
     };

@@ -44,6 +44,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 新增管理员接口：`GET /api/admin/proxy-requests`
 - 权限要求：`operator` 或 `admin`
 - 支持分页、状态码过滤、错误码过滤和关键词搜索。
+- 关键词搜索支持直接粘贴 `x-proxy-request-id: <requestId>` 或 `x-request-id=<requestId>` 形式的响应头。
 
 ## 管理员入口
 
@@ -52,6 +53,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 列表展示：
 
 - 用户邮箱与请求 ID。
+- 请求 ID 单独成列，并提供复制按钮。
 - 租赁或商品信息。
 - API Key 名称或前缀。
 - HTTP 方法与路径。
@@ -61,6 +63,8 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - IP、User-Agent、创建时间。
 
 页面支持按当前筛选条件导出全部 CSV，便于线上排障时交叉比对服务日志、Sub2API 状态和用户反馈。
+
+管理员拿到用户反馈的 `x-proxy-request-id` 后，可以直接粘贴完整响应头行到搜索框定位日志。
 
 ## 验收记录
 

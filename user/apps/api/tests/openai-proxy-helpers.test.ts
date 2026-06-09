@@ -4,6 +4,7 @@ import {
   attachProxyRequestIdHeader,
   estimateProxyInputTokens,
   isMetadataProxyRequest,
+  normalizeProxyRequestLookup,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText
@@ -50,4 +51,11 @@ test("attaches a stable proxy request id header for local and upstream responses
 
   assert.equal(proxyRequestIdHeaderName, "x-proxy-request-id");
   assert.equal(headers.get("x-proxy-request-id"), "req-123");
+});
+
+test("normalizes copied proxy request id headers for admin search", () => {
+  assert.equal(normalizeProxyRequestLookup("x-proxy-request-id: req-123"), "req-123");
+  assert.equal(normalizeProxyRequestLookup("X-Request-Id=req-456;"), "req-456");
+  assert.equal(normalizeProxyRequestLookup("  user@example.com  "), "user@example.com");
+  assert.equal(normalizeProxyRequestLookup("   "), "");
 });

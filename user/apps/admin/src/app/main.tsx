@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CheckCircle2,
   CircleDollarSign,
+  Copy,
   Download,
   Filter,
   KeyRound,
@@ -933,6 +934,15 @@ function App() {
     const nextQuery = { ...listQueries[listView], page: Math.min(Math.max(page, 1), meta.totalPages) };
     setListQueries((current) => ({ ...current, [listView]: nextQuery }));
     await refresh(listView, nextQuery);
+  }
+
+  async function copyProxyRequestId(requestId: string) {
+    try {
+      await navigator.clipboard.writeText(requestId);
+      setMessage(`已复制请求 ID：${requestId}`);
+    } catch {
+      setMessage(`请求 ID：${requestId}`);
+    }
   }
 
   async function fetchAllListPages<T>(listView: ManagedListView, path: string, query: ListQueryState) {
@@ -1918,6 +1928,7 @@ function App() {
             onClear={() => clearListFilters("proxyRequests")}
             onPage={(page) => changeListPage("proxyRequests", page)}
             onExport={() => exportFilteredList("proxyRequests")}
+            onCopyRequestId={copyProxyRequestId}
           />
         )}
         {view === "suppliers" && (
@@ -3475,15 +3486,16 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
   );
 }
 
-function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport }: {
+function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId }: {
   logs: ProxyRequestLogRow[];
+  onCopyRequestId: (requestId: string) => void;
 } & ManagedListProps) {
   return (
     <>
       <ListControls
         query={query}
         meta={meta}
-        searchPlaceholder="user / rental / key / path / request id"
+        searchPlaceholder="x-proxy-request-id / user / rental / key / path"
         statusOptions={proxyStatusOptions}
         actionPlaceholder="error code contains"
         onDraft={onDraft}
@@ -3492,10 +3504,14 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="OpenAI/Codex 反代请求" count={meta.total} headers={["用户", "租赁 / Key", "请求", "状态", "耗时", "用量估算", "来源", "时间"]}>
+      <TablePanel title="OpenAI/Codex 反代请求" count={meta.total} headers={["请求 ID", "用户", "租赁 / Key", "请求", "状态", "耗时", "用量估算", "来源", "时间"]}>
         {logs.map((log) => (
           <tr key={log.id}>
-            <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.requestId}</small></td>
+            <td>
+              <strong>{log.requestId}</strong>
+              <button className="secondary mini" type="button" title="复制请求 ID" onClick={() => onCopyRequestId(log.requestId)}><Copy size={14} /></button>
+            </td>
+            <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.user?.displayName ?? log.user?.id ?? "-"}</small></td>
             <td>
               <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
               <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>

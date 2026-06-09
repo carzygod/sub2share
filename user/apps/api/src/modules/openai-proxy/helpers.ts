@@ -4,6 +4,14 @@ export function attachProxyRequestIdHeader(reply: { header: (name: string, value
   reply.header(proxyRequestIdHeaderName, requestId);
 }
 
+export function normalizeProxyRequestLookup(value: string) {
+  const text = value.trim();
+  if (!text) return "";
+
+  const headerMatch = text.match(/\b(?:x-proxy-request-id|x-request-id)\b\s*[:=]\s*([^\s,;]+)/i);
+  return headerMatch?.[1] ?? text;
+}
+
 export function isMetadataProxyRequest(method: string, url: string) {
   const normalizedMethod = method.toUpperCase();
   if (!["GET", "HEAD"].includes(normalizedMethod)) return false;
