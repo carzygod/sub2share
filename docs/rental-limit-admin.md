@@ -25,7 +25,7 @@
 
 ## 生效范围
 
-- 本地 `/v1/*` 反代入口会立即读取新的 `maxConcurrency`、`requestLimit` 和 `remainingSpend`。
+- 本地 `/v1/*` 反代入口会立即读取新的 `maxConcurrency`、`rpmLimit`、`tpmLimit`、`requestLimit` 和 `remainingSpend`。
 - 用量同步会继续按新的 `spendLimit` / `remainingSpend` 扣减剩余额度。
 - 已存在 Sub2 Key 的上游 quota 是否能原地更新取决于 Sub2API 更新 Key 契约；当前如需确保上游 quota 也按新额度生效，应执行 Key 轮换。
 

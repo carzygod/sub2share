@@ -8,6 +8,8 @@ import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
+const proxyRateWindows = new Map<string, ProxyRateWindow>();
+const RATE_WINDOW_MS = 60_000;
 const hopByHopHeaders = new Set([
   "connection",
   "content-encoding",
@@ -22,6 +24,11 @@ const hopByHopHeaders = new Set([
 ]);
 
 type ActiveApiKeyRecord = Extract<Awaited<ReturnType<typeof findActiveLocalKey>>, { ok: true }>["apiKey"];
+
+interface ProxyRateWindow {
+  requests: number[];
+  tokens: Array<{ at: number; tokens: number }>;
+}
 
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
   await app.register(async (proxy) => {
@@ -51,6 +58,11 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         const limitCheck = await checkRentalRequestLimit(keyRecord.apiKey.rental, request);
         if (!limitCheck.ok) {
           return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
+        }
+
+        const rateLimitCheck = checkAndRecordRentalRateLimits(keyRecord.apiKey.rental, request);
+        if (!rateLimitCheck.ok) {
+          return openAiError(reply, rateLimitCheck.statusCode, rateLimitCheck.code, rateLimitCheck.message);
         }
 
         const concurrencyLease = acquireProxyConcurrency(keyRecord.apiKey.rental);
@@ -87,7 +99,12 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           apiKeyId: keyRecord.apiKey.id,
           rentalId: keyRecord.apiKey.rentalId,
           activeProxyRequests: concurrencyLease.activeCount,
-          proxyConcurrencyLimit: concurrencyLease.limit
+          proxyConcurrencyLimit: concurrencyLease.limit,
+          proxyRpmLimit: rateLimitCheck.rpmLimit,
+          proxyRpmUsed: rateLimitCheck.rpmUsed,
+          proxyTpmLimit: rateLimitCheck.tpmLimit,
+          proxyTpmUsed: rateLimitCheck.tpmUsed,
+          proxyEstimatedInputTokens: rateLimitCheck.estimatedTokens
         }, "openai proxy request");
 
         copyResponseHeaders(upstream, reply);
@@ -221,6 +238,89 @@ function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
       }
     }
   };
+}
+
+function checkAndRecordRentalRateLimits(
+  rental: ActiveApiKeyRecord["rental"],
+  request: FastifyRequest
+) {
+  if (!rental) {
+    return failure(403, "rental_not_active", "Rental is not active");
+  }
+  if (isMetadataRequest(request)) {
+    return {
+      ok: true as const,
+      rpmLimit: rental.limits?.rpmLimit ?? null,
+      rpmUsed: null,
+      tpmLimit: rental.limits?.tpmLimit ?? null,
+      tpmUsed: null,
+      estimatedTokens: 0
+    };
+  }
+
+  const rpmLimit = rental.limits?.rpmLimit ?? null;
+  const tpmLimit = rental.limits?.tpmLimit ?? null;
+  if (!rpmLimit && !tpmLimit) {
+    return { ok: true as const, rpmLimit, rpmUsed: null, tpmLimit, tpmUsed: null, estimatedTokens: 0 };
+  }
+
+  const now = Date.now();
+  const window = rateWindowForRental(rental.id);
+  pruneRateWindow(window, now);
+
+  if (rpmLimit && window.requests.length >= rpmLimit) {
+    return failure(429, "rpm_limit_exceeded", "Rental RPM limit has been reached");
+  }
+
+  const estimatedTokens = tpmLimit ? estimateInputTokens(request) : 0;
+  const currentTokens = window.tokens.reduce((total, event) => total + event.tokens, 0);
+  if (tpmLimit && currentTokens + estimatedTokens > tpmLimit) {
+    return failure(429, "tpm_limit_exceeded", "Rental TPM limit has been reached");
+  }
+
+  window.requests.push(now);
+  if (estimatedTokens > 0) {
+    window.tokens.push({ at: now, tokens: estimatedTokens });
+  }
+
+  return {
+    ok: true as const,
+    rpmLimit,
+    rpmUsed: rpmLimit ? window.requests.length : null,
+    tpmLimit,
+    tpmUsed: tpmLimit ? currentTokens + estimatedTokens : null,
+    estimatedTokens
+  };
+}
+
+function rateWindowForRental(rentalId: string) {
+  const existing = proxyRateWindows.get(rentalId);
+  if (existing) return existing;
+  const created: ProxyRateWindow = { requests: [], tokens: [] };
+  proxyRateWindows.set(rentalId, created);
+  return created;
+}
+
+function pruneRateWindow(window: ProxyRateWindow, now: number) {
+  const cutoff = now - RATE_WINDOW_MS;
+  window.requests = window.requests.filter((timestamp) => timestamp > cutoff);
+  window.tokens = window.tokens.filter((event) => event.at > cutoff);
+}
+
+function estimateInputTokens(request: FastifyRequest) {
+  if (["GET", "HEAD"].includes(request.method.toUpperCase())) return 1;
+  const body = requestBodyText(request);
+  if (!body) return 1;
+  return Math.max(1, Math.ceil(body.length / 4));
+}
+
+function requestBodyText(request: FastifyRequest) {
+  const body = request.body;
+  if (body === undefined || body === null) return "";
+  if (typeof body === "string") return body;
+  if (Buffer.isBuffer(body)) return body.toString("utf8");
+  if (body instanceof Uint8Array) return Buffer.from(body).toString("utf8");
+  return JSON.stringify(body);
 }
 
 function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {
