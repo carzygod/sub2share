@@ -53,6 +53,14 @@ const orderDetailInclude = {
   statusHistory: { orderBy: { createdAt: "desc" }, take: 50 }
 } satisfies Prisma.OrderInclude;
 
+const withdrawalInclude = {
+  supplier: { include: { user: true } },
+  settlements: {
+    include: { settlementRecord: true },
+    orderBy: { createdAt: "asc" }
+  }
+} satisfies Prisma.WithdrawalInclude;
+
 const userStatusSchema = z.object({
   status: z.enum(["active", "disabled", "banned"])
 });
@@ -1482,7 +1490,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const [withdrawals, total, summary] = await Promise.all([
       prisma.withdrawal.findMany({
         where,
-        include: { supplier: { include: { user: true } } },
+        include: withdrawalInclude,
         orderBy: { createdAt: "desc" },
         ...pageArgs(query)
       }),
@@ -1513,16 +1521,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       await ensureSupplierWithdrawableAmount(supplier.id, amount);
     }
 
-    const withdrawal = await prisma.withdrawal.create({
-      data: {
-        supplierId: supplier.id,
-        amount,
-        currency: input.currency.toUpperCase(),
-        status: input.status,
-        payoutRef: input.payoutRef,
-        note: input.note
-      },
-      include: { supplier: { include: { user: true } } }
+    const withdrawal = await prisma.$transaction(async (tx) => {
+      const created = await tx.withdrawal.create({
+        data: {
+          supplierId: supplier.id,
+          amount,
+          currency: input.currency.toUpperCase(),
+          status: input.status,
+          payoutRef: input.payoutRef,
+          note: input.note
+        }
+      });
+      if (reservesSupplierSettlement(input.status)) {
+        await allocateWithdrawalSettlements(tx, supplier.id, created.id, amount, input.status === "paid" ? "paid" : "reserved");
+      }
+      return tx.withdrawal.findUniqueOrThrow({ where: { id: created.id }, include: withdrawalInclude });
     });
     await writeAuditLog(request, actor.id, "admin.withdrawal.create", "withdrawal", withdrawal.id, null, {
       supplierEmail: email,
@@ -1541,24 +1554,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const input = updateWithdrawalSchema.parse(request.body ?? {});
     const before = await prisma.withdrawal.findUnique({
       where: { id },
-      include: { supplier: { include: { user: true } } }
+      include: withdrawalInclude
     });
     if (!before) throw new AppError("withdrawal_not_found", "Withdrawal not found", 404);
 
     ensureWithdrawalTransition(before.status, input.status);
     ensurePayoutRefForPaid(input.status, input.payoutRef ?? before.payoutRef ?? undefined);
     if (reservesSupplierSettlement(input.status)) {
-      await ensureSupplierWithdrawableAmount(before.supplierId, before.amount, id);
+      const missing = before.amount.minus(activeWithdrawalAllocationAmount(before.settlements));
+      if (missing.gt(0)) {
+        await ensureSupplierWithdrawableAmount(before.supplierId, missing, id);
+      }
     }
 
-    const withdrawal = await prisma.withdrawal.update({
-      where: { id },
-      data: {
-        status: input.status,
-        ...(input.payoutRef !== undefined ? { payoutRef: input.payoutRef } : {}),
-        ...(input.note !== undefined ? { note: input.note } : {})
-      },
-      include: { supplier: { include: { user: true } } }
+    const withdrawal = await prisma.$transaction(async (tx) => {
+      const missing = before.amount.minus(activeWithdrawalAllocationAmount(before.settlements));
+      if (reservesSupplierSettlement(input.status) && missing.gt(0)) {
+        await allocateWithdrawalSettlements(tx, before.supplierId, id, missing, input.status === "paid" ? "paid" : "reserved");
+      }
+      if (input.status === "paid") {
+        await payWithdrawalSettlements(tx, id);
+      }
+      if (["rejected", "cancelled"].includes(input.status)) {
+        await releaseWithdrawalSettlements(tx, id);
+      }
+      await tx.withdrawal.update({
+        where: { id },
+        data: {
+          status: input.status,
+          ...(input.payoutRef !== undefined ? { payoutRef: input.payoutRef } : {}),
+          ...(input.note !== undefined ? { note: input.note } : {})
+        }
+      });
+      return tx.withdrawal.findUniqueOrThrow({ where: { id }, include: withdrawalInclude });
     });
     await writeAuditLog(request, actor.id, "admin.withdrawal.status", "withdrawal", id, {
       status: before.status,
@@ -1711,6 +1739,12 @@ function reservesSupplierSettlement(status: string) {
   return ["pending", "approved", "paid"].includes(status);
 }
 
+function activeWithdrawalAllocationAmount(allocations: Array<{ amount: Prisma.Decimal; status: string }>) {
+  return allocations
+    .filter((allocation) => ["reserved", "paid"].includes(allocation.status))
+    .reduce((sum, allocation) => sum.plus(allocation.amount), new Prisma.Decimal(0));
+}
+
 async function ensureSupplierWithdrawableAmount(
   supplierId: string,
   amount: Prisma.Decimal,
@@ -1727,27 +1761,160 @@ async function ensureSupplierWithdrawableAmount(
 
 async function supplierWithdrawableAmount(supplierId: string, excludeWithdrawalId?: string) {
   const [settlements, reservedWithdrawals] = await Promise.all([
-    prisma.settlementRecord.aggregate({
+    prisma.settlementRecord.findMany({
       where: {
         status: "available",
         supplierResource: { supplierId }
       },
-      _sum: { amount: true }
+      select: {
+        amount: true,
+        reservedAmount: true,
+        withdrawnAmount: true
+      }
     }),
     prisma.withdrawal.aggregate({
       where: {
         supplierId,
         status: { in: ["pending", "approved", "paid"] },
+        settlements: { none: {} },
         ...(excludeWithdrawalId ? { id: { not: excludeWithdrawalId } } : {})
       },
       _sum: { amount: true }
     })
   ]);
 
-  const available = settlements._sum.amount ?? new Prisma.Decimal(0);
+  const available = settlements.reduce(
+    (sum, settlement) => sum.plus(settlementAvailableAmount(settlement)),
+    new Prisma.Decimal(0)
+  );
   const reserved = reservedWithdrawals._sum.amount ?? new Prisma.Decimal(0);
   const withdrawable = available.minus(reserved);
   return withdrawable.gt(0) ? withdrawable : new Prisma.Decimal(0);
+}
+
+async function allocateWithdrawalSettlements(
+  tx: Prisma.TransactionClient,
+  supplierId: string,
+  withdrawalId: string,
+  amount: Prisma.Decimal,
+  allocationStatus: "reserved" | "paid"
+) {
+  let remaining = amount;
+  const settlements = await tx.settlementRecord.findMany({
+    where: {
+      status: "available",
+      supplierResource: { supplierId }
+    },
+    orderBy: [{ availableAt: "asc" }, { createdAt: "asc" }]
+  });
+
+  for (const settlement of settlements) {
+    if (remaining.lte(0)) break;
+    const available = settlementAvailableAmount(settlement);
+    if (available.lte(0)) continue;
+
+    const allocationAmount = available.lt(remaining) ? available : remaining;
+    await tx.withdrawalSettlement.create({
+      data: {
+        withdrawalId,
+        settlementRecordId: settlement.id,
+        amount: allocationAmount,
+        status: allocationStatus
+      }
+    });
+
+    const nextReserved = allocationStatus === "reserved"
+      ? settlement.reservedAmount.plus(allocationAmount)
+      : settlement.reservedAmount;
+    const nextWithdrawn = allocationStatus === "paid"
+      ? settlement.withdrawnAmount.plus(allocationAmount)
+      : settlement.withdrawnAmount;
+    await tx.settlementRecord.update({
+      where: { id: settlement.id },
+      data: {
+        reservedAmount: nextReserved,
+        withdrawnAmount: nextWithdrawn,
+        status: settlementStatusForAmounts(settlement.amount, nextReserved, nextWithdrawn)
+      }
+    });
+    remaining = remaining.minus(allocationAmount);
+  }
+
+  if (remaining.gt(0)) {
+    throw new AppError("insufficient_withdrawable_amount", "Supplier does not have enough available settlements", 400, {
+      missing: String(remaining),
+      requested: String(amount)
+    });
+  }
+}
+
+async function payWithdrawalSettlements(tx: Prisma.TransactionClient, withdrawalId: string) {
+  const allocations = await tx.withdrawalSettlement.findMany({
+    where: { withdrawalId, status: "reserved" },
+    include: { settlementRecord: true }
+  });
+
+  for (const allocation of allocations) {
+    const settlement = allocation.settlementRecord;
+    const nextReserved = decimalMax(settlement.reservedAmount.minus(allocation.amount), new Prisma.Decimal(0));
+    const nextWithdrawn = settlement.withdrawnAmount.plus(allocation.amount);
+    await tx.withdrawalSettlement.update({
+      where: { id: allocation.id },
+      data: { status: "paid" }
+    });
+    await tx.settlementRecord.update({
+      where: { id: settlement.id },
+      data: {
+        reservedAmount: nextReserved,
+        withdrawnAmount: nextWithdrawn,
+        status: settlementStatusForAmounts(settlement.amount, nextReserved, nextWithdrawn)
+      }
+    });
+  }
+}
+
+async function releaseWithdrawalSettlements(tx: Prisma.TransactionClient, withdrawalId: string) {
+  const allocations = await tx.withdrawalSettlement.findMany({
+    where: { withdrawalId, status: "reserved" },
+    include: { settlementRecord: true }
+  });
+
+  for (const allocation of allocations) {
+    const settlement = allocation.settlementRecord;
+    const nextReserved = decimalMax(settlement.reservedAmount.minus(allocation.amount), new Prisma.Decimal(0));
+    await tx.withdrawalSettlement.update({
+      where: { id: allocation.id },
+      data: { status: "released" }
+    });
+    await tx.settlementRecord.update({
+      where: { id: settlement.id },
+      data: {
+        reservedAmount: nextReserved,
+        status: settlementStatusForAmounts(settlement.amount, nextReserved, settlement.withdrawnAmount)
+      }
+    });
+  }
+}
+
+function settlementAvailableAmount(settlement: {
+  amount: Prisma.Decimal;
+  reservedAmount: Prisma.Decimal;
+  withdrawnAmount: Prisma.Decimal;
+}) {
+  return decimalMax(
+    settlement.amount.minus(settlement.reservedAmount).minus(settlement.withdrawnAmount),
+    new Prisma.Decimal(0)
+  );
+}
+
+function settlementStatusForAmounts(amount: Prisma.Decimal, reservedAmount: Prisma.Decimal, withdrawnAmount: Prisma.Decimal) {
+  if (withdrawnAmount.gte(amount)) return "withdrawn";
+  if (reservedAmount.plus(withdrawnAmount).gte(amount)) return "frozen";
+  return "available";
+}
+
+function decimalMax(left: Prisma.Decimal, right: Prisma.Decimal) {
+  return left.gte(right) ? left : right;
 }
 
 function parseListQuery(raw: unknown): ListQuery {

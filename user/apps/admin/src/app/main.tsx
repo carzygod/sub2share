@@ -299,6 +299,14 @@ interface WithdrawalRow {
     displayName?: string | null;
     user?: UserRow;
   };
+  settlements?: WithdrawalSettlementRow[];
+}
+
+interface WithdrawalSettlementRow {
+  id: string;
+  amount: string;
+  status: string;
+  settlementRecord?: SettlementRow;
 }
 
 interface SupplierDetailRow {
@@ -332,6 +340,8 @@ interface UserDetailRow extends UserRow {
 interface SettlementRow {
   id: string;
   amount: string;
+  reservedAmount?: string;
+  withdrawnAmount?: string;
   status: string;
   shareRate: string;
   availableAt?: string | null;
@@ -2333,11 +2343,12 @@ function SettlementsView({ settlements, query, meta, onReleaseAvailable, onDraft
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="供给方结算" count={meta.total} headers={["供给方", "金额", "状态", "分成", "可用时间", "创建时间"]}>
+      <TablePanel title="供给方结算" count={meta.total} headers={["供给方", "金额", "占用/已提", "状态", "分成", "可用时间", "创建时间"]}>
         {settlements.map((settlement) => (
           <tr key={settlement.id}>
             <td><strong>{settlement.supplierResource?.supplier?.user?.email ?? "-"}</strong><small>{settlement.supplierResource?.resourceType ?? settlement.id}</small></td>
             <td>{money(settlement.amount)}</td>
+            <td>{money(settlement.reservedAmount)} / {money(settlement.withdrawnAmount)}</td>
             <td><StatusPill status={settlement.status} /></td>
             <td>{settlement.shareRate}</td>
             <td>{dateTime(settlement.availableAt)}</td>
@@ -2386,12 +2397,13 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="提现管理" count={meta.total} headers={["供给方", "金额", "状态", "打款引用", "备注", "时间", "操作"]}>
+      <TablePanel title="提现管理" count={meta.total} headers={["供给方", "金额", "状态", "结算分配", "打款引用", "备注", "时间", "操作"]}>
         {withdrawals.map((withdrawal) => (
           <tr key={withdrawal.id}>
             <td><strong>{withdrawal.supplier?.user?.email ?? withdrawal.supplierId}</strong><small>{withdrawal.id}</small></td>
             <td>{money(withdrawal.amount)} {withdrawal.currency ?? "USD"}</td>
             <td><StatusPill status={withdrawal.status} /></td>
+            <td><strong>{money(allocationAmount(withdrawal.settlements))}</strong><small>{withdrawal.settlements?.length ?? 0} records</small></td>
             <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
             <td><small>{withdrawal.note ?? "-"}</small></td>
             <td>{dateTime(withdrawal.createdAt)}</td>
@@ -2777,6 +2789,10 @@ function csvCell(value: CsvCell) {
 function money(value?: string | number | null) {
   const numberValue = Number(value ?? 0);
   return `$${numberValue.toFixed(2)}`;
+}
+
+function allocationAmount(settlements?: WithdrawalSettlementRow[]) {
+  return settlements?.reduce((sum, settlement) => sum + Number(settlement.amount || 0), 0) ?? 0;
 }
 
 function testSummary(result: Sub2AccountTestResult) {

@@ -25,7 +25,7 @@ available settlements - pending/approved/paid withdrawals
 
 ## 边界
 
-该能力防止超额创建/审批/打款提现，并把已创建的 pending/approved/paid 提现视为占用可提现额度。当前尚未建立提现与具体结算记录的逐条分配关系，后续可继续扩展 `WithdrawalSettlement` 分配表来支持逐条核销和部分提现。
+该能力防止超额创建/审批/打款提现，并把已创建的 pending/approved/paid 提现视为占用可提现额度。逐条结算分配和核销能力见 `docs/withdrawal-settlement-allocation.md`。
 
 ## 验收记录
 
