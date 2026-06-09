@@ -1051,25 +1051,54 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get("/api/admin/sales", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
-    const [orders, orderAgg, usageAgg] = await Promise.all([
+    const query = parseListQuery(request.query);
+    const status = oneOf(orderStatuses, query.status);
+    const where: Prisma.OrderWhereInput = {
+      ...nonSmokeOrderWhere(),
+      ...(status ? { status } : {}),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { paymentRef: containsText(query.q) },
+          { userId: containsText(query.q) },
+          { user: { id: containsText(query.q) } },
+          { user: { email: containsText(query.q) } },
+          { user: { displayName: containsText(query.q) } },
+          { items: { some: { product: { name: containsText(query.q) } } } },
+          { rentals: { some: { id: containsText(query.q) } } },
+          { rentals: { some: { sub2KeyId: containsText(query.q) } } },
+          { rentals: { some: { endpointUrl: containsText(query.q) } } }
+        ]
+      } : {})
+    };
+    const usageWhere: Prisma.UsageRecordWhereInput = {
+      ...nonSmokeUsageWhere(),
+      rental: {
+        ...nonSmokeRentalWhere(),
+        order: where
+      }
+    };
+    const [orders, total, orderAgg, usageAgg] = await Promise.all([
       prisma.order.findMany({
-        where: nonSmokeOrderWhere(),
+        where,
         include: { user: true, items: true, rentals: true },
         orderBy: { createdAt: "desc" },
-        take: 100
+        ...pageArgs(query)
       }),
+      prisma.order.count({ where }),
       prisma.order.aggregate({
-        where: nonSmokeOrderWhere(),
+        where,
         _sum: { totalAmount: true, paidAmount: true },
         _count: true
       }),
       prisma.usageRecord.aggregate({
-        where: nonSmokeUsageWhere(),
+        where: usageWhere,
         _sum: { buyerCharge: true, supplierIncome: true },
         _count: true
       })
     ]);
     return adminOk(reply, {
+      ...paged(orders, total, query),
       orders,
       summary: {
         orderCount: orderAgg._count,

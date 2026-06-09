@@ -29,7 +29,7 @@ import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
 type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -505,7 +505,8 @@ interface ResourceDetailRow extends ResourceRow {
   settlementSummary?: AggregateSummary;
 }
 
-interface SalesData {
+interface SalesData extends PageMeta {
+  items?: OrderRow[];
   orders: OrderRow[];
   summary: {
     orderCount: number;
@@ -660,7 +661,7 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "usages", "products", "orders", "rentals", "proxyRequests", "resources", "settlements", "withdrawals", "audit"];
+const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "proxyRequests", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
@@ -763,6 +764,15 @@ function App() {
     }));
   }
 
+  async function loadSales(queryOverride?: ListQueryState) {
+    const page = await api<SalesData>(buildListUrl("/api/admin/sales", queryOverride ?? listQueries.sales));
+    setSales(page);
+    setListMeta((current) => ({
+      ...current,
+      sales: { total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages }
+    }));
+  }
+
   async function loadSub2View() {
     const [status, bindings] = await Promise.all([
       api<Sub2Status>("/api/admin/sub2/status"),
@@ -781,7 +791,7 @@ function App() {
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
       if (nextView === "reconciliation") setReconciliation(await api<ReconciliationResult>("/api/admin/reconciliation"));
-      if (nextView === "sales") setSales(await api<SalesData>("/api/admin/sales"));
+      if (nextView === "sales") await loadSales(queryOverride);
       if (nextView === "usages") await loadUsages(queryOverride);
       if (nextView === "products") await loadPaged("products", "/api/admin/products", setProducts, queryOverride);
       if (nextView === "orders") await loadPaged("orders", "/api/admin/orders", setOrders, queryOverride);
@@ -869,6 +879,11 @@ function App() {
       if (listView === "walletTransactions") {
         const { rows, total } = await fetchAllListPages<WalletTransactionRow>(listView, "/api/admin/wallet-transactions", query);
         exportWalletTransactionsCsv(rows, "filtered-all");
+        exported = total;
+      }
+      if (listView === "sales") {
+        const { rows, total } = await fetchAllListPages<OrderRow>(listView, "/api/admin/sales", query);
+        exportOrdersCsv(rows, "sales-orders", "filtered-all");
         exported = total;
       }
       if (listView === "usages") {
@@ -1466,10 +1481,17 @@ function App() {
           <SalesView
             sales={sales}
             selectedOrder={selectedOrder}
+            query={listQueries.sales}
+            meta={listMeta.sales}
             onDetail={openOrderDetail}
             onCancel={cancelOrder}
             onRefund={refundOrder}
             onCloseDetail={() => setSelectedOrder(null)}
+            onDraft={(patch) => updateListDraft("sales", patch)}
+            onFilter={(event) => submitListFilters("sales", event)}
+            onClear={() => clearListFilters("sales")}
+            onPage={(page) => changeListPage("sales", page)}
+            onExport={() => exportFilteredList("sales")}
           />
         )}
         {view === "usages" && (
@@ -2106,28 +2128,44 @@ function ReconciliationView({ reconciliation, onRefresh }: {
   );
 }
 
-function SalesView({ sales, selectedOrder, onDetail, onCancel, onRefund, onCloseDetail }: {
+function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
   onCancel: (orderId: string) => void;
   onRefund: (orderId: string) => void;
   onCloseDetail: () => void;
-}) {
+} & ManagedListProps) {
   const orders = sales?.orders ?? [];
   return (
     <section className="stack">
       <section className="cards compact-cards">
-        <Metric label="订单数" value={sales?.summary.orderCount ?? 0} />
+        <Metric label="订单数" value={sales?.summary.orderCount ?? meta.total} />
         <Metric label="订单金额" value={money(sales?.summary.totalAmount)} />
         <Metric label="已付金额" value={money(sales?.summary.paidAmount)} />
         <Metric label="按量收入" value={money(sales?.summary.usageCharge)} />
       </section>
-      <div className="panel glass-panel export-strip">
-        <span className="eyebrow">Export</span>
-        <button className="secondary" onClick={() => exportOrdersCsv(orders, "sales-orders")}><Download size={16} />导出售出订单</button>
-      </div>
-      <OrdersView orders={orders} title="售出订单" selectedOrder={selectedOrder} onDetail={onDetail} onCancel={onCancel} onRefund={onRefund} onCloseDetail={onCloseDetail} />
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="order / email / product / rental"
+        statusOptions={orderStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <OrdersView
+        orders={orders}
+        title="售出订单"
+        selectedOrder={selectedOrder}
+        meta={meta}
+        onDetail={onDetail}
+        onCancel={onCancel}
+        onRefund={onRefund}
+        onCloseDetail={onCloseDetail}
+      />
     </section>
   );
 }
