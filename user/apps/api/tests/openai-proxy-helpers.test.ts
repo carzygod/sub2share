@@ -5,6 +5,7 @@ import {
   estimateProxyInputTokens,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
+  openAiProxyCorsExposedHeaders,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText
@@ -58,4 +59,8 @@ test("normalizes copied proxy request id headers for admin search", () => {
   assert.equal(normalizeProxyRequestLookup("X-Request-Id=req-456;"), "req-456");
   assert.equal(normalizeProxyRequestLookup("  user@example.com  "), "user@example.com");
   assert.equal(normalizeProxyRequestLookup("   "), "");
+});
+
+test("exposes the proxy request id header to browser clients", () => {
+  assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName]);
 });

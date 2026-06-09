@@ -1,4 +1,5 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
+export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName];
 
 export function attachProxyRequestIdHeader(reply: { header: (name: string, value: string) => unknown }, requestId: string) {
   reply.header(proxyRequestIdHeaderName, requestId);

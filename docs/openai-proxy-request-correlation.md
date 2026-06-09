@@ -14,10 +14,12 @@
 - `x-proxy-request-id` 与 `ProxyRequestLog.requestId` 保持一致，可在管理员 `反代请求` 页面搜索。
 - 管理员 `反代请求` 接口会归一化搜索关键词，支持直接粘贴 `x-proxy-request-id: <requestId>` 或 `x-request-id=<requestId>`。
 - 管理后台 `反代请求` 表格将请求 ID 单独展示，并提供复制按钮。
+- API CORS 配置通过 `Access-Control-Expose-Headers` 暴露 `x-proxy-request-id`，浏览器端 JavaScript 也可以读取该响应头。
 
 ## 管理员价值
 
 - 用户只要提供响应头中的 `x-proxy-request-id`，管理员就能定位对应本地代理日志。
+- 浏览器集成方无需打开开发者工具，也可以在代码里读取 `x-proxy-request-id` 并展示给用户或写入工单。
 - 管理员无需手工裁剪响应头，可以直接粘贴搜索并复制日志中的请求 ID。
 - 本地拦截和上游失败都能进入同一排查方式，减少售后排障时反复询问 Key、时间和路径的成本。
 - 该能力补齐 OpenAI/Codex 反代链路的可观测性闭环。

@@ -51,4 +51,5 @@ OPENAI_PROXY_PUBLIC_ENDPOINT=https://api.example.com/v1
 2. 创建一笔 Codex/OpenAI 租赁。
 3. 确认订单返回的 `endpointUrl` 指向 API 服务的 `/v1`。
 4. 使用售出的 Key 请求 `${endpointUrl}/models`，预期进入本系统反代并返回 `x-proxy-request-id`。
-5. 在后台运行 `反代状态 -> 端到端自检`，确认 `localProxy.endpoint` 与生产 API `/v1` 一致。
+5. 浏览器端调用时确认响应包含 `Access-Control-Expose-Headers: x-proxy-request-id`，前端代码可读取该请求 ID。
+6. 在后台运行 `反代状态 -> 端到端自检`，确认 `localProxy.endpoint` 与生产 API `/v1` 一致。
