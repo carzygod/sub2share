@@ -13,6 +13,7 @@ import { registerRentalRoutes } from "./modules/rentals/routes.js";
 import { registerSupplierRoutes } from "./modules/suppliers/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
+import { registerOpenAiProxyRoutes } from "./modules/openai-proxy/routes.js";
 
 export async function buildServer() {
   const app = Fastify({
@@ -38,6 +39,7 @@ export async function buildServer() {
   await registerSupplierRoutes(app);
   await registerBillingRoutes(app);
   await registerAdminRoutes(app);
+  await registerOpenAiProxyRoutes(app);
 
   return app;
 }

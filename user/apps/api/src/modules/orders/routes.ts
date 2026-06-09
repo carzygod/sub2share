@@ -21,7 +21,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       where: { id: input.priceId },
       include: { product: true }
     });
-    if (!price || price.productId !== input.productId || price.status !== "active") {
+    if (!price || price.productId !== input.productId || price.status !== "active" || price.product.status !== "active") {
       throw new AppError("product_price_not_found", "Product price not found", 404);
     }
     const amount = price.fixedPrice ?? 0;
@@ -42,17 +42,6 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           totalSpent: wallet.totalSpent.plus(amount)
         }
       });
-      await tx.walletTransaction.create({
-        data: {
-          walletId: wallet.id,
-          type: "consume",
-          amount,
-          balanceAfter: nextBalance,
-          refType: "order",
-          note: "purchase rental"
-        }
-      });
-
       const order = await tx.order.create({
         data: {
           userId: user.id,
@@ -66,6 +55,17 @@ export async function registerOrderRoutes(app: FastifyInstance) {
               amount
             }
           }
+        }
+      });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "consume",
+          amount,
+          balanceAfter: nextBalance,
+          refType: "order",
+          refId: order.id,
+          note: "purchase rental"
         }
       });
 

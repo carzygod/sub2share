@@ -29,6 +29,12 @@ const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  displayName: z.string().min(1).max(64).optional()
+});
+
 const oauthStartParamsSchema = z.object({
   provider: z.enum(["google", "x"])
 });
@@ -47,20 +53,51 @@ const oauthStates = new Map<string, OAuthState>();
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 export async function registerAuthRoutes(app: FastifyInstance) {
-  app.post("/api/auth/register", async () => {
-    throw new AppError("password_signup_disabled", "Password signup is disabled. Please sign in with Google or X.", 410);
+  app.get("/api/auth/capabilities", async (_request, reply) => {
+    return ok(reply, {
+      passwordAuth: isPasswordAuthEnabled(),
+      oauth: {
+        google: isGoogleConfigured(),
+        x: isXConfigured()
+      }
+    });
+  });
+
+  app.post("/api/auth/register", async (request, reply) => {
+    if (!isPasswordAuthEnabled()) {
+      throw new AppError("password_signup_disabled", "Password signup is disabled. Please sign in with Google or X.", 410);
+    }
+
+    const input = registerSchema.parse(request.body);
+    const existing = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() } });
+    if (existing) throw new AppError("email_exists", "Email already registered", 409);
+
+    const user = await prisma.$transaction(async (tx) => tx.user.create({
+      data: {
+        email: input.email.toLowerCase(),
+        passwordHash: await bcrypt.hash(input.password, 12),
+        displayName: input.displayName,
+        roles: { create: { role: "buyer" } },
+        wallet: { create: { currency: "USD" } }
+      },
+      include: { roles: true }
+    }));
+
+    const token = signAuthToken(app, user);
+    return ok(reply, { token, user: publicUser(user) });
   });
 
   app.post("/api/auth/login", async (request, reply) => {
     const input = loginSchema.parse(request.body);
-    const user = await prisma.user.findUnique({ where: { email: input.email }, include: { roles: true } });
+    const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() }, include: { roles: true } });
     if (!user) throw new AppError("invalid_credentials", "Invalid email or password", 401);
 
     const valid = await bcrypt.compare(input.password, user.passwordHash);
     if (!valid) throw new AppError("invalid_credentials", "Invalid email or password", 401);
+    if (user.status !== "active") throw new AppError("account_disabled", "Account is disabled", 403);
 
     const roles = user.roles.map((role) => role.role);
-    const canUsePasswordLogin = roles.includes("admin") || roles.includes("operator");
+    const canUsePasswordLogin = isPasswordAuthEnabled() || roles.includes("admin") || roles.includes("operator");
     if (!canUsePasswordLogin) {
       throw new AppError("oauth_required", "User password login is disabled. Please sign in with Google or X.", 403);
     }
@@ -340,15 +377,27 @@ function publicUser(user: { id: string; email: string; displayName: string | nul
 }
 
 function ensureGoogleConfigured() {
-  if (!env.GOOGLE_OAUTH_CLIENT_ID || !env.GOOGLE_OAUTH_CLIENT_SECRET || !env.GOOGLE_OAUTH_REDIRECT_URI) {
+  if (!isGoogleConfigured()) {
     throw new AppError("google_oauth_not_configured", "Google OAuth is not configured", 503);
   }
 }
 
 function ensureXConfigured() {
-  if (!env.X_OAUTH_CLIENT_ID || !env.X_OAUTH_CLIENT_SECRET || !env.X_OAUTH_REDIRECT_URI) {
+  if (!isXConfigured()) {
     throw new AppError("x_oauth_not_configured", "X OAuth is not configured", 503);
   }
+}
+
+function isGoogleConfigured() {
+  return Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET && env.GOOGLE_OAUTH_REDIRECT_URI);
+}
+
+function isXConfigured() {
+  return Boolean(env.X_OAUTH_CLIENT_ID && env.X_OAUTH_CLIENT_SECRET && env.X_OAUTH_REDIRECT_URI);
+}
+
+function isPasswordAuthEnabled() {
+  return !isGoogleConfigured() && !isXConfigured();
 }
 
 function createCodeChallenge(verifier: string) {

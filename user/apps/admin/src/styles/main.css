@@ -24,7 +24,7 @@ body {
   background: var(--bg);
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 h1, h2, p { margin: 0; overflow-wrap: anywhere; }
 h1 { font-size: clamp(38px, 5vw, 72px); line-height: 0.98; font-weight: 560; letter-spacing: 0; }
 h2 { font-size: clamp(24px, 3vw, 38px); line-height: 1.1; font-weight: 560; letter-spacing: 0; }
@@ -45,6 +45,10 @@ button {
   font-weight: 650;
 }
 button:hover { background: #ffffff; }
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
 .secondary {
   color: var(--text);
   background: transparent;
@@ -57,8 +61,18 @@ button:hover { background: #ffffff; }
   border-color: transparent;
 }
 .ghost:hover { color: var(--text); background: rgba(255, 255, 255, 0.06); }
+.danger {
+  color: var(--inverse);
+  background: var(--danger);
+}
+.danger:hover { background: #ffc1c1; }
+.mini {
+  min-height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
 
-input {
+input, select {
   width: 100%;
   min-height: 48px;
   border: 1px solid var(--line);
@@ -68,8 +82,9 @@ input {
   background: #0f0f0f;
   outline: none;
 }
-input:focus { border-color: rgba(255, 255, 255, 0.38); }
+input:focus, select:focus { border-color: rgba(255, 255, 255, 0.38); }
 input::placeholder { color: #777; }
+select option { color: #111; }
 
 .surface {
   border: 1px solid var(--line-soft);
@@ -234,6 +249,11 @@ input::placeholder { color: #777; }
   gap: 1px;
   background: var(--line-soft);
 }
+.stack {
+  display: grid;
+  gap: 1px;
+  background: var(--line-soft);
+}
 .panel {
   min-width: 0;
   padding: 28px;
@@ -243,6 +263,68 @@ input::placeholder { color: #777; }
   background: var(--surface);
 }
 .wide { grid-column: 1 / -1; }
+.inline-form {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: end;
+}
+.list-controls {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.filter-fields {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(150px, 0.7fr)) minmax(120px, 0.5fr);
+  gap: 10px;
+}
+.filter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.input-with-icon {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+.input-with-icon svg {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  color: var(--faint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.input-with-icon input { padding-left: 38px; }
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.export-strip {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.pager .mini {
+  width: 34px;
+  padding: 6px;
+}
+.credential-form {
+  grid-template-columns: 160px minmax(180px, 240px) minmax(260px, 1fr) minmax(180px, 240px) auto;
+}
+.product-price-form {
+  grid-template-columns: 140px repeat(5, minmax(120px, 1fr));
+}
+.usage-sync-form {
+  grid-template-columns: 140px minmax(220px, 1fr) auto;
+}
+.withdrawal-form {
+  grid-template-columns: 140px repeat(5, minmax(130px, 1fr)) auto;
+}
 .section-head {
   display: flex;
   justify-content: space-between;
@@ -258,6 +340,94 @@ input::placeholder { color: #777; }
   align-items: center;
   gap: 10px;
   color: var(--success);
+}
+.health-row.warning { color: var(--warning); }
+.diagnostic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line-soft);
+}
+.diagnostic-grid div {
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface-2);
+}
+.diagnostic-grid span {
+  display: block;
+  color: var(--faint);
+  font-size: 12px;
+}
+.diagnostic-grid strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text);
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+.detail-panel {
+  gap: 22px;
+}
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.detail-block {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.detail-block h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 620;
+}
+.compact-table table {
+  min-width: 620px;
+}
+.compact-table th,
+.compact-table td {
+  padding: 10px 8px;
+}
+.compact-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.price-line {
+  display: grid;
+  gap: 7px;
+  padding: 8px 0;
+}
+.price-line + .price-line {
+  border-top: 1px solid var(--line-soft);
+}
+.key-line {
+  display: grid;
+  gap: 7px;
+  padding: 8px 0;
+}
+.key-line + .key-line {
+  border-top: 1px solid var(--line-soft);
+}
+td strong, td small {
+  display: block;
+}
+td strong {
+  color: var(--text);
+  font-weight: 560;
+}
+td small {
+  max-width: 360px;
+  margin-top: 4px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
 }
 
 .table-wrap { width: 100%; overflow-x: auto; }
@@ -287,11 +457,11 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 }
 .status-active, .status-online, .status-paid { color: var(--success); }
 .status-pending, .status-testing, .status-provisioning { color: var(--warning); }
-.status-failed, .status-disabled, .status-banned { color: var(--danger); }
+.status-failed, .status-error, .status-disabled, .status-banned { color: var(--danger); }
 
 @media (max-width: 1020px) {
-  .admin-shell, .login-shell { grid-template-columns: 1fr; }
-  .cards, .content-grid { grid-template-columns: 1fr; }
+  .admin-shell, .login-shell, .diagnostic-grid, .list-controls, .filter-fields, .export-strip, .detail-grid { grid-template-columns: 1fr; }
+  .cards, .content-grid, .compact-cards, .inline-form { grid-template-columns: 1fr; }
   .topbar {
     align-items: stretch;
     flex-direction: column;
@@ -304,6 +474,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
   .admin-shell { grid-template-columns: 1fr; }
   .login-copy, .login-shell form, .panel, .topbar { padding: 20px; }
   .sidebar nav { grid-template-columns: 1fr; }
-  .actions { flex-direction: column; }
+  .actions, .filter-actions { flex-direction: column; }
   button { width: 100%; }
+  .pager { width: 100%; justify-content: space-between; }
 }

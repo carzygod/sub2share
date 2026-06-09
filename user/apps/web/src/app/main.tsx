@@ -71,9 +71,21 @@ interface SupplierResource {
   maxConcurrency: number;
 }
 
+interface AuthCapabilities {
+  passwordAuth: boolean;
+  oauth: {
+    google: boolean;
+    x: boolean;
+  };
+}
+
 function App() {
   const [view, setView] = useState<View>("dashboard");
   const [authMode, setAuthMode] = useState<AuthMode>(null);
+  const [authCapabilities, setAuthCapabilities] = useState<AuthCapabilities>({
+    passwordAuth: false,
+    oauth: { google: true, x: true }
+  });
   const [user, setUser] = useState<User | null>(null);
   const [wallet, setWallet] = useState<WalletAccount | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -128,11 +140,31 @@ function App() {
       setMessage(`第三方登录失败：${error}`);
     }
 
+    api<AuthCapabilities>("/api/auth/capabilities").then(setAuthCapabilities).catch(() => null);
     void refresh();
   }, []);
 
   function startOAuth(provider: OAuthProvider) {
     window.location.href = `${API_BASE}/api/auth/oauth/${provider}/start`;
+  }
+
+  async function passwordAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const path = authMode === "register" ? "/api/auth/register" : "/api/auth/login";
+    const result = await api<{ token: string; user: User }>(path, {
+      method: "POST",
+      body: JSON.stringify({
+        email: form.get("email"),
+        password: form.get("password"),
+        displayName: form.get("displayName")
+      })
+    });
+    saveToken(result.token);
+    setUser(result.user);
+    setAuthMode(null);
+    setMessage(authMode === "register" ? "账号已创建" : "登录成功");
+    await refresh();
   }
 
   async function recharge(event: FormEvent<HTMLFormElement>) {
@@ -186,9 +218,12 @@ function App() {
         <PublicSite onAuth={setAuthMode} />
         {authMode && (
           <AuthDialog
+            mode={authMode}
+            capabilities={authCapabilities}
             message={message}
             onClose={() => setAuthMode(null)}
             onOAuth={startOAuth}
+            onPasswordAuth={passwordAuth}
           />
         )}
       </>
@@ -301,31 +336,49 @@ function PublicSite({ onAuth }: { onAuth: (mode: AuthMode) => void }) {
   );
 }
 
-function AuthDialog({ message, onClose, onOAuth }: {
+function AuthDialog({ mode, capabilities, message, onClose, onOAuth, onPasswordAuth }: {
+  mode: Exclude<AuthMode, null>;
+  capabilities: AuthCapabilities;
   message: string;
   onClose: () => void;
   onOAuth: (provider: OAuthProvider) => void;
+  onPasswordAuth: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const hasOAuth = capabilities.oauth.google || capabilities.oauth.x;
   return (
     <div className="auth-overlay" role="dialog" aria-modal="true">
       <section className="auth-dialog surface">
         <button className="icon-button" onClick={onClose} aria-label="关闭"><X size={18} /></button>
         <Brand />
         <div>
-          <h2>登录智算驿站</h2>
-          <p>使用 Google 或 X 账号进入租赁和供给工作台。</p>
+          <h2>{mode === "register" ? "创建智算驿站账号" : "登录智算驿站"}</h2>
+          <p>{capabilities.passwordAuth ? "使用邮箱密码进入租赁和供给工作台。" : "使用 Google 或 X 账号进入租赁和供给工作台。"}</p>
         </div>
         {message && <div className="notice compact">{message}</div>}
-        <div className="oauth-options">
-          <button className="oauth-button" onClick={() => onOAuth("google")}>
-            <span className="oauth-icon">G</span>
-            继续使用 Google
-          </button>
-          <button className="oauth-button dark" onClick={() => onOAuth("x")}>
-            <span className="oauth-icon">X</span>
-            继续使用 X
-          </button>
-        </div>
+        {capabilities.passwordAuth && (
+          <form className="auth-form" onSubmit={onPasswordAuth}>
+            {mode === "register" && <input name="displayName" placeholder="显示名称" />}
+            <input name="email" type="email" placeholder="邮箱" required />
+            <input name="password" type="password" placeholder="密码" minLength={8} required />
+            <button>{mode === "register" ? "创建账号" : "登录"}</button>
+          </form>
+        )}
+        {hasOAuth && (
+          <div className="oauth-options">
+            {capabilities.oauth.google && (
+              <button className="oauth-button" onClick={() => onOAuth("google")}>
+                <span className="oauth-icon">G</span>
+                继续使用 Google
+              </button>
+            )}
+            {capabilities.oauth.x && (
+              <button className="oauth-button dark" onClick={() => onOAuth("x")}>
+                <span className="oauth-icon">X</span>
+                继续使用 X
+              </button>
+            )}
+          </div>
+        )}
         <p className="auth-terms">登录即代表你同意平台服务条款和隐私政策。</p>
       </section>
     </div>

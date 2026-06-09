@@ -1,22 +1,64 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  Activity,
   AlertTriangle,
   BarChart3,
   Boxes,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   CircleDollarSign,
+  Download,
+  Filter,
   KeyRound,
+  PackagePlus,
+  ReceiptText,
   RefreshCw,
+  ScrollText,
+  Search,
   ShieldCheck,
   TrendingUp,
-  Users
+  Users,
+  WalletCards,
+  X
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "users" | "orders" | "resources";
+type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "resources" | "settlements" | "withdrawals" | "audit";
+type UserStatus = "active" | "disabled" | "banned";
+type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
+
+interface PageMeta {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+interface PagedResult<T> extends PageMeta {
+  items: T[];
+}
+
+interface PagedUsageResult extends PagedResult<UsageRecordRow> {
+  summary?: AggregateSummary;
+}
+
+interface PagedWithdrawalResult extends PagedResult<WithdrawalRow> {
+  summary?: AggregateSummary;
+}
+
+interface ListQueryState {
+  q: string;
+  status: string;
+  resourceType: string;
+  action: string;
+  page: number;
+  pageSize: number;
+}
 
 interface Dashboard {
   users: number;
@@ -26,21 +68,411 @@ interface Dashboard {
   usageCount: number;
   gmv: string;
   supplierIncome: string;
+  walletAvailable: string;
+  walletFrozen: string;
+  totalRecharged: string;
+  totalSpent: string;
+  paidOrderCount: number;
+  paidOrderAmount: string;
 }
 
-interface Row {
+interface RoleRow {
+  role: string;
+}
+
+interface UserRow {
   id: string;
-  email?: string;
-  status?: string;
-  resourceType?: string;
-  totalAmount?: string;
+  email: string;
+  displayName?: string | null;
+  status: UserStatus;
+  roles: RoleRow[];
+  wallet?: WalletRow | null;
+  _count?: {
+    orders: number;
+    rentals: number;
+    apiKeys: number;
+  };
   createdAt?: string;
 }
+
+interface WalletRow {
+  id: string;
+  userId: string;
+  availableBalance: string;
+  frozenBalance: string;
+  totalRecharged: string;
+  totalSpent: string;
+  updatedAt?: string;
+  user?: UserRow;
+  transactions?: WalletTransactionRow[];
+}
+
+interface WalletTransactionRow {
+  id: string;
+  walletId: string;
+  type: string;
+  amount: string;
+  balanceAfter: string;
+  currency: string;
+  refType?: string | null;
+  refId?: string | null;
+  note?: string | null;
+  createdAt: string;
+  wallet?: WalletRow;
+}
+
+interface UserIdentityRow {
+  id: string;
+  provider: string;
+  providerUserId: string;
+  email?: string | null;
+  displayName?: string | null;
+  avatarUrl?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface OrderRow {
+  id: string;
+  status: string;
+  currency?: string;
+  totalAmount: string;
+  paidAmount: string;
+  paymentRef?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  user?: UserRow;
+  items?: OrderItemRow[];
+  rentals?: RentalRow[];
+}
+
+interface OrderItemRow {
+  id: string;
+  productId: string;
+  priceId?: string | null;
+  quantity: number;
+  amount: string;
+  meta?: unknown;
+  product?: ProductRow;
+}
+
+interface ProductRow {
+  id: string;
+  name: string;
+  resourceType: string;
+  billingMode: string;
+  status: string;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  prices?: ProductPriceRow[];
+  _count?: {
+    prices: number;
+    orders: number;
+    rentals: number;
+  };
+}
+
+interface ProductPriceRow {
+  id: string;
+  productId: string;
+  tierCode: string;
+  displayName: string;
+  discountRate: string;
+  tierMultiplier: string;
+  fixedPrice?: string | null;
+  durationDays?: number | null;
+  maxConcurrency: number;
+  requestLimit?: number | null;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface OrderDetailRow extends OrderRow {
+  user: UserRow;
+  items: OrderItemRow[];
+  rentals: RentalRow[];
+}
+
+interface RentalRow {
+  id: string;
+  status: string;
+  resourceType: string;
+  endpointUrl?: string | null;
+  sub2KeyId?: string | null;
+  createdAt: string;
+  endsAt?: string | null;
+  user?: UserRow;
+  order?: OrderRow;
+  product?: { name: string };
+  apiKeys?: ApiKeyRow[];
+  limits?: {
+    maxConcurrency: number;
+    rpmLimit?: number | null;
+    tpmLimit?: number | null;
+    requestLimit?: number | null;
+    remainingSpend?: string | null;
+  } | null;
+}
+
+interface ResourceRow {
+  id: string;
+  resourceType: string;
+  status: ResourceStatus;
+  level: string;
+  shareRate?: string;
+  dailyCap?: string | null;
+  reserveRatio?: string;
+  maxConcurrency: number;
+  sub2AccountId?: string | null;
+  lastCheckedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  supplier?: {
+    id: string;
+    displayName?: string | null;
+    status?: string;
+    defaultShareRate?: string;
+    user?: UserRow;
+  };
+}
+
+interface WithdrawalRow {
+  id: string;
+  supplierId?: string;
+  amount: string;
+  currency?: string;
+  status: string;
+  payoutRef?: string | null;
+  note?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  supplier?: {
+    id: string;
+    displayName?: string | null;
+    user?: UserRow;
+  };
+}
+
+interface SupplierDetailRow {
+  id: string;
+  displayName?: string | null;
+  status: string;
+  defaultShareRate: string;
+  resources?: ResourceRow[];
+  withdrawals?: WithdrawalRow[];
+}
+
+interface ApiKeyRow {
+  id: string;
+  name: string;
+  keyPrefix: string;
+  status: string;
+  lastUsedAt?: string | null;
+  createdAt: string;
+}
+
+interface UserDetailRow extends UserRow {
+  phone?: string | null;
+  updatedAt?: string;
+  identities?: UserIdentityRow[];
+  orders?: OrderRow[];
+  rentals?: RentalRow[];
+  apiKeys?: ApiKeyRow[];
+  supplier?: SupplierDetailRow | null;
+}
+
+interface SettlementRow {
+  id: string;
+  amount: string;
+  status: string;
+  shareRate: string;
+  availableAt?: string | null;
+  createdAt: string;
+  supplierResource?: ResourceRow;
+  usageRecord?: UsageRecordRow | null;
+}
+
+interface UsageRecordRow {
+  id: string;
+  sub2RequestId: string;
+  rentalId: string;
+  userId: string;
+  resourceType: string;
+  model?: string | null;
+  inputUnits: string;
+  outputUnits: string;
+  apiEquivalentCost: string;
+  buyerCharge: string;
+  supplierIncome: string;
+  status: string;
+  occurredAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  rental?: RentalRow;
+  supplierResource?: ResourceRow | null;
+  settlements?: SettlementRow[];
+}
+
+interface AggregateSummary {
+  _count: number;
+  _sum: Record<string, string | number | null>;
+}
+
+interface ResourceDetailRow extends ResourceRow {
+  usages?: UsageRecordRow[];
+  settlements?: SettlementRow[];
+  usageSummary?: AggregateSummary;
+  settlementSummary?: AggregateSummary;
+}
+
+interface SalesData {
+  orders: OrderRow[];
+  summary: {
+    orderCount: number;
+    totalAmount: string;
+    paidAmount: string;
+    usageCount: number;
+    usageCharge: string;
+    supplierIncome: string;
+  };
+}
+
+interface Sub2AccountStatus {
+  id: number;
+  name: string;
+  platform: string;
+  type: string;
+  status: string;
+  errorMessage?: string | null;
+  credentialsStatus?: string | null;
+  groupIds: number[];
+  groupNames: string[];
+  schedulable?: boolean;
+  concurrency?: number;
+  currentConcurrency?: number;
+  lastUsedAt?: string | null;
+  rateLimitedAt?: string | null;
+  overloadUntil?: string | null;
+  tempUnschedulableUntil?: string | null;
+  tempUnschedulableReason?: string | null;
+  updatedAt?: string;
+}
+
+interface Sub2Status {
+  checkedAt: string;
+  baseUrl: string;
+  publicEndpoint: string;
+  defaultGroupId?: number;
+  gatewayReachable: boolean;
+  ready: boolean;
+  blockingReasons: string[];
+  openAiGroup?: {
+    id: number;
+    name: string;
+    platform?: string;
+    status?: string;
+  };
+  accounts: Sub2AccountStatus[];
+}
+
+interface Sub2AccountTestResult {
+  ok: boolean;
+  statusCode: number;
+  testedAt: string;
+  events: Record<string, unknown>[];
+  raw: string;
+}
+
+interface Sub2ProxySmokeTestResult {
+  ok: boolean;
+  checkedAt: string;
+  model: string;
+  gatewayBaseUrl: string;
+  publicEndpoint: string;
+  sub2UserId?: string;
+  sub2KeyId?: string;
+  keyDisabled: boolean;
+  cleanupError?: string | null;
+  provisioning: {
+    ok: boolean;
+    error?: string | null;
+  };
+  models: {
+    ok: boolean;
+    statusCode: number;
+    modelCount: number;
+    firstModel?: string | null;
+    error?: string | null;
+  };
+  responses: {
+    ok: boolean;
+    statusCode: number;
+    responseId?: string | null;
+    responseStatus?: string | null;
+    errorType?: string | null;
+    errorMessage?: string | null;
+  };
+}
+
+interface AuditLogRow {
+  id: string;
+  action: string;
+  objectType: string;
+  objectId?: string | null;
+  before?: unknown;
+  after?: unknown;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  actor?: {
+    id: string;
+    email: string;
+    displayName?: string | null;
+  } | null;
+}
+
+const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "usages", "products", "orders", "rentals", "resources", "settlements", "withdrawals", "audit"];
+const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
+const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
+const userStatusOptions = ["active", "disabled", "banned"];
+const productStatusOptions = ["draft", "active", "offline"];
+const billingModeOptions = ["pay_as_you_go", "daily", "weekly", "monthly"];
+const usageStatusOptions = ["pending", "billed", "refunded", "ignored", "disputed"];
+const orderStatusOptions = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"];
+const rentalStatusOptions = ["active", "low_balance", "limited", "suspended", "expired", "refunded", "closed"];
+const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"];
+const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
+const withdrawalStatusOptions = ["pending", "approved", "rejected", "paid", "cancelled"];
+const walletTransactionTypeOptions = ["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"];
+const resourceTypeOptions = ["codex", "claude_code", "gemini", "antigravity"];
 
 function App() {
   const [view, setView] = useState<View>("dashboard");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
+  const [wallets, setWallets] = useState<WalletRow[]>([]);
+  const [walletTransactions, setWalletTransactions] = useState<WalletTransactionRow[]>([]);
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<OrderDetailRow | null>(null);
+  const [rentals, setRentals] = useState<RentalRow[]>([]);
+  const [usages, setUsages] = useState<UsageRecordRow[]>([]);
+  const [usageSummary, setUsageSummary] = useState<AggregateSummary | null>(null);
+  const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
+  const [settlements, setSettlements] = useState<SettlementRow[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
+  const [withdrawalSummary, setWithdrawalSummary] = useState<AggregateSummary | null>(null);
+  const [sales, setSales] = useState<SalesData | null>(null);
+  const [sub2Status, setSub2Status] = useState<Sub2Status | null>(null);
+  const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
+  const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
+  const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
+  const [listMeta, setListMeta] = useState<Record<ManagedListView, PageMeta>>(() => createDefaultListMeta());
   const [message, setMessage] = useState("");
   const [loggedIn, setLoggedIn] = useState(Boolean(localStorage.getItem("zyz_admin_token")));
 
@@ -57,23 +489,372 @@ function App() {
     await refresh("dashboard");
   }
 
-  async function refresh(nextView = view) {
+  async function loadPaged<T>(
+    listView: ManagedListView,
+    path: string,
+    setter: (items: T[]) => void,
+    queryOverride?: ListQueryState
+  ) {
+    const page = await api<PagedResult<T>>(buildListUrl(path, queryOverride ?? listQueries[listView]));
+    setter(page.items);
+    setListMeta((current) => ({
+      ...current,
+      [listView]: { total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages }
+    }));
+  }
+
+  async function loadUsages(queryOverride?: ListQueryState) {
+    const page = await api<PagedUsageResult>(buildListUrl("/api/admin/usages", queryOverride ?? listQueries.usages));
+    setUsages(page.items);
+    setUsageSummary(page.summary ?? null);
+    setListMeta((current) => ({
+      ...current,
+      usages: { total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages }
+    }));
+  }
+
+  async function loadWithdrawals(queryOverride?: ListQueryState) {
+    const page = await api<PagedWithdrawalResult>(buildListUrl("/api/admin/withdrawals", queryOverride ?? listQueries.withdrawals));
+    setWithdrawals(page.items);
+    setWithdrawalSummary(page.summary ?? null);
+    setListMeta((current) => ({
+      ...current,
+      withdrawals: { total: page.total, page: page.page, pageSize: page.pageSize, totalPages: page.totalPages }
+    }));
+  }
+
+  async function refresh(nextView = view, queryOverride?: ListQueryState) {
     try {
       setView(nextView);
-      if (nextView === "dashboard") {
-        setDashboard(await api<Dashboard>("/api/admin/dashboard"));
-        setRows([]);
-      }
-      if (nextView === "users") setRows(await api<Row[]>("/api/admin/users"));
-      if (nextView === "orders") setRows(await api<Row[]>("/api/admin/orders"));
-      if (nextView === "resources") setRows(await api<Row[]>("/api/admin/resources"));
+      if (nextView === "dashboard") setDashboard(await api<Dashboard>("/api/admin/dashboard"));
+      if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
+      if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
+      if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
+      if (nextView === "sales") setSales(await api<SalesData>("/api/admin/sales"));
+      if (nextView === "usages") await loadUsages(queryOverride);
+      if (nextView === "products") await loadPaged("products", "/api/admin/products", setProducts, queryOverride);
+      if (nextView === "orders") await loadPaged("orders", "/api/admin/orders", setOrders, queryOverride);
+      if (nextView === "rentals") await loadPaged("rentals", "/api/admin/rentals", setRentals, queryOverride);
+      if (nextView === "sub2") setSub2Status(await api<Sub2Status>("/api/admin/sub2/status"));
+      if (nextView === "resources") await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
+      if (nextView === "settlements") await loadPaged("settlements", "/api/admin/settlements", setSettlements, queryOverride);
+      if (nextView === "withdrawals") await loadWithdrawals(queryOverride);
+      if (nextView === "audit") await loadPaged("audit", "/api/admin/audit-logs", setAuditLogs, queryOverride);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
   }
 
+  function updateListDraft(listView: ManagedListView, patch: Partial<ListQueryState>) {
+    setListQueries((current) => ({ ...current, [listView]: { ...current[listView], ...patch } }));
+  }
+
+  async function submitListFilters(listView: ManagedListView, event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const nextQuery: ListQueryState = {
+      ...listQueries[listView],
+      q: String(form.get("q") || "").trim(),
+      status: String(form.get("status") || "").trim(),
+      resourceType: String(form.get("resourceType") || "").trim(),
+      action: String(form.get("action") || "").trim(),
+      page: 1,
+      pageSize: Number(form.get("pageSize") || listQueries[listView].pageSize)
+    };
+    setListQueries((current) => ({ ...current, [listView]: nextQuery }));
+    await refresh(listView, nextQuery);
+  }
+
+  async function clearListFilters(listView: ManagedListView) {
+    const nextQuery = { ...defaultListQuery, pageSize: listQueries[listView].pageSize };
+    setListQueries((current) => ({ ...current, [listView]: nextQuery }));
+    await refresh(listView, nextQuery);
+  }
+
+  async function changeListPage(listView: ManagedListView, page: number) {
+    const meta = listMeta[listView];
+    const nextQuery = { ...listQueries[listView], page: Math.min(Math.max(page, 1), meta.totalPages) };
+    setListQueries((current) => ({ ...current, [listView]: nextQuery }));
+    await refresh(listView, nextQuery);
+  }
+
+  async function createUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const roles = String(form.get("roles") || "buyer").split(",").map((role) => role.trim()).filter(Boolean);
+    await api("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        email: form.get("email"),
+        password: form.get("password"),
+        displayName: form.get("displayName"),
+        roles
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("用户已创建");
+    await refresh("users");
+  }
+
+  async function setUserStatus(userId: string, status: UserStatus) {
+    await api(`/api/admin/users/${userId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("用户状态已更新");
+    await refresh("users");
+    if (selectedUser?.id === userId) await openUserDetail(userId);
+  }
+
+  async function adjustWallet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const userId = String(form.get("userId") || "");
+    await api(`/api/admin/users/${userId}/wallet-adjust`, {
+      method: "POST",
+      body: JSON.stringify({ amount: form.get("amount"), note: form.get("note") })
+    });
+    event.currentTarget.reset();
+    setMessage("余额已调整");
+    await refresh("wallets");
+    if (selectedUser?.id === userId) await openUserDetail(userId);
+  }
+
+  async function createProduct(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await api("/api/admin/products", {
+      method: "POST",
+      body: JSON.stringify({
+        name: form.get("name"),
+        description: optionalFormString(form, "description"),
+        resourceType: form.get("resourceType"),
+        billingMode: form.get("billingMode"),
+        status: form.get("status")
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("Product created");
+    await refresh("products");
+  }
+
+  async function setProductStatus(productId: string, status: string) {
+    await api(`/api/admin/products/${productId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("Product status updated");
+    await refresh("products");
+  }
+
+  async function createProductPrice(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const productId = String(form.get("productId") || "");
+    await api(`/api/admin/products/${productId}/prices`, {
+      method: "POST",
+      body: JSON.stringify({
+        tierCode: form.get("tierCode"),
+        displayName: form.get("displayName"),
+        fixedPrice: form.get("fixedPrice"),
+        durationDays: optionalFormString(form, "durationDays"),
+        maxConcurrency: form.get("maxConcurrency"),
+        requestLimit: optionalFormString(form, "requestLimit"),
+        discountRate: form.get("discountRate"),
+        tierMultiplier: form.get("tierMultiplier"),
+        status: form.get("status")
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("Product price created");
+    await refresh("products");
+  }
+
+  async function setProductPriceStatus(priceId: string, status: string) {
+    await api(`/api/admin/product-prices/${priceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("Product price status updated");
+    await refresh("products");
+  }
+
+  async function setRentalStatus(rentalId: string, status: string) {
+    await api(`/api/admin/rentals/${rentalId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("Rental status updated");
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
+      await openOrderDetail(selectedOrder.id);
+    }
+  }
+
+  async function setApiKeyStatus(apiKeyId: string, status: string) {
+    await api(`/api/admin/api-keys/${apiKeyId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("API key status updated");
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((rental) => (rental.apiKeys ?? []).some((apiKey) => apiKey.id === apiKeyId))) {
+      await openOrderDetail(selectedOrder.id);
+    }
+    if (selectedUser?.apiKeys?.some((apiKey) => apiKey.id === apiKeyId)) {
+      await openUserDetail(selectedUser.id);
+    }
+  }
+
+  async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const result = await api<{ imported: number; skipped: number; unmatched: number; nextCursor?: string }>("/api/admin/usages/sync-sub2", {
+      method: "POST",
+      body: JSON.stringify({ cursor: optionalFormString(form, "cursor") })
+    });
+    setMessage(`Usage sync imported ${result.imported}, skipped ${result.skipped}, unmatched ${result.unmatched}`);
+    await refresh("usages");
+  }
+
+  async function createWithdrawal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await api("/api/admin/withdrawals", {
+      method: "POST",
+      body: JSON.stringify({
+        supplierEmail: form.get("supplierEmail"),
+        amount: form.get("amount"),
+        currency: optionalFormString(form, "currency") ?? "USD",
+        status: form.get("status"),
+        payoutRef: optionalFormString(form, "payoutRef"),
+        note: optionalFormString(form, "note")
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("Withdrawal created");
+    await refresh("withdrawals");
+  }
+
+  async function setWithdrawalStatus(withdrawalId: string, status: string, payoutRef?: string) {
+    await api(`/api/admin/withdrawals/${withdrawalId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, payoutRef })
+    });
+    setMessage("Withdrawal status updated");
+    await refresh("withdrawals");
+  }
+
+  async function openUserDetail(userId: string) {
+    try {
+      setSelectedUser(await api<UserDetailRow>(`/api/admin/users/${userId}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function openOrderDetail(orderId: string) {
+    try {
+      setSelectedOrder(await api<OrderDetailRow>(`/api/admin/orders/${orderId}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function openResourceDetail(resourceId: string) {
+    try {
+      setSelectedResource(await api<ResourceDetailRow>(`/api/admin/resources/${resourceId}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function setResourceStatus(resourceId: string, status: ResourceStatus) {
+    await api(`/api/admin/resources/${resourceId}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    });
+    setMessage("资源状态已更新");
+    await refresh("resources");
+    if (selectedResource?.id === resourceId) await openResourceDetail(resourceId);
+  }
+
+  async function createResource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const resource = await api<ResourceRow>("/api/admin/resources", {
+      method: "POST",
+      body: JSON.stringify({
+        supplierEmail: form.get("supplierEmail"),
+        displayName: optionalFormString(form, "displayName"),
+        resourceType: form.get("resourceType"),
+        status: form.get("status"),
+        level: form.get("level"),
+        maxConcurrency: form.get("maxConcurrency"),
+        shareRate: form.get("shareRate"),
+        reserveRatio: form.get("reserveRatio"),
+        dailyCap: optionalFormString(form, "dailyCap"),
+        sub2AccountId: optionalFormString(form, "sub2AccountId")
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("共享资源已创建");
+    await refresh("resources");
+    await openResourceDetail(resource.id);
+  }
+
+  async function refreshSub2Account(accountId: number) {
+    const result = await api<{ ok: boolean; error?: string | null }>(`/api/admin/sub2/accounts/${accountId}/refresh`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setMessage(result.ok ? "Sub2 上游账号刷新已触发" : `刷新失败：${result.error ?? "未知错误"}`);
+    await refresh("sub2");
+  }
+
+  async function testSub2Account(accountId: number) {
+    const result = await api<Sub2AccountTestResult>(`/api/admin/sub2/accounts/${accountId}/test`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSub2Tests((current) => ({ ...current, [accountId]: result }));
+    setMessage(result.ok ? "Sub2 上游账号测试通过" : `测试失败：${testSummary(result)}`);
+    await refresh("sub2");
+  }
+
+  async function runSub2SmokeTest() {
+    const result = await api<Sub2ProxySmokeTestResult>("/api/admin/sub2/proxy-smoke-test", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    setSub2Smoke(result);
+    setMessage(result.ok ? "Codex 反代端到端自检通过" : `反代自检失败：${smokeSummary(result)}`);
+    await refresh("sub2");
+  }
+
+  async function applySub2RefreshToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const accountId = String(form.get("accountId") || "");
+    const clientId = String(form.get("clientId") || "").trim();
+    const refreshToken = String(form.get("refreshToken") || "");
+    const result = await api<{ ok: boolean; error?: string | null }>(
+      `/api/admin/sub2/accounts/${accountId}/apply-openai-refresh-token`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          refreshToken,
+          clientId: clientId || undefined
+        })
+      }
+    );
+    event.currentTarget.reset();
+    setMessage(result.ok ? "OpenAI 上游凭据已应用" : `凭据应用失败：${result.error ?? "未知错误"}`);
+    await refresh("sub2");
+  }
+
   useEffect(() => {
-    if (loggedIn) refresh("dashboard");
+    if (loggedIn) void refresh("dashboard");
   }, [loggedIn]);
 
   if (!loggedIn) {
@@ -89,7 +870,7 @@ function App() {
               </div>
             </div>
             <h1>供需调度与结算控制台</h1>
-            <p>面向运营、审核、资源调度与财务结算的深色工作台。</p>
+            <p>面向用户、共享资源、余额、销售和租赁的统一管理入口。</p>
           </div>
           <form onSubmit={login}>
             <span className="eyebrow">Admin Access</span>
@@ -104,13 +885,6 @@ function App() {
     );
   }
 
-  const cards = [
-    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} /> },
-    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} /> },
-    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} /> },
-    { label: "GMV", value: `$${dashboard?.gmv ?? "0"}`, icon: <TrendingUp size={20} /> }
-  ];
-
   return (
     <main className="admin-shell">
       <aside className="sidebar glass-panel">
@@ -123,11 +897,19 @@ function App() {
         </div>
         <nav>
           <NavButton active={view === "dashboard"} onClick={() => refresh("dashboard")} icon={<BarChart3 size={18} />}>经营看板</NavButton>
-          <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户账户</NavButton>
-          <NavButton active={view === "orders"} onClick={() => refresh("orders")} icon={<KeyRound size={18} />}>订单租赁</NavButton>
-          <NavButton active={view === "resources"} onClick={() => refresh("resources")} icon={<Boxes size={18} />}>资源池</NavButton>
-          <NavButton active={false} onClick={() => null} icon={<CircleDollarSign size={18} />}>结算</NavButton>
-          <NavButton active={false} onClick={() => null} icon={<AlertTriangle size={18} />}>风控</NavButton>
+          <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户管理</NavButton>
+          <NavButton active={view === "wallets"} onClick={() => refresh("wallets")} icon={<WalletCards size={18} />}>余额管理</NavButton>
+          <NavButton active={view === "walletTransactions"} onClick={() => refresh("walletTransactions")} icon={<ReceiptText size={18} />}>余额流水</NavButton>
+          <NavButton active={view === "sales"} onClick={() => refresh("sales")} icon={<TrendingUp size={18} />}>售出情况</NavButton>
+          <NavButton active={view === "usages"} onClick={() => refresh("usages")} icon={<Activity size={18} />}>用量</NavButton>
+          <NavButton active={view === "products"} onClick={() => refresh("products")} icon={<PackagePlus size={18} />}>商品</NavButton>
+          <NavButton active={view === "orders"} onClick={() => refresh("orders")} icon={<KeyRound size={18} />}>订单</NavButton>
+          <NavButton active={view === "rentals"} onClick={() => refresh("rentals")} icon={<ShieldCheck size={18} />}>租赁</NavButton>
+          <NavButton active={view === "sub2"} onClick={() => refresh("sub2")} icon={<Activity size={18} />}>反代状态</NavButton>
+          <NavButton active={view === "resources"} onClick={() => refresh("resources")} icon={<Boxes size={18} />}>共享资源</NavButton>
+          <NavButton active={view === "settlements"} onClick={() => refresh("settlements")} icon={<CircleDollarSign size={18} />}>结算</NavButton>
+          <NavButton active={view === "withdrawals"} onClick={() => refresh("withdrawals")} icon={<WalletCards size={18} />}>提现</NavButton>
+          <NavButton active={view === "audit"} onClick={() => refresh("audit")} icon={<ScrollText size={18} />}>审计</NavButton>
         </nav>
       </aside>
 
@@ -135,8 +917,8 @@ function App() {
         <header className="topbar glass-panel">
           <div>
             <span className="eyebrow">Operations</span>
-            <h1>运营控制台</h1>
-            <p>监控供需状态、订单租赁、资源池健康度与收益结算。</p>
+            <h1>{titleFor(view)}</h1>
+            <p>集中管理所有用户、共享资源、余额、销售订单和 Sub2API 租赁通道。</p>
           </div>
           <div className="actions">
             <button className="secondary" onClick={() => refresh()}><RefreshCw size={18} />刷新</button>
@@ -145,86 +927,1602 @@ function App() {
         </header>
 
         {message && <div className="notice glass-panel">{message}</div>}
-
-        {view === "dashboard" ? (
-          <>
-            <section className="cards">
-              {cards.map((card) => (
-                <div className="metric-card" key={card.label}>
-                  <div className="metric-icon">{card.icon}</div>
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                </div>
-              ))}
-            </section>
-            <section className="content-grid">
-              <div className="panel glass-panel">
-                <span className="eyebrow">Settlement</span>
-                <h2>经营摘要</h2>
-                <table>
-                  <tbody>
-                    <tr><td>待提现</td><td>{dashboard?.pendingWithdrawals ?? 0}</td></tr>
-                    <tr><td>用量记录</td><td>{dashboard?.usageCount ?? 0}</td></tr>
-                    <tr><td>供给方收益</td><td>${dashboard?.supplierIncome ?? "0"}</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="panel glass-panel">
-                <span className="eyebrow">Risk Signal</span>
-                <h2>系统状态</h2>
-                <div className="health-row"><CheckCircle2 size={18} />业务 API 正常</div>
-                <div className="health-row"><ShieldCheck size={18} />Sub2API 调度在线</div>
-              </div>
-            </section>
-          </>
-        ) : (
-          <DataPanel view={view} rows={rows} />
+        {view === "dashboard" && <DashboardView dashboard={dashboard} />}
+        {view === "users" && (
+          <UsersView
+            users={users}
+            selectedUser={selectedUser}
+            query={listQueries.users}
+            meta={listMeta.users}
+            onCreate={createUser}
+            onStatus={setUserStatus}
+            onDetail={openUserDetail}
+            onCloseDetail={() => setSelectedUser(null)}
+            onDraft={(patch) => updateListDraft("users", patch)}
+            onFilter={(event) => submitListFilters("users", event)}
+            onClear={() => clearListFilters("users")}
+            onPage={(page) => changeListPage("users", page)}
+            onExport={() => exportUsersCsv(users)}
+          />
+        )}
+        {view === "wallets" && (
+          <WalletsView
+            wallets={wallets}
+            users={users}
+            query={listQueries.wallets}
+            meta={listMeta.wallets}
+            onAdjust={adjustWallet}
+            onDraft={(patch) => updateListDraft("wallets", patch)}
+            onFilter={(event) => submitListFilters("wallets", event)}
+            onClear={() => clearListFilters("wallets")}
+            onPage={(page) => changeListPage("wallets", page)}
+            onExport={() => exportWalletsCsv(wallets)}
+          />
+        )}
+        {view === "walletTransactions" && (
+          <WalletTransactionsView
+            transactions={walletTransactions}
+            query={listQueries.walletTransactions}
+            meta={listMeta.walletTransactions}
+            onDraft={(patch) => updateListDraft("walletTransactions", patch)}
+            onFilter={(event) => submitListFilters("walletTransactions", event)}
+            onClear={() => clearListFilters("walletTransactions")}
+            onPage={(page) => changeListPage("walletTransactions", page)}
+            onExport={() => exportWalletTransactionsCsv(walletTransactions)}
+          />
+        )}
+        {view === "sales" && (
+          <SalesView
+            sales={sales}
+            selectedOrder={selectedOrder}
+            onDetail={openOrderDetail}
+            onCloseDetail={() => setSelectedOrder(null)}
+          />
+        )}
+        {view === "usages" && (
+          <UsagesView
+            usages={usages}
+            summary={usageSummary}
+            query={listQueries.usages}
+            meta={listMeta.usages}
+            onSync={syncSub2Usages}
+            onDraft={(patch) => updateListDraft("usages", patch)}
+            onFilter={(event) => submitListFilters("usages", event)}
+            onClear={() => clearListFilters("usages")}
+            onPage={(page) => changeListPage("usages", page)}
+            onExport={() => exportUsagesCsv(usages)}
+          />
+        )}
+        {view === "products" && (
+          <ProductsView
+            products={products}
+            query={listQueries.products}
+            meta={listMeta.products}
+            onCreate={createProduct}
+            onProductStatus={setProductStatus}
+            onCreatePrice={createProductPrice}
+            onPriceStatus={setProductPriceStatus}
+            onDraft={(patch) => updateListDraft("products", patch)}
+            onFilter={(event) => submitListFilters("products", event)}
+            onClear={() => clearListFilters("products")}
+            onPage={(page) => changeListPage("products", page)}
+            onExport={() => exportProductsCsv(products)}
+          />
+        )}
+        {view === "orders" && (
+          <OrdersView
+            orders={orders}
+            selectedOrder={selectedOrder}
+            query={listQueries.orders}
+            meta={listMeta.orders}
+            onDetail={openOrderDetail}
+            onCloseDetail={() => setSelectedOrder(null)}
+            onDraft={(patch) => updateListDraft("orders", patch)}
+            onFilter={(event) => submitListFilters("orders", event)}
+            onClear={() => clearListFilters("orders")}
+            onPage={(page) => changeListPage("orders", page)}
+            onExport={() => exportOrdersCsv(orders, "orders")}
+          />
+        )}
+        {view === "rentals" && (
+          <RentalsView
+            rentals={rentals}
+            query={listQueries.rentals}
+            meta={listMeta.rentals}
+            onRentalStatus={setRentalStatus}
+            onApiKeyStatus={setApiKeyStatus}
+            onDraft={(patch) => updateListDraft("rentals", patch)}
+            onFilter={(event) => submitListFilters("rentals", event)}
+            onClear={() => clearListFilters("rentals")}
+            onPage={(page) => changeListPage("rentals", page)}
+            onExport={() => exportRentalsCsv(rentals)}
+          />
+        )}
+        {view === "sub2" && (
+          <Sub2StatusView
+            status={sub2Status}
+            tests={sub2Tests}
+            smoke={sub2Smoke}
+            onRefreshAccount={refreshSub2Account}
+            onTestAccount={testSub2Account}
+            onSmokeTest={runSub2SmokeTest}
+            onApplyRefreshToken={applySub2RefreshToken}
+          />
+        )}
+        {view === "resources" && (
+          <ResourcesView
+            resources={resources}
+            selectedResource={selectedResource}
+            query={listQueries.resources}
+            meta={listMeta.resources}
+            onCreate={createResource}
+            onStatus={setResourceStatus}
+            onDetail={openResourceDetail}
+            onCloseDetail={() => setSelectedResource(null)}
+            onDraft={(patch) => updateListDraft("resources", patch)}
+            onFilter={(event) => submitListFilters("resources", event)}
+            onClear={() => clearListFilters("resources")}
+            onPage={(page) => changeListPage("resources", page)}
+            onExport={() => exportResourcesCsv(resources)}
+          />
+        )}
+        {view === "settlements" && (
+          <SettlementsView
+            settlements={settlements}
+            query={listQueries.settlements}
+            meta={listMeta.settlements}
+            onDraft={(patch) => updateListDraft("settlements", patch)}
+            onFilter={(event) => submitListFilters("settlements", event)}
+            onClear={() => clearListFilters("settlements")}
+            onPage={(page) => changeListPage("settlements", page)}
+            onExport={() => exportSettlementsCsv(settlements)}
+          />
+        )}
+        {view === "withdrawals" && (
+          <WithdrawalsView
+            withdrawals={withdrawals}
+            summary={withdrawalSummary}
+            query={listQueries.withdrawals}
+            meta={listMeta.withdrawals}
+            onCreate={createWithdrawal}
+            onStatus={setWithdrawalStatus}
+            onDraft={(patch) => updateListDraft("withdrawals", patch)}
+            onFilter={(event) => submitListFilters("withdrawals", event)}
+            onClear={() => clearListFilters("withdrawals")}
+            onPage={(page) => changeListPage("withdrawals", page)}
+            onExport={() => exportWithdrawalsCsv(withdrawals)}
+          />
+        )}
+        {view === "audit" && (
+          <AuditLogsView
+            logs={auditLogs}
+            query={listQueries.audit}
+            meta={listMeta.audit}
+            onDraft={(patch) => updateListDraft("audit", patch)}
+            onFilter={(event) => submitListFilters("audit", event)}
+            onClear={() => clearListFilters("audit")}
+            onPage={(page) => changeListPage("audit", page)}
+            onExport={() => exportAuditLogsCsv(auditLogs)}
+          />
         )}
       </section>
     </main>
   );
 }
 
-function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
-  return <button className={active ? "active" : ""} onClick={onClick}>{icon}<span>{children}</span></button>;
+interface ManagedListProps {
+  query: ListQueryState;
+  meta: PageMeta;
+  onDraft: (patch: Partial<ListQueryState>) => void;
+  onFilter: (event: FormEvent<HTMLFormElement>) => void;
+  onClear: () => void;
+  onPage: (page: number) => void;
+  onExport?: () => void;
 }
 
-function DataPanel({ view, rows }: { view: View; rows: Row[] }) {
-  const titleMap: Record<View, string> = {
-    dashboard: "经营看板",
-    users: "用户账户",
-    orders: "订单租赁",
-    resources: "资源池"
-  };
+function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
+  const cards = [
+    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} /> },
+    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} /> },
+    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} /> },
+    { label: "售出金额", value: money(dashboard?.paidOrderAmount), icon: <TrendingUp size={20} /> },
+    { label: "可用余额", value: money(dashboard?.walletAvailable), icon: <WalletCards size={20} /> },
+    { label: "累计充值", value: money(dashboard?.totalRecharged), icon: <CircleDollarSign size={20} /> },
+    { label: "累计消费", value: money(dashboard?.totalSpent), icon: <BarChart3 size={20} /> },
+    { label: "供给收益", value: money(dashboard?.supplierIncome), icon: <ShieldCheck size={20} /> }
+  ];
+
+  return (
+    <>
+      <section className="cards">
+        {cards.map((card) => (
+          <div className="metric-card" key={card.label}>
+            <div className="metric-icon">{card.icon}</div>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+          </div>
+        ))}
+      </section>
+      <section className="content-grid">
+        <div className="panel glass-panel">
+          <span className="eyebrow">Settlement</span>
+          <h2>经营摘要</h2>
+          <table>
+            <tbody>
+              <tr><td>待提现</td><td>{dashboard?.pendingWithdrawals ?? 0}</td></tr>
+              <tr><td>订单数</td><td>{dashboard?.paidOrderCount ?? 0}</td></tr>
+              <tr><td>用量记录</td><td>{dashboard?.usageCount ?? 0}</td></tr>
+              <tr><td>按量 GMV</td><td>{money(dashboard?.gmv)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="panel glass-panel">
+          <span className="eyebrow">Risk Signal</span>
+          <h2>系统状态</h2>
+          <div className="health-row"><CheckCircle2 size={18} />业务 API 正常</div>
+          <div className="health-row"><ShieldCheck size={18} />Sub2API 调度在线</div>
+          <div className="health-row warning"><AlertTriangle size={18} />OAuth 与资源池仍需生产配置</div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+  users: UserRow[];
+  selectedUser: UserDetailRow | null;
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onStatus: (userId: string, status: UserStatus) => void;
+  onDetail: (userId: string) => void;
+  onCloseDetail: () => void;
+} & ManagedListProps) {
+  return (
+    <section className="stack">
+      <form className="panel glass-panel inline-form" onSubmit={onCreate}>
+        <span className="eyebrow">Create user</span>
+        <input name="email" type="email" placeholder="邮箱" required />
+        <input name="displayName" placeholder="显示名称" />
+        <input name="password" type="password" placeholder="初始密码" minLength={8} required />
+        <input name="roles" placeholder="角色，逗号分隔" defaultValue="buyer" />
+        <button>创建用户</button>
+      </form>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="email / user id / role"
+        statusOptions={userStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="用户管理" count={meta.total} headers={["邮箱", "角色", "状态", "余额", "订单/租赁", "操作"]}>
+        {users.map((user) => (
+          <tr key={user.id}>
+            <td><strong>{user.email}</strong><small>{user.displayName ?? user.id}</small></td>
+            <td>{user.roles.map((role) => role.role).join(", ")}</td>
+            <td><StatusPill status={user.status} /></td>
+            <td>{money(user.wallet?.availableBalance)}</td>
+            <td>{user._count?.orders ?? 0} / {user._count?.rentals ?? 0}</td>
+            <td>
+              <div className="row-actions">
+                <button className="secondary mini" onClick={() => onDetail(user.id)}>详情</button>
+                <button className="secondary mini" onClick={() => onStatus(user.id, "active")}>启用</button>
+                <button className="secondary mini" onClick={() => onStatus(user.id, "disabled")}>禁用</button>
+                <button className="danger mini" onClick={() => onStatus(user.id, "banned")}>封禁</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+      {selectedUser && <UserDetailPanel user={selectedUser} onClose={onCloseDetail} />}
+    </section>
+  );
+}
+
+function UserDetailPanel({ user, onClose }: { user: UserDetailRow; onClose: () => void }) {
+  const transactions = user.wallet?.transactions ?? [];
+  const orders = user.orders ?? [];
+  const rentals = user.rentals ?? [];
+  const resources = user.supplier?.resources ?? [];
+  const withdrawals = user.supplier?.withdrawals ?? [];
+  const identities = user.identities ?? [];
+  const apiKeys = user.apiKeys ?? [];
+
+  return (
+    <section className="panel glass-panel wide detail-panel">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">User Detail</span>
+          <h2>{user.email}</h2>
+        </div>
+        <div className="row-actions">
+          <StatusPill status={user.status} />
+          <button className="secondary mini" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+
+      <div className="diagnostic-grid">
+        <div><span>用户 ID</span><strong>{user.id}</strong></div>
+        <div><span>角色</span><strong>{user.roles.map((role) => role.role).join(", ") || "-"}</strong></div>
+        <div><span>可用余额</span><strong>{money(user.wallet?.availableBalance)}</strong></div>
+        <div><span>累计消费</span><strong>{money(user.wallet?.totalSpent)}</strong></div>
+        <div><span>订单 / 租赁</span><strong>{orders.length} / {rentals.length}</strong></div>
+        <div><span>API Key</span><strong>{apiKeys.length}</strong></div>
+        <div><span>供给资源</span><strong>{resources.length}</strong></div>
+        <div><span>创建时间</span><strong>{dateTime(user.createdAt)}</strong></div>
+      </div>
+
+      <section className="detail-grid">
+        <DetailBlock title="最近钱包流水">
+          <MiniTable headers={["类型", "金额", "余额后", "引用", "时间"]}>
+            {transactions.slice(0, 8).map((transaction) => (
+              <tr key={transaction.id}>
+                <td><StatusPill status={transaction.type} /></td>
+                <td>{money(transaction.amount)}</td>
+                <td>{money(transaction.balanceAfter)}</td>
+                <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
+                <td>{dateTime(transaction.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="最近订单">
+          <MiniTable headers={["订单", "状态", "金额", "租赁", "时间"]}>
+            {orders.slice(0, 8).map((order) => (
+              <tr key={order.id}>
+                <td><small>{order.id}</small></td>
+                <td><StatusPill status={order.status} /></td>
+                <td>{money(order.paidAmount)} / {money(order.totalAmount)}</td>
+                <td>{order.rentals?.length ?? 0}</td>
+                <td>{dateTime(order.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="最近租赁">
+          <MiniTable headers={["租赁", "资源", "状态", "Endpoint", "到期"]}>
+            {rentals.slice(0, 8).map((rental) => (
+              <tr key={rental.id}>
+                <td><small>{rental.id}</small></td>
+                <td>{rental.product?.name ?? rental.resourceType}</td>
+                <td><StatusPill status={rental.status} /></td>
+                <td><small>{rental.endpointUrl ?? "-"}</small></td>
+                <td>{dateTime(rental.endsAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="API Key">
+          <MiniTable headers={["名称", "前缀", "状态", "最近使用", "创建"]}>
+            {apiKeys.slice(0, 8).map((apiKey) => (
+              <tr key={apiKey.id}>
+                <td>{apiKey.name}</td>
+                <td><small>{apiKey.keyPrefix}</small></td>
+                <td><StatusPill status={apiKey.status} /></td>
+                <td>{dateTime(apiKey.lastUsedAt)}</td>
+                <td>{dateTime(apiKey.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="供给资源">
+          <MiniTable headers={["资源", "状态", "等级", "Sub2 账号", "更新时间"]}>
+            {resources.slice(0, 8).map((resource) => (
+              <tr key={resource.id}>
+                <td>{resource.resourceType}</td>
+                <td><StatusPill status={resource.status} /></td>
+                <td>{resource.level}</td>
+                <td><small>{resource.sub2AccountId ?? "-"}</small></td>
+                <td>{dateTime(resource.updatedAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="提现记录">
+          <MiniTable headers={["金额", "状态", "引用", "备注", "创建"]}>
+            {withdrawals.slice(0, 8).map((withdrawal) => (
+              <tr key={withdrawal.id}>
+                <td>{money(withdrawal.amount)}</td>
+                <td><StatusPill status={withdrawal.status} /></td>
+                <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
+                <td><small>{withdrawal.note ?? "-"}</small></td>
+                <td>{dateTime(withdrawal.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="登录身份">
+          <MiniTable headers={["Provider", "邮箱", "名称", "创建"]}>
+            {identities.slice(0, 8).map((identity) => (
+              <tr key={identity.id}>
+                <td>{identity.provider}</td>
+                <td><small>{identity.email ?? "-"}</small></td>
+                <td>{identity.displayName ?? "-"}</td>
+                <td>{dateTime(identity.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+      </section>
+    </section>
+  );
+}
+
+function DetailBlock({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="detail-block">
+      <h3>{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function MiniTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+  return (
+    <div className="table-wrap compact-table">
+      <table>
+        <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function WalletsView({ wallets, users, query, meta, onAdjust, onDraft, onFilter, onClear, onPage, onExport }: {
+  wallets: WalletRow[];
+  users: UserRow[];
+  onAdjust: (event: FormEvent<HTMLFormElement>) => void;
+} & ManagedListProps) {
+  const userOptions = useMemo(() => {
+    const seen = new Set(wallets.map((wallet) => wallet.userId));
+    return [...wallets.map((wallet) => ({ id: wallet.userId, email: wallet.user?.email ?? wallet.userId })), ...users.filter((user) => !seen.has(user.id)).map((user) => ({ id: user.id, email: user.email }))];
+  }, [wallets, users]);
+
+  return (
+    <section className="stack">
+      <form className="panel glass-panel inline-form" onSubmit={onAdjust}>
+        <span className="eyebrow">Adjust balance</span>
+        <select name="userId" required>
+          <option value="">选择用户</option>
+          {userOptions.map((user) => <option key={user.id} value={user.id}>{user.email}</option>)}
+        </select>
+        <input name="amount" type="number" step="0.01" placeholder="调整金额，可为负数" required />
+        <input name="note" placeholder="备注" />
+        <button>调整余额</button>
+      </form>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="email / user id / wallet id"
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="余额管理" count={meta.total} headers={["用户", "可用", "冻结", "充值", "消费", "更新时间"]}>
+        {wallets.map((wallet) => (
+          <tr key={wallet.id}>
+            <td><strong>{wallet.user?.email ?? wallet.userId}</strong><small>{wallet.userId}</small></td>
+            <td>{money(wallet.availableBalance)}</td>
+            <td>{money(wallet.frozenBalance)}</td>
+            <td>{money(wallet.totalRecharged)}</td>
+            <td>{money(wallet.totalSpent)}</td>
+            <td>{dateTime(wallet.updatedAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </section>
+  );
+}
+
+function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, onClear, onPage, onExport }: {
+  transactions: WalletTransactionRow[];
+} & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="email / tx id / ref / note"
+        statusOptions={walletTransactionTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="余额流水" count={meta.total} headers={["用户", "类型", "金额", "余额后", "引用", "备注", "时间"]}>
+        {transactions.map((transaction) => (
+          <tr key={transaction.id}>
+            <td><strong>{transaction.wallet?.user?.email ?? transaction.walletId}</strong><small>{transaction.id}</small></td>
+            <td><StatusPill status={transaction.type} /></td>
+            <td>{money(transaction.amount)}</td>
+            <td>{money(transaction.balanceAfter)}</td>
+            <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
+            <td><small>{transaction.note ?? "-"}</small></td>
+            <td>{dateTime(transaction.createdAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
+function SalesView({ sales, selectedOrder, onDetail, onCloseDetail }: {
+  sales: SalesData | null;
+  selectedOrder: OrderDetailRow | null;
+  onDetail: (orderId: string) => void;
+  onCloseDetail: () => void;
+}) {
+  const orders = sales?.orders ?? [];
+  return (
+    <section className="stack">
+      <section className="cards compact-cards">
+        <Metric label="订单数" value={sales?.summary.orderCount ?? 0} />
+        <Metric label="订单金额" value={money(sales?.summary.totalAmount)} />
+        <Metric label="已付金额" value={money(sales?.summary.paidAmount)} />
+        <Metric label="按量收入" value={money(sales?.summary.usageCharge)} />
+      </section>
+      <div className="panel glass-panel export-strip">
+        <span className="eyebrow">Export</span>
+        <button className="secondary" onClick={() => exportOrdersCsv(orders, "sales-orders")}><Download size={16} />导出售出订单</button>
+      </div>
+      <OrdersView orders={orders} title="售出订单" selectedOrder={selectedOrder} onDetail={onDetail} onCloseDetail={onCloseDetail} />
+    </section>
+  );
+}
+
+function UsagesView({ usages, summary, query, meta, onSync, onDraft, onFilter, onClear, onPage, onExport }: {
+  usages: UsageRecordRow[];
+  summary: AggregateSummary | null;
+  onSync: (event: FormEvent<HTMLFormElement>) => void;
+} & ManagedListProps) {
+  return (
+    <section className="stack">
+      <section className="cards compact-cards">
+        <Metric label="用量记录" value={summary?._count ?? meta.total} />
+        <Metric label="买家计费" value={money(summary?._sum?.buyerCharge)} />
+        <Metric label="供给收入" value={money(summary?._sum?.supplierIncome)} />
+        <Metric label="Tokens" value={`${Number(summary?._sum?.inputUnits ?? 0).toFixed(0)} / ${Number(summary?._sum?.outputUnits ?? 0).toFixed(0)}`} />
+      </section>
+      <form className="panel glass-panel inline-form usage-sync-form" onSubmit={onSync}>
+        <span className="eyebrow">Sub2 usage</span>
+        <input name="cursor" placeholder="cursor，可选" />
+        <button>同步用量</button>
+      </form>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="request / user / rental / model"
+        statusOptions={usageStatusOptions}
+        resourceTypeOptions={resourceTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="用量记录" count={meta.total} headers={["用户", "模型", "状态", "Tokens", "计费", "供给方", "时间"]}>
+        {usages.map((usage) => (
+          <tr key={usage.id}>
+            <td>
+              <strong>{usage.rental?.user?.email ?? usage.userId}</strong>
+              <small>{usage.sub2RequestId}</small>
+            </td>
+            <td>
+              <strong>{usage.model ?? "-"}</strong>
+              <small>{usage.resourceType} / {usage.rental?.product?.name ?? usage.rentalId}</small>
+            </td>
+            <td><StatusPill status={usage.status} /></td>
+            <td>{Number(usage.inputUnits).toFixed(0)} / {Number(usage.outputUnits).toFixed(0)}</td>
+            <td>
+              <strong>{money(usage.buyerCharge)}</strong>
+              <small>API cost {money(usage.apiEquivalentCost)}</small>
+            </td>
+            <td>
+              <strong>{money(usage.supplierIncome)}</strong>
+              <small>{usage.supplierResource?.supplier?.user?.email ?? usage.supplierResource?.sub2AccountId ?? "-"}</small>
+            </td>
+            <td>{dateTime(usage.occurredAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </section>
+  );
+}
+
+function ProductsView({ products, query, meta, onCreate, onProductStatus, onCreatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+  products: ProductRow[];
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onProductStatus: (productId: string, status: string) => void;
+  onCreatePrice: (event: FormEvent<HTMLFormElement>) => void;
+  onPriceStatus: (priceId: string, status: string) => void;
+} & ManagedListProps) {
+  return (
+    <section className="stack">
+      <form className="panel glass-panel inline-form" onSubmit={onCreate}>
+        <span className="eyebrow">Create product</span>
+        <input name="name" placeholder="商品名称" required />
+        <input name="description" placeholder="描述，可选" />
+        <select name="resourceType" defaultValue="codex" required>
+          {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
+        </select>
+        <select name="billingMode" defaultValue="monthly" required>
+          {billingModeOptions.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+        </select>
+        <select name="status" defaultValue="draft" required>
+          {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <button>创建商品</button>
+      </form>
+
+      <form className="panel glass-panel inline-form product-price-form" onSubmit={onCreatePrice}>
+        <span className="eyebrow">Create price</span>
+        <select name="productId" required>
+          <option value="">选择商品</option>
+          {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+        </select>
+        <input name="tierCode" placeholder="tier_code" pattern="[a-z0-9_-]+" required />
+        <input name="displayName" placeholder="价格名称" required />
+        <input name="fixedPrice" type="number" step="0.01" min={0.01} placeholder="固定价格" required />
+        <input name="durationDays" type="number" min={1} placeholder="租期天数，可选" />
+        <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={1} placeholder="并发" required />
+        <input name="requestLimit" type="number" min={1} placeholder="请求数，可选" />
+        <input name="discountRate" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="折扣率" required />
+        <input name="tierMultiplier" type="number" step="0.01" min={0.01} defaultValue={1} placeholder="倍率" required />
+        <select name="status" defaultValue="active" required>
+          {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <button>创建价格</button>
+      </form>
+
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="product / tier / resource"
+        statusOptions={productStatusOptions}
+        resourceTypeOptions={resourceTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+
+      <TablePanel title="商品与价格" count={meta.total} headers={["商品", "资源", "状态", "价格", "订单/租赁", "操作"]}>
+        {products.map((product) => (
+          <tr key={product.id}>
+            <td><strong>{product.name}</strong><small>{product.description ?? product.id}</small></td>
+            <td>{product.resourceType} / {product.billingMode}</td>
+            <td><StatusPill status={product.status} /></td>
+            <td>
+              {(product.prices ?? []).map((price) => (
+                <div className="price-line" key={price.id}>
+                  <strong>{price.displayName} / {money(price.fixedPrice)}</strong>
+                  <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / 请求 {price.requestLimit ?? "-"}</small>
+                  <div className="row-actions">
+                    <StatusPill status={price.status} />
+                    <button className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>
+                    <button className="secondary mini" onClick={() => onPriceStatus(price.id, "offline")}>下线</button>
+                  </div>
+                </div>
+              ))}
+            </td>
+            <td>{product._count?.orders ?? 0} / {product._count?.rentals ?? 0}</td>
+            <td>
+              <div className="row-actions">
+                <button className="secondary mini" onClick={() => onProductStatus(product.id, "draft")}>草稿</button>
+                <button className="secondary mini" onClick={() => onProductStatus(product.id, "active")}>上架</button>
+                <button className="danger mini" onClick={() => onProductStatus(product.id, "offline")}>下线</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+    </section>
+  );
+}
+
+function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+  orders: OrderRow[];
+  title?: string;
+  selectedOrder?: OrderDetailRow | null;
+  onDetail?: (orderId: string) => void;
+  onCloseDetail?: () => void;
+} & Partial<ManagedListProps>) {
+  return (
+    <>
+      {query && meta && onDraft && onFilter && onClear && onPage && (
+        <ListControls
+          query={query}
+          meta={meta}
+          searchPlaceholder="order id / email / payment ref"
+          statusOptions={orderStatusOptions}
+          onDraft={onDraft}
+          onFilter={onFilter}
+          onClear={onClear}
+          onPage={onPage}
+          onExport={onExport}
+        />
+      )}
+      <TablePanel title={title} count={meta?.total ?? orders.length} headers={["用户", "状态", "金额", "租赁", "创建时间", "操作"]}>
+        {orders.map((order) => (
+          <tr key={order.id}>
+            <td><strong>{order.user?.email ?? "-"}</strong><small>{order.id}</small></td>
+            <td><StatusPill status={order.status} /></td>
+            <td>{money(order.paidAmount)} / {money(order.totalAmount)}</td>
+            <td>{order.rentals?.length ?? 0}</td>
+            <td>{dateTime(order.createdAt)}</td>
+            <td>{onDetail && <button className="secondary mini" onClick={() => onDetail(order.id)}>详情</button>}</td>
+          </tr>
+        ))}
+      </TablePanel>
+      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onClose={onCloseDetail} />}
+    </>
+  );
+}
+
+function OrderDetailPanel({ order, onClose }: { order: OrderDetailRow; onClose: () => void }) {
+  return (
+    <section className="panel glass-panel wide detail-panel">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Order Detail</span>
+          <h2>{order.id}</h2>
+        </div>
+        <div className="row-actions">
+          <StatusPill status={order.status} />
+          <button className="secondary mini" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+
+      <div className="diagnostic-grid">
+        <div><span>用户</span><strong>{order.user?.email ?? "-"}</strong></div>
+        <div><span>已付 / 应付</span><strong>{money(order.paidAmount)} / {money(order.totalAmount)}</strong></div>
+        <div><span>币种</span><strong>{order.currency ?? "USD"}</strong></div>
+        <div><span>支付引用</span><strong>{order.paymentRef ?? "-"}</strong></div>
+        <div><span>订单项</span><strong>{order.items.length}</strong></div>
+        <div><span>租赁</span><strong>{order.rentals.length}</strong></div>
+        <div><span>创建时间</span><strong>{dateTime(order.createdAt)}</strong></div>
+        <div><span>更新时间</span><strong>{dateTime(order.updatedAt)}</strong></div>
+      </div>
+
+      <section className="detail-grid">
+        <DetailBlock title="订单项">
+          <MiniTable headers={["商品", "资源", "数量", "金额", "价格 ID"]}>
+            {order.items.map((item) => (
+              <tr key={item.id}>
+                <td><strong>{item.product?.name ?? item.productId}</strong><small>{item.productId}</small></td>
+                <td>{item.product?.resourceType ?? "-"}</td>
+                <td>{item.quantity}</td>
+                <td>{money(item.amount)}</td>
+                <td><small>{item.priceId ?? "-"}</small></td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="租赁交付">
+          <MiniTable headers={["租赁", "状态", "资源", "Endpoint", "Sub2 Key", "到期"]}>
+            {order.rentals.map((rental) => (
+              <tr key={rental.id}>
+                <td><small>{rental.id}</small></td>
+                <td><StatusPill status={rental.status} /></td>
+                <td>{rental.product?.name ?? rental.resourceType}</td>
+                <td><small>{rental.endpointUrl ?? "-"}</small></td>
+                <td><small>{rental.sub2KeyId ?? "-"}</small></td>
+                <td>{dateTime(rental.endsAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="租赁限制">
+          <MiniTable headers={["租赁", "并发", "RPM", "TPM", "请求数", "剩余额度"]}>
+            {order.rentals.map((rental) => (
+              <tr key={rental.id}>
+                <td><small>{rental.id}</small></td>
+                <td>{rental.limits?.maxConcurrency ?? "-"}</td>
+                <td>{rental.limits?.rpmLimit ?? "-"}</td>
+                <td>{rental.limits?.tpmLimit ?? "-"}</td>
+                <td>{rental.limits?.requestLimit ?? "-"}</td>
+                <td>{rental.limits?.remainingSpend ?? "-"}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="API Key">
+          <MiniTable headers={["租赁", "名称", "前缀", "状态", "最近使用", "创建"]}>
+            {order.rentals.flatMap((rental) => (rental.apiKeys ?? []).map((apiKey) => (
+              <tr key={apiKey.id}>
+                <td><small>{rental.id}</small></td>
+                <td>{apiKey.name}</td>
+                <td><small>{apiKey.keyPrefix}</small></td>
+                <td><StatusPill status={apiKey.status} /></td>
+                <td>{dateTime(apiKey.lastUsedAt)}</td>
+                <td>{dateTime(apiKey.createdAt)}</td>
+              </tr>
+            )))}
+          </MiniTable>
+        </DetailBlock>
+      </section>
+    </section>
+  );
+}
+
+function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+  rentals: RentalRow[];
+  onRentalStatus: (rentalId: string, status: string) => void;
+  onApiKeyStatus: (apiKeyId: string, status: string) => void;
+} & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="rental id / email / endpoint"
+        statusOptions={rentalStatusOptions}
+        resourceTypeOptions={resourceTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="租赁通道" count={meta.total} headers={["用户", "资源", "状态", "Endpoint", "API Key", "到期", "操作"]}>
+        {rentals.map((rental) => (
+          <tr key={rental.id}>
+            <td><strong>{rental.user?.email ?? "-"}</strong><small>{rental.id}</small></td>
+            <td>{rental.product?.name ?? rental.resourceType}</td>
+            <td><StatusPill status={rental.status} /></td>
+            <td>{rental.endpointUrl ?? "-"}</td>
+            <td>
+              {(rental.apiKeys ?? []).slice(0, 3).map((apiKey) => (
+                <div className="key-line" key={apiKey.id}>
+                  <strong>{apiKey.name}</strong>
+                  <small>{apiKey.keyPrefix} / {dateTime(apiKey.lastUsedAt)}</small>
+                  <div className="row-actions">
+                    <StatusPill status={apiKey.status} />
+                    <button type="button" className="secondary mini" onClick={() => onApiKeyStatus(apiKey.id, "active")}>Key 启用</button>
+                    <button type="button" className="danger mini" onClick={() => onApiKeyStatus(apiKey.id, "inactive")}>Key 停用</button>
+                  </div>
+                </div>
+              ))}
+            </td>
+            <td>{dateTime(rental.endsAt)}</td>
+            <td>
+              <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "active")}>恢复</button>
+                <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "suspended")}>暂停</button>
+                <button type="button" className="danger mini" onClick={() => onRentalStatus(rental.id, "closed")}>关闭</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
+function Sub2StatusView({ status, tests, smoke, onRefreshAccount, onTestAccount, onSmokeTest, onApplyRefreshToken }: {
+  status: Sub2Status | null;
+  tests: Record<number, Sub2AccountTestResult>;
+  smoke: Sub2ProxySmokeTestResult | null;
+  onRefreshAccount: (accountId: number) => void;
+  onTestAccount: (accountId: number) => void;
+  onSmokeTest: () => void;
+  onApplyRefreshToken: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const accounts = status?.accounts ?? [];
+  const groupAccounts = status?.defaultGroupId
+    ? accounts.filter((account) => account.platform === "openai" && account.groupIds.includes(status.defaultGroupId!))
+    : [];
+  const activeAccounts = groupAccounts.filter((account) => account.status === "active");
+
+  return (
+    <section className="stack">
+      <section className="cards compact-cards">
+        <Metric label="网关健康" value={status?.gatewayReachable ? "正常" : "异常"} />
+        <Metric label="默认分组" value={status?.openAiGroup ? `${status.openAiGroup.name} #${status.openAiGroup.id}` : "-"} />
+        <Metric label="可用上游" value={`${activeAccounts.length}/${groupAccounts.length}`} />
+        <Metric label="反代状态" value={status?.ready ? "可用" : "阻断"} />
+      </section>
+      <div className="panel glass-panel">
+        <div className="section-head">
+          <div>
+            <span className="eyebrow">Codex Proxy</span>
+            <h2>OpenAI/Codex 反代诊断</h2>
+          </div>
+          <div className="row-actions">
+            <StatusPill status={status?.ready ? "active" : "failed"} />
+            <button className="secondary mini" onClick={onSmokeTest}>端到端自检</button>
+          </div>
+        </div>
+        <div className="diagnostic-grid">
+          <div><span>Sub2API</span><strong>{status?.baseUrl ?? "-"}</strong></div>
+          <div><span>Endpoint</span><strong>{status?.publicEndpoint ?? "-"}</strong></div>
+          <div><span>检查时间</span><strong>{dateTime(status?.checkedAt)}</strong></div>
+          <div><span>阻断原因</span><strong>{status?.blockingReasons.length ? status.blockingReasons.join(", ") : "none"}</strong></div>
+        </div>
+        {smoke && (
+          <div className="diagnostic-grid">
+            <div><span>自检模型</span><strong>{smoke.model}</strong></div>
+            <div><span>临时 Key</span><strong>{smoke.keyDisabled ? "已禁用" : "未清理"}</strong></div>
+            <div><span>Models</span><strong>{smoke.models.ok ? `通过 / ${smoke.models.modelCount}` : `失败 / HTTP ${smoke.models.statusCode}`}</strong></div>
+            <div><span>Responses</span><strong>{smoke.responses.ok ? "通过" : smoke.responses.errorMessage ?? smoke.responses.errorType ?? `HTTP ${smoke.responses.statusCode}`}</strong></div>
+          </div>
+        )}
+      </div>
+      <form className="panel glass-panel inline-form credential-form" onSubmit={onApplyRefreshToken}>
+        <span className="eyebrow">Apply OpenAI Credentials</span>
+        <select name="accountId" required>
+          <option value="">选择上游账号</option>
+          {accounts.filter((account) => account.platform === "openai").map((account) => (
+            <option key={account.id} value={account.id}>#{account.id} {account.name}</option>
+          ))}
+        </select>
+        <input name="refreshToken" type="password" placeholder="OpenAI refresh token" autoComplete="off" required />
+        <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
+        <button>应用凭据</button>
+      </form>
+      <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "并发", "最近错误 / 测试结果", "操作"]}>
+        {accounts.map((account) => (
+          <tr key={account.id}>
+            <td><strong>{account.name}</strong><small>#{account.id} / {account.platform} / {account.type}</small></td>
+            <td>{account.groupNames.length ? account.groupNames.join(", ") : account.groupIds.join(", ") || "-"}</td>
+            <td><StatusPill status={account.status} /></td>
+            <td>{account.currentConcurrency ?? 0} / {account.concurrency ?? "-"}</td>
+            <td>
+              <small>{account.errorMessage ?? account.tempUnschedulableReason ?? "-"}</small>
+              {tests[account.id] && (
+                <small>
+                  测试 {tests[account.id].ok ? "通过" : "失败"} / HTTP {tests[account.id].statusCode} / {testSummary(tests[account.id])}
+                </small>
+              )}
+            </td>
+            <td>
+              <div className="row-actions">
+                <button className="secondary mini" onClick={() => onTestAccount(account.id)}>测试账号</button>
+                <button className="secondary mini" onClick={() => onRefreshAccount(account.id)}>刷新凭据</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+    </section>
+  );
+}
+
+function ResourcesView({ resources, selectedResource, query, meta, onCreate, onStatus, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+  resources: ResourceRow[];
+  selectedResource: ResourceDetailRow | null;
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onStatus: (resourceId: string, status: ResourceStatus) => void;
+  onDetail: (resourceId: string) => void;
+  onCloseDetail: () => void;
+} & ManagedListProps) {
+  return (
+    <>
+      <form className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
+        <span className="eyebrow">Create resource</span>
+        <input name="supplierEmail" type="email" placeholder="供给方邮箱" required />
+        <input name="displayName" placeholder="供给方显示名，可选" />
+        <select name="resourceType" defaultValue="codex" required>
+          {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
+        </select>
+        <select name="status" defaultValue="pending" required>
+          {resourceStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <select name="level" defaultValue="L0" required>
+          {["L0", "L1", "L2", "L3", "L4"].map((level) => <option key={level} value={level}>{level}</option>)}
+        </select>
+        <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={1} placeholder="并发" required />
+        <input name="shareRate" type="number" step="0.01" min={0} max={1} defaultValue={0.7} placeholder="分成" required />
+        <input name="reserveRatio" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="保留比例" required />
+        <input name="dailyCap" type="number" step="0.01" min={0} placeholder="日上限，可选" />
+        <input name="sub2AccountId" placeholder="Sub2 账号 ID，可选" />
+        <button>创建共享资源</button>
+      </form>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="supplier / resource id / sub2 account"
+        statusOptions={resourceStatusOptions}
+        resourceTypeOptions={resourceTypeOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "Sub2 账号", "操作"]}>
+        {resources.map((resource) => (
+          <tr key={resource.id}>
+            <td><strong>{resource.supplier?.user?.email ?? "-"}</strong><small>{resource.id}</small></td>
+            <td>{resource.resourceType} / 并发 {resource.maxConcurrency}</td>
+            <td><StatusPill status={resource.status} /></td>
+            <td>{resource.level}</td>
+            <td>{resource.sub2AccountId ?? "-"}</td>
+            <td>
+              <div className="row-actions">
+                <button className="secondary mini" onClick={() => onDetail(resource.id)}>详情</button>
+                <button className="secondary mini" onClick={() => onStatus(resource.id, "testing")}>测试</button>
+                <button className="secondary mini" onClick={() => onStatus(resource.id, "online")}>上线</button>
+                <button className="secondary mini" onClick={() => onStatus(resource.id, "paused")}>暂停</button>
+                <button className="danger mini" onClick={() => onStatus(resource.id, "disabled")}>禁用</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+      {selectedResource && <ResourceDetailPanel resource={selectedResource} onClose={onCloseDetail} />}
+    </>
+  );
+}
+
+function ResourceDetailPanel({ resource, onClose }: { resource: ResourceDetailRow; onClose: () => void }) {
+  const usages = resource.usages ?? [];
+  const settlements = resource.settlements ?? [];
+  const usageCount = resource.usageSummary?._count ?? usages.length;
+  const settlementCount = resource.settlementSummary?._count ?? settlements.length;
+
+  return (
+    <section className="panel glass-panel wide detail-panel">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Resource Detail</span>
+          <h2>{resource.resourceType} / {resource.id}</h2>
+        </div>
+        <div className="row-actions">
+          <StatusPill status={resource.status} />
+          <button className="secondary mini" onClick={onClose}>关闭</button>
+        </div>
+      </div>
+
+      <div className="diagnostic-grid">
+        <div><span>供给方</span><strong>{resource.supplier?.user?.email ?? "-"}</strong></div>
+        <div><span>等级 / 并发</span><strong>{resource.level} / {resource.maxConcurrency}</strong></div>
+        <div><span>Sub2 账号</span><strong>{resource.sub2AccountId ?? "-"}</strong></div>
+        <div><span>分成 / 保留</span><strong>{resource.shareRate ?? "-"} / {resource.reserveRatio ?? "-"}</strong></div>
+        <div><span>用量记录</span><strong>{usageCount}</strong></div>
+        <div><span>买家计费</span><strong>{money(resource.usageSummary?._sum?.buyerCharge)}</strong></div>
+        <div><span>供给收入</span><strong>{money(resource.usageSummary?._sum?.supplierIncome)}</strong></div>
+        <div><span>结算金额</span><strong>{money(resource.settlementSummary?._sum?.amount)}</strong></div>
+      </div>
+
+      <section className="detail-grid">
+        <DetailBlock title="资源配置">
+          <MiniTable headers={["字段", "值"]}>
+            <tr><td>资源类型</td><td>{resource.resourceType}</td></tr>
+            <tr><td>状态</td><td><StatusPill status={resource.status} /></td></tr>
+            <tr><td>日上限</td><td>{money(resource.dailyCap)}</td></tr>
+            <tr><td>最后检查</td><td>{dateTime(resource.lastCheckedAt)}</td></tr>
+            <tr><td>创建时间</td><td>{dateTime(resource.createdAt)}</td></tr>
+            <tr><td>更新时间</td><td>{dateTime(resource.updatedAt)}</td></tr>
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="供给方">
+          <MiniTable headers={["字段", "值"]}>
+            <tr><td>邮箱</td><td>{resource.supplier?.user?.email ?? "-"}</td></tr>
+            <tr><td>显示名</td><td>{resource.supplier?.displayName ?? resource.supplier?.user?.displayName ?? "-"}</td></tr>
+            <tr><td>状态</td><td>{resource.supplier?.status ?? "-"}</td></tr>
+            <tr><td>默认分成</td><td>{resource.supplier?.defaultShareRate ?? "-"}</td></tr>
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="最近用量">
+          <MiniTable headers={["请求", "用户", "模型", "状态", "买家计费", "供给收入", "时间"]}>
+            {usages.slice(0, 10).map((usage) => (
+              <tr key={usage.id}>
+                <td><small>{usage.sub2RequestId}</small></td>
+                <td><small>{usage.rental?.user?.email ?? "-"}</small></td>
+                <td>{usage.model ?? "-"}</td>
+                <td><StatusPill status={usage.status} /></td>
+                <td>{money(usage.buyerCharge)}</td>
+                <td>{money(usage.supplierIncome)}</td>
+                <td>{dateTime(usage.occurredAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="最近结算">
+          <MiniTable headers={["结算", "状态", "金额", "分成", "可用时间", "创建"]}>
+            {settlements.slice(0, 10).map((settlement) => (
+              <tr key={settlement.id}>
+                <td><small>{settlement.id}</small></td>
+                <td><StatusPill status={settlement.status} /></td>
+                <td>{money(settlement.amount)}</td>
+                <td>{settlement.shareRate}</td>
+                <td>{dateTime(settlement.availableAt)}</td>
+                <td>{dateTime(settlement.createdAt)}</td>
+              </tr>
+            ))}
+          </MiniTable>
+        </DetailBlock>
+      </section>
+    </section>
+  );
+}
+
+function SettlementsView({ settlements, query, meta, onDraft, onFilter, onClear, onPage, onExport }: { settlements: SettlementRow[] } & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="supplier / settlement id / usage id"
+        statusOptions={settlementStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="供给方结算" count={meta.total} headers={["供给方", "金额", "状态", "分成", "可用时间", "创建时间"]}>
+        {settlements.map((settlement) => (
+          <tr key={settlement.id}>
+            <td><strong>{settlement.supplierResource?.supplier?.user?.email ?? "-"}</strong><small>{settlement.supplierResource?.resourceType ?? settlement.id}</small></td>
+            <td>{money(settlement.amount)}</td>
+            <td><StatusPill status={settlement.status} /></td>
+            <td>{settlement.shareRate}</td>
+            <td>{dateTime(settlement.availableAt)}</td>
+            <td>{dateTime(settlement.createdAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
+function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+  withdrawals: WithdrawalRow[];
+  summary: AggregateSummary | null;
+  onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onStatus: (withdrawalId: string, status: string, payoutRef?: string) => void;
+} & ManagedListProps) {
+  return (
+    <section className="stack">
+      <section className="cards compact-cards">
+        <Metric label="提现记录" value={summary?._count ?? meta.total} />
+        <Metric label="提现金额" value={money(summary?._sum?.amount)} />
+        <Metric label="当前页" value={withdrawals.length} />
+        <Metric label="待处理" value={withdrawals.filter((withdrawal) => withdrawal.status === "pending").length} />
+      </section>
+      <form className="panel glass-panel inline-form withdrawal-form" onSubmit={onCreate}>
+        <span className="eyebrow">Create withdrawal</span>
+        <input name="supplierEmail" type="email" placeholder="供给方邮箱" required />
+        <input name="amount" type="number" step="0.01" min={0.01} placeholder="金额" required />
+        <input name="currency" placeholder="币种" defaultValue="USD" />
+        <select name="status" defaultValue="pending" required>
+          {withdrawalStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <input name="payoutRef" placeholder="打款引用，可选" />
+        <input name="note" placeholder="备注" />
+        <button>录入提现</button>
+      </form>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="supplier / withdrawal / payout"
+        statusOptions={withdrawalStatusOptions}
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="提现管理" count={meta.total} headers={["供给方", "金额", "状态", "打款引用", "备注", "时间", "操作"]}>
+        {withdrawals.map((withdrawal) => (
+          <tr key={withdrawal.id}>
+            <td><strong>{withdrawal.supplier?.user?.email ?? withdrawal.supplierId}</strong><small>{withdrawal.id}</small></td>
+            <td>{money(withdrawal.amount)} {withdrawal.currency ?? "USD"}</td>
+            <td><StatusPill status={withdrawal.status} /></td>
+            <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
+            <td><small>{withdrawal.note ?? "-"}</small></td>
+            <td>{dateTime(withdrawal.createdAt)}</td>
+            <td>
+              <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "approved")}>通过</button>
+                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "paid", window.prompt("Payout reference") ?? undefined)}>打款</button>
+                <button type="button" className="secondary mini" onClick={() => onStatus(withdrawal.id, "rejected")}>驳回</button>
+                <button type="button" className="danger mini" onClick={() => onStatus(withdrawal.id, "cancelled")}>取消</button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </TablePanel>
+    </section>
+  );
+}
+
+function AuditLogsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport }: { logs: AuditLogRow[] } & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="actor / object / ip"
+        actionPlaceholder="action contains"
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="操作审计" count={meta.total} headers={["操作者", "动作", "对象", "结果摘要", "来源", "时间"]}>
+        {logs.map((log) => (
+          <tr key={log.id}>
+            <td><strong>{log.actor?.email ?? "-"}</strong><small>{log.actor?.displayName ?? log.actor?.id ?? "-"}</small></td>
+            <td>{log.action}</td>
+            <td><strong>{log.objectType}</strong><small>{log.objectId ?? "-"}</small></td>
+            <td><small>{auditSummary(log.after)}</small></td>
+            <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
+            <td>{dateTime(log.createdAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
+function ListControls({ query, meta, searchPlaceholder, statusOptions = [], resourceTypeOptions = [], actionPlaceholder, onDraft, onFilter, onClear, onPage, onExport }: {
+  query: ListQueryState;
+  meta: PageMeta;
+  searchPlaceholder?: string;
+  statusOptions?: string[];
+  resourceTypeOptions?: string[];
+  actionPlaceholder?: string;
+  onDraft: (patch: Partial<ListQueryState>) => void;
+  onFilter: (event: FormEvent<HTMLFormElement>) => void;
+  onClear: () => void;
+  onPage: (page: number) => void;
+  onExport?: () => void;
+}) {
+  return (
+    <form className="panel glass-panel list-controls" onSubmit={onFilter}>
+      <div className="filter-fields">
+        <label className="input-with-icon">
+          <Search size={16} />
+          <input
+            name="q"
+            value={query.q}
+            placeholder={searchPlaceholder ?? "search"}
+            onChange={(event) => onDraft({ q: event.target.value })}
+          />
+        </label>
+        {statusOptions.length > 0 && (
+          <select name="status" value={query.status} onChange={(event) => onDraft({ status: event.target.value })}>
+            <option value="">All status</option>
+            {statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+          </select>
+        )}
+        {resourceTypeOptions.length > 0 && (
+          <select name="resourceType" value={query.resourceType} onChange={(event) => onDraft({ resourceType: event.target.value })}>
+            <option value="">All resources</option>
+            {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
+          </select>
+        )}
+        {actionPlaceholder && (
+          <input
+            name="action"
+            value={query.action}
+            placeholder={actionPlaceholder}
+            onChange={(event) => onDraft({ action: event.target.value })}
+          />
+        )}
+        <select name="pageSize" value={query.pageSize} onChange={(event) => onDraft({ pageSize: Number(event.target.value) })}>
+          {[25, 50, 100, 200].map((size) => <option key={size} value={size}>{size} / page</option>)}
+        </select>
+      </div>
+      <div className="filter-actions">
+        <button type="submit"><Filter size={16} />筛选</button>
+        <button type="button" className="secondary" onClick={onClear}><X size={16} />清空</button>
+        {onExport && <button type="button" className="secondary" onClick={onExport}><Download size={16} />导出当前页</button>}
+        <div className="pager">
+          <button type="button" className="secondary mini" disabled={meta.page <= 1} onClick={() => onPage(meta.page - 1)}><ChevronLeft size={15} /></button>
+          <span>{meta.page} / {meta.totalPages}</span>
+          <button type="button" className="secondary mini" disabled={meta.page >= meta.totalPages} onClick={() => onPage(meta.page + 1)}><ChevronRight size={15} /></button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function TablePanel({ title, count, headers, children }: {
+  title: string;
+  count: number;
+  headers: string[];
+  children: React.ReactNode;
+}) {
   return (
     <div className="panel glass-panel wide">
       <div className="section-head">
         <div>
           <span className="eyebrow">Data Table</span>
-          <h2>{titleMap[view]}</h2>
+          <h2>{title}</h2>
         </div>
-        <strong>{rows.length} 条</strong>
+        <strong>{count} 条</strong>
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>ID</th><th>邮箱/资源</th><th>状态</th><th>金额</th><th>创建时间</th></tr></thead>
-          <tbody>{rows.map((row) => (
-            <tr key={row.id}>
-              <td>{row.id}</td>
-              <td>{row.email ?? row.resourceType ?? "-"}</td>
-              <td>{row.status ? <StatusPill status={row.status} /> : "-"}</td>
-              <td>{row.totalAmount ?? "-"}</td>
-              <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : "-"}</td>
-            </tr>
-          ))}</tbody>
+          <thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead>
+          <tbody>{children}</tbody>
         </table>
       </div>
     </div>
   );
 }
 
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return <div className="metric-card"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: React.ReactNode; children: React.ReactNode }) {
+  return <button className={active ? "active" : ""} onClick={onClick}>{icon}<span>{children}</span></button>;
+}
+
 function StatusPill({ status }: { status: string }) {
   return <span className={`status status-${status}`}>{status}</span>;
+}
+
+function titleFor(view: View) {
+  const map: Record<View, string> = {
+    dashboard: "经营看板",
+    users: "用户管理",
+    wallets: "余额管理",
+    walletTransactions: "余额流水",
+    sales: "售出情况",
+    usages: "用量记录",
+    products: "商品管理",
+    orders: "订单管理",
+    rentals: "租赁通道",
+    sub2: "反代状态",
+    resources: "共享资源",
+    settlements: "结算管理",
+    withdrawals: "提现管理",
+    audit: "操作审计"
+  };
+  return map[view];
+}
+
+function createDefaultListQueries() {
+  return Object.fromEntries(managedListViews.map((listView) => [listView, { ...defaultListQuery }])) as Record<ManagedListView, ListQueryState>;
+}
+
+function createDefaultListMeta() {
+  return Object.fromEntries(managedListViews.map((listView) => [listView, { ...defaultPageMeta }])) as Record<ManagedListView, PageMeta>;
+}
+
+function buildListUrl(path: string, query: ListQueryState) {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.status) params.set("status", query.status);
+  if (query.resourceType) params.set("resourceType", query.resourceType);
+  if (query.action) params.set("action", query.action);
+  params.set("page", String(query.page));
+  params.set("pageSize", String(query.pageSize));
+  return `${path}?${params.toString()}`;
+}
+
+function optionalFormString(form: FormData, name: string) {
+  const value = String(form.get(name) || "").trim();
+  return value || undefined;
+}
+
+type CsvCell = string | number | null | undefined;
+
+function exportUsersCsv(rows: UserRow[]) {
+  downloadCsv("users-current-page", ["id", "email", "displayName", "status", "roles", "balance", "orders", "rentals", "createdAt"], rows.map((user) => [
+    user.id,
+    user.email,
+    user.displayName,
+    user.status,
+    user.roles.map((role) => role.role).join("|"),
+    user.wallet?.availableBalance,
+    user._count?.orders,
+    user._count?.rentals,
+    user.createdAt
+  ]));
+}
+
+function exportWalletsCsv(rows: WalletRow[]) {
+  downloadCsv("wallets-current-page", ["walletId", "userId", "email", "available", "frozen", "recharged", "spent", "updatedAt"], rows.map((wallet) => [
+    wallet.id,
+    wallet.userId,
+    wallet.user?.email,
+    wallet.availableBalance,
+    wallet.frozenBalance,
+    wallet.totalRecharged,
+    wallet.totalSpent,
+    wallet.updatedAt
+  ]));
+}
+
+function exportWalletTransactionsCsv(rows: WalletTransactionRow[]) {
+  downloadCsv("wallet-transactions-current-page", ["id", "email", "walletId", "type", "amount", "balanceAfter", "currency", "refType", "refId", "note", "createdAt"], rows.map((transaction) => [
+    transaction.id,
+    transaction.wallet?.user?.email,
+    transaction.walletId,
+    transaction.type,
+    transaction.amount,
+    transaction.balanceAfter,
+    transaction.currency,
+    transaction.refType,
+    transaction.refId,
+    transaction.note,
+    transaction.createdAt
+  ]));
+}
+
+function exportUsagesCsv(rows: UsageRecordRow[]) {
+  downloadCsv("usages-current-page", ["id", "sub2RequestId", "email", "rentalId", "resourceType", "model", "status", "inputUnits", "outputUnits", "apiEquivalentCost", "buyerCharge", "supplierIncome", "supplierEmail", "occurredAt"], rows.map((usage) => [
+    usage.id,
+    usage.sub2RequestId,
+    usage.rental?.user?.email,
+    usage.rentalId,
+    usage.resourceType,
+    usage.model,
+    usage.status,
+    usage.inputUnits,
+    usage.outputUnits,
+    usage.apiEquivalentCost,
+    usage.buyerCharge,
+    usage.supplierIncome,
+    usage.supplierResource?.supplier?.user?.email,
+    usage.occurredAt
+  ]));
+}
+
+function exportProductsCsv(rows: ProductRow[]) {
+  downloadCsv("products-current-page", ["id", "name", "resourceType", "billingMode", "status", "priceCount", "orders", "rentals", "updatedAt"], rows.map((product) => [
+    product.id,
+    product.name,
+    product.resourceType,
+    product.billingMode,
+    product.status,
+    product._count?.prices ?? product.prices?.length ?? 0,
+    product._count?.orders,
+    product._count?.rentals,
+    product.updatedAt
+  ]));
+}
+
+function exportOrdersCsv(rows: OrderRow[], filename = "orders") {
+  downloadCsv(`${filename}-current-page`, ["id", "email", "status", "paidAmount", "totalAmount", "rentals", "createdAt"], rows.map((order) => [
+    order.id,
+    order.user?.email,
+    order.status,
+    order.paidAmount,
+    order.totalAmount,
+    order.rentals?.length ?? 0,
+    order.createdAt
+  ]));
+}
+
+function exportRentalsCsv(rows: RentalRow[]) {
+  downloadCsv("rentals-current-page", ["id", "email", "status", "resourceType", "product", "endpointUrl", "sub2KeyId", "apiKeys", "createdAt", "endsAt"], rows.map((rental) => [
+    rental.id,
+    rental.user?.email,
+    rental.status,
+    rental.resourceType,
+    rental.product?.name,
+    rental.endpointUrl,
+    rental.sub2KeyId,
+    (rental.apiKeys ?? []).map((apiKey) => `${apiKey.keyPrefix}:${apiKey.status}`).join("|"),
+    rental.createdAt,
+    rental.endsAt
+  ]));
+}
+
+function exportResourcesCsv(rows: ResourceRow[]) {
+  downloadCsv("resources-current-page", ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "sub2AccountId", "updatedAt"], rows.map((resource) => [
+    resource.id,
+    resource.supplier?.user?.email,
+    resource.resourceType,
+    resource.status,
+    resource.level,
+    resource.maxConcurrency,
+    resource.sub2AccountId,
+    resource.updatedAt
+  ]));
+}
+
+function exportSettlementsCsv(rows: SettlementRow[]) {
+  downloadCsv("settlements-current-page", ["id", "supplierEmail", "resourceType", "amount", "status", "shareRate", "availableAt", "createdAt"], rows.map((settlement) => [
+    settlement.id,
+    settlement.supplierResource?.supplier?.user?.email,
+    settlement.supplierResource?.resourceType,
+    settlement.amount,
+    settlement.status,
+    settlement.shareRate,
+    settlement.availableAt,
+    settlement.createdAt
+  ]));
+}
+
+function exportWithdrawalsCsv(rows: WithdrawalRow[]) {
+  downloadCsv("withdrawals-current-page", ["id", "supplierEmail", "amount", "currency", "status", "payoutRef", "note", "createdAt", "updatedAt"], rows.map((withdrawal) => [
+    withdrawal.id,
+    withdrawal.supplier?.user?.email,
+    withdrawal.amount,
+    withdrawal.currency,
+    withdrawal.status,
+    withdrawal.payoutRef,
+    withdrawal.note,
+    withdrawal.createdAt,
+    withdrawal.updatedAt
+  ]));
+}
+
+function exportAuditLogsCsv(rows: AuditLogRow[]) {
+  downloadCsv("audit-logs-current-page", ["id", "actorEmail", "action", "objectType", "objectId", "summary", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+    log.id,
+    log.actor?.email,
+    log.action,
+    log.objectType,
+    log.objectId,
+    auditSummary(log.after),
+    log.ipAddress,
+    log.userAgent,
+    log.createdAt
+  ]));
+}
+
+function downloadCsv(filenameBase: string, headers: string[], rows: CsvCell[][]) {
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = `${filenameBase}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value: CsvCell) {
+  const text = value === undefined || value === null ? "" : String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+}
+
+function money(value?: string | number | null) {
+  const numberValue = Number(value ?? 0);
+  return `$${numberValue.toFixed(2)}`;
+}
+
+function testSummary(result: Sub2AccountTestResult) {
+  const errorEvent = result.events.find((event) => event.type === "error" || typeof event.error === "string");
+  const message = errorEvent?.error ?? errorEvent?.message ?? result.raw;
+  return String(message || "-").slice(0, 180);
+}
+
+function smokeSummary(result: Sub2ProxySmokeTestResult) {
+  if (!result.provisioning.ok) return result.provisioning.error ?? "开通临时 Key 失败";
+  if (!result.models.ok) return result.models.error ?? `Models HTTP ${result.models.statusCode}`;
+  if (!result.responses.ok) return result.responses.errorMessage ?? result.responses.errorType ?? `Responses HTTP ${result.responses.statusCode}`;
+  if (!result.keyDisabled) return result.cleanupError ?? "临时 Key 清理失败";
+  return "-";
+}
+
+function auditSummary(value: unknown) {
+  if (!value) return "-";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+function dateTime(value?: string | null) {
+  return value ? new Date(value).toLocaleString() : "-";
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

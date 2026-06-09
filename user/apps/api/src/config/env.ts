@@ -9,10 +9,20 @@ const optionalNonEmptyString = z.preprocess((value) => {
   return value;
 }, z.string().optional());
 
+const optionalPositiveInteger = z.preprocess((value) => {
+  if (typeof value === "string" && value.trim() === "") {
+    return undefined;
+  }
+
+  return value;
+}, z.coerce.number().int().positive().optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   API_PORT: z.coerce.number().default(4000),
   APP_PUBLIC_URL: z.string().url().default("http://localhost:3000"),
+  API_PUBLIC_URL: optionalNonEmptyString.pipe(z.string().url().optional()),
+  OPENAI_PROXY_PUBLIC_ENDPOINT: optionalNonEmptyString.pipe(z.string().url().optional()),
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().default("redis://localhost:6379/0"),
   JWT_ACCESS_SECRET: z.string().min(16),
@@ -21,6 +31,10 @@ const envSchema = z.object({
   SUB2_ADMIN_EMAIL: optionalNonEmptyString.pipe(z.string().email().optional()),
   SUB2_ADMIN_PASSWORD: optionalNonEmptyString,
   SUB2_PUBLIC_ENDPOINT: z.string().url(),
+  SUB2_DEFAULT_GROUP_ID: optionalPositiveInteger,
+  SUB2_SMOKE_MODEL: optionalNonEmptyString.default("gpt-5.3-codex"),
+  OPENAI_PROXY_BODY_LIMIT_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
+  OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
   DEFAULT_DISCOUNT_RATE: z.coerce.number().default(0.2),
   MIN_RECHARGE_AMOUNT: z.coerce.number().default(10),
   MIN_WITHDRAWAL_AMOUNT: z.coerce.number().default(20),
@@ -33,6 +47,11 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+export const openAiProxyPublicEndpoint = (
+  env.OPENAI_PROXY_PUBLIC_ENDPOINT ??
+  `${(env.API_PUBLIC_URL ?? env.APP_PUBLIC_URL).replace(/\/$/, "")}/v1`
+).replace(/\/$/, "");
 
 if (!env.SUB2_ADMIN_TOKEN && (!env.SUB2_ADMIN_EMAIL || !env.SUB2_ADMIN_PASSWORD)) {
   throw new Error("Either SUB2_ADMIN_TOKEN or SUB2_ADMIN_EMAIL/SUB2_ADMIN_PASSWORD must be configured");
