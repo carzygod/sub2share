@@ -171,6 +171,17 @@ export interface Sub2ProxySmokeTestResult {
     errorType?: string | null;
     errorMessage?: string | null;
   };
+  localProxy?: {
+    ok: boolean;
+    endpoint: string;
+    rentalId?: string | null;
+    apiKeyPrefix?: string | null;
+    proxyRequestLogCount: number;
+    apiKeyDeactivated: boolean;
+    rentalClosed: boolean;
+    orderClosed: boolean;
+    walletReset: boolean;
+  };
 }
 
 export interface Sub2ApplyOpenAiRefreshTokenInput {

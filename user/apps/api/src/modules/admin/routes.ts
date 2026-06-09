@@ -1,13 +1,14 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireRole } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
-import { env } from "../../config/env.js";
-import { sub2Client } from "../../integrations/sub2/client.js";
+import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
+import { sub2Client, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
@@ -32,6 +33,9 @@ const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const sub2BindingReconciliationLimit = 500;
+const localProxySmokeBuyerId = "admin-openai-proxy-smoke";
+const localProxySmokeUserEmail = "admin-openai-proxy-smoke@local.invalid";
+const localProxySmokeProductName = "Admin OpenAI proxy smoke";
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -1782,11 +1786,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.post("/api/admin/sub2/proxy-smoke-test", async (request, reply) => {
     const actor = await requireRole(request, ["admin"]);
     const input = sub2SmokeTestSchema.parse(request.body ?? {});
-    const result = await sub2Client.runProxySmokeTest(input.model);
+    const result = await runLocalOpenAiProxySmokeTest(input.model);
     await writeAuditLog(request, actor.id, "admin.sub2.proxy_smoke_test", "sub2_proxy", result.sub2KeyId, null, {
       ok: result.ok,
       model: result.model,
       keyDisabled: result.keyDisabled,
+      localProxy: result.localProxy,
       models: result.models,
       responses: result.responses
     });
@@ -2844,6 +2849,429 @@ function statusAfterResourceTest(current: ResourceStatus, ok: boolean): Resource
   if (["disabled", "paused"].includes(current)) return current;
   if (ok) return current === "testing" || current === "pending" || current === "abnormal" ? "online" : current;
   return current === "online" || current === "testing" || current === "pending" || current === "busy" ? "abnormal" : current;
+}
+
+interface LocalProxySmokeProvision {
+  userId: string;
+  productId: string;
+  orderId: string;
+  rentalId: string;
+  apiKeyId: string;
+  apiKeyPrefix: string;
+}
+
+interface LocalProxyJsonProbe {
+  ok: boolean;
+  statusCode: number;
+  bodyText: string;
+  json?: Record<string, any>;
+  error?: string | null;
+}
+
+async function runLocalOpenAiProxySmokeTest(model = env.SUB2_SMOKE_MODEL): Promise<Sub2ProxySmokeTestResult> {
+  const checkedAt = new Date().toISOString();
+  const failedModels: Sub2ProxySmokeTestResult["models"] = { ok: false, statusCode: 0, modelCount: 0, firstModel: null, error: "skipped" };
+  const failedResponses: Sub2ProxySmokeTestResult["responses"] = { ok: false, statusCode: 0, responseId: null, responseStatus: null, errorType: null, errorMessage: "skipped" };
+  let sub2Key: Sub2KeyResult | undefined;
+  let local: LocalProxySmokeProvision | undefined;
+  let models = failedModels;
+  let responses = failedResponses;
+
+  try {
+    sub2Key = await sub2Client.createKey({
+      buyerId: localProxySmokeBuyerId,
+      rentalId: randomUUID(),
+      name: `Admin local proxy smoke ${checkedAt}`,
+      resourceType: "codex",
+      maxConcurrency: 1,
+      requestLimit: null,
+      spendLimit: null
+    });
+    local = await provisionLocalProxySmokeRental(sub2Key, checkedAt);
+  } catch (error) {
+    const cleanup = await cleanupLocalOpenAiProxySmoke(local, sub2Key);
+    return {
+      ok: false,
+      checkedAt,
+      model,
+      gatewayBaseUrl: env.SUB2_BASE_URL,
+      publicEndpoint: openAiProxyPublicEndpoint,
+      sub2UserId: sub2Key?.sub2UserId,
+      sub2KeyId: sub2Key?.sub2KeyId,
+      keyDisabled: cleanup.keyDisabled,
+      cleanupError: cleanup.error,
+      provisioning: {
+        ok: false,
+        error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+      },
+      models: failedModels,
+      responses: failedResponses,
+      localProxy: {
+        ok: false,
+        endpoint: openAiProxyPublicEndpoint,
+        rentalId: local?.rentalId ?? null,
+        apiKeyPrefix: local?.apiKeyPrefix ?? null,
+        proxyRequestLogCount: 0,
+        apiKeyDeactivated: cleanup.apiKeyDeactivated,
+        rentalClosed: cleanup.rentalClosed,
+        orderClosed: cleanup.orderClosed,
+        walletReset: cleanup.walletReset
+      }
+    };
+  }
+
+  const modelsProbe = await fetchLocalProxyJson("/models", sub2Key.apiKey, { method: "GET" }, 30_000);
+  const modelItems = Array.isArray(modelsProbe.json?.data) ? modelsProbe.json.data : [];
+  models = {
+    ok: modelsProbe.ok,
+    statusCode: modelsProbe.statusCode,
+    modelCount: modelItems.length,
+    firstModel: modelItems[0]?.id ? String(modelItems[0].id) : null,
+    error: modelsProbe.ok ? null : extractLocalProxyError(modelsProbe)
+  };
+
+  const responsesProbe = await fetchLocalProxyJson(
+    "/responses",
+    sub2Key.apiKey,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        model,
+        input: "Return exactly OK.",
+        max_output_tokens: 8
+      })
+    },
+    90_000
+  );
+  const responseError = localProxyErrorObject(responsesProbe.json);
+  responses = {
+    ok: responsesProbe.ok && !responseError,
+    statusCode: responsesProbe.statusCode,
+    responseId: responsesProbe.json?.id ? String(responsesProbe.json.id) : null,
+    responseStatus: responsesProbe.json?.status ? String(responsesProbe.json.status) : null,
+    errorType: responseError?.type ? String(responseError.type) : null,
+    errorMessage: responseError?.message
+      ? redactSensitiveText(String(responseError.message))
+      : responsesProbe.ok ? null : extractLocalProxyError(responsesProbe)
+  };
+
+  const proxyRequestLogCount = await countLocalProxySmokeLogs(local.rentalId);
+  const cleanup = await cleanupLocalOpenAiProxySmoke(local, sub2Key);
+  const localProxyOk = models.ok
+    && responses.ok
+    && proxyRequestLogCount >= 2
+    && cleanup.apiKeyDeactivated
+    && cleanup.rentalClosed
+    && cleanup.orderClosed
+    && cleanup.walletReset;
+
+  return {
+    ok: localProxyOk && cleanup.keyDisabled,
+    checkedAt,
+    model,
+    gatewayBaseUrl: env.SUB2_BASE_URL,
+    publicEndpoint: openAiProxyPublicEndpoint,
+    sub2UserId: sub2Key.sub2UserId,
+    sub2KeyId: sub2Key.sub2KeyId,
+    keyDisabled: cleanup.keyDisabled,
+    cleanupError: cleanup.error,
+    provisioning: { ok: true },
+    models,
+    responses,
+    localProxy: {
+      ok: localProxyOk,
+      endpoint: openAiProxyPublicEndpoint,
+      rentalId: local.rentalId,
+      apiKeyPrefix: local.apiKeyPrefix,
+      proxyRequestLogCount,
+      apiKeyDeactivated: cleanup.apiKeyDeactivated,
+      rentalClosed: cleanup.rentalClosed,
+      orderClosed: cleanup.orderClosed,
+      walletReset: cleanup.walletReset
+    }
+  };
+}
+
+async function provisionLocalProxySmokeRental(sub2Key: Sub2KeyResult, checkedAt: string): Promise<LocalProxySmokeProvision> {
+  const passwordHash = await bcrypt.hash(randomUUID(), 10);
+  const keyHash = hashSecret(sub2Key.apiKey);
+  const apiKeyPrefix = sub2Key.apiKey.slice(0, 12);
+  const smokeMeta = { smokeTest: true, checkedAt };
+  const smokeWalletBalance = new Prisma.Decimal(env.OPENAI_PROXY_MIN_WALLET_BALANCE).plus(1);
+
+  return prisma.$transaction(async (tx) => {
+    const user = await tx.user.upsert({
+      where: { email: localProxySmokeUserEmail },
+      update: {
+        displayName: "OpenAI proxy smoke user",
+        status: "active"
+      },
+      create: {
+        email: localProxySmokeUserEmail,
+        passwordHash,
+        displayName: "OpenAI proxy smoke user",
+        status: "active"
+      }
+    });
+    await tx.userRole.upsert({
+      where: { userId_role: { userId: user.id, role: "buyer" } },
+      update: {},
+      create: { userId: user.id, role: "buyer" }
+    });
+    await tx.walletAccount.upsert({
+      where: { userId: user.id },
+      update: {
+        availableBalance: smokeWalletBalance,
+        frozenBalance: new Prisma.Decimal(0)
+      },
+      create: {
+        userId: user.id,
+        availableBalance: smokeWalletBalance,
+        frozenBalance: new Prisma.Decimal(0),
+        totalRecharged: new Prisma.Decimal(0),
+        totalSpent: new Prisma.Decimal(0)
+      }
+    });
+
+    let product = await tx.product.findFirst({
+      where: { name: localProxySmokeProductName, resourceType: "codex" }
+    });
+    if (!product) {
+      product = await tx.product.create({
+        data: {
+          name: localProxySmokeProductName,
+          resourceType: "codex",
+          billingMode: "pay_as_you_go",
+          status: "offline",
+          description: "Internal product used only for administrator local OpenAI proxy smoke tests."
+        }
+      });
+    }
+
+    const order = await tx.order.create({
+      data: {
+        userId: user.id,
+        status: "active",
+        totalAmount: new Prisma.Decimal(0),
+        paidAmount: new Prisma.Decimal(0),
+        items: {
+          create: {
+            productId: product.id,
+            amount: new Prisma.Decimal(0),
+            meta: smokeMeta
+          }
+        }
+      }
+    });
+    await recordOrderStatusHistory(tx, {
+      orderId: order.id,
+      fromStatus: null,
+      toStatus: "active",
+      reason: "admin.local_proxy_smoke.provision",
+      meta: smokeMeta
+    });
+
+    const rental = await tx.rental.create({
+      data: {
+        userId: user.id,
+        orderId: order.id,
+        productId: product.id,
+        resourceType: "codex",
+        status: "active",
+        endsAt: new Date(Date.now() + 30 * 60 * 1000),
+        sub2UserId: sub2Key.sub2UserId,
+        sub2KeyId: sub2Key.sub2KeyId,
+        sub2KeyHash: keyHash,
+        endpointUrl: openAiProxyPublicEndpoint,
+        limits: {
+          create: {
+            maxConcurrency: 1,
+            requestLimit: 10
+          }
+        }
+      }
+    });
+    const apiKey = await tx.apiKey.create({
+      data: {
+        userId: user.id,
+        rentalId: rental.id,
+        name: localProxySmokeProductName,
+        keyPrefix: apiKeyPrefix,
+        keyHash
+      }
+    });
+    await tx.sub2Binding.createMany({
+      data: [
+        {
+          objectType: "rental",
+          objectId: rental.id,
+          sub2Type: "user",
+          sub2Id: sub2Key.sub2UserId,
+          meta: { ...smokeMeta, rentalId: rental.id }
+        },
+        {
+          objectType: "rental",
+          objectId: rental.id,
+          sub2Type: "api_key",
+          sub2Id: sub2Key.sub2KeyId,
+          meta: { ...smokeMeta, rentalId: rental.id }
+        }
+      ],
+      skipDuplicates: true
+    });
+
+    return {
+      userId: user.id,
+      productId: product.id,
+      orderId: order.id,
+      rentalId: rental.id,
+      apiKeyId: apiKey.id,
+      apiKeyPrefix
+    };
+  });
+}
+
+async function fetchLocalProxyJson(
+  path: string,
+  apiKey: string,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<LocalProxyJsonProbe> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const headers = new Headers(init.headers);
+    headers.set("authorization", `Bearer ${apiKey}`);
+    if (init.body) headers.set("content-type", "application/json");
+
+    const response = await fetch(`${openAiProxyPublicEndpoint}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal
+    });
+    const rawText = await response.text();
+    const bodyText = redactSensitiveText(rawText).slice(0, 3000);
+    let json: Record<string, any> | undefined;
+    try {
+      json = JSON.parse(rawText) as Record<string, any>;
+    } catch {
+      json = undefined;
+    }
+
+    return { ok: response.ok, statusCode: response.status, bodyText, json };
+  } catch (error) {
+    return {
+      ok: false,
+      statusCode: 0,
+      bodyText: "",
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function localProxyErrorObject(json?: Record<string, any>) {
+  const error = json?.error;
+  if (!error) return undefined;
+  if (typeof error === "string") {
+    return { message: redactSensitiveText(error), type: null };
+  }
+  if (typeof error === "object") {
+    return error as { message?: string | null; type?: string | null };
+  }
+  return undefined;
+}
+
+function extractLocalProxyError(probe: LocalProxyJsonProbe) {
+  const proxyError = localProxyErrorObject(probe.json);
+  if (proxyError?.message) return redactSensitiveText(String(proxyError.message));
+  const fallback = probe.error ?? probe.bodyText.slice(0, 300);
+  return fallback || null;
+}
+
+async function countLocalProxySmokeLogs(rentalId: string) {
+  try {
+    return await prisma.proxyRequestLog.count({ where: { rentalId } });
+  } catch {
+    return 0;
+  }
+}
+
+async function cleanupLocalOpenAiProxySmoke(local?: LocalProxySmokeProvision, sub2Key?: Sub2KeyResult) {
+  const errors: string[] = [];
+  let apiKeyDeactivated = false;
+  let rentalClosed = false;
+  let orderClosed = false;
+  let walletReset = false;
+  let keyDisabled = false;
+
+  if (local) {
+    try {
+      const result = await prisma.apiKey.updateMany({
+        where: { id: local.apiKeyId },
+        data: { status: "inactive" }
+      });
+      apiKeyDeactivated = result.count === 1;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    try {
+      const result = await prisma.rental.updateMany({
+        where: { id: local.rentalId },
+        data: { status: "closed", endsAt: new Date() }
+      });
+      rentalClosed = result.count === 1;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    try {
+      const result = await prisma.order.updateMany({
+        where: { id: local.orderId },
+        data: { status: "closed" }
+      });
+      orderClosed = result.count === 1;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+
+    try {
+      const result = await prisma.walletAccount.updateMany({
+        where: { userId: local.userId },
+        data: {
+          availableBalance: new Prisma.Decimal(0),
+          frozenBalance: new Prisma.Decimal(0)
+        }
+      });
+      walletReset = result.count === 1;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  if (sub2Key) {
+    try {
+      await sub2Client.disableKey(localProxySmokeBuyerId, sub2Key.sub2KeyId);
+      keyDisabled = true;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  return {
+    apiKeyDeactivated,
+    rentalClosed,
+    orderClosed,
+    walletReset,
+    keyDisabled,
+    error: errors.length > 0 ? errors.join("; ") : null
+  };
+}
+
+function hashSecret(value: string) {
+  return createHash("sha256").update(value).digest("hex");
 }
 
 function redactSecrets(data: unknown) {

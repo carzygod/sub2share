@@ -582,6 +582,17 @@ interface Sub2ProxySmokeTestResult {
     errorType?: string | null;
     errorMessage?: string | null;
   };
+  localProxy?: {
+    ok: boolean;
+    endpoint: string;
+    rentalId?: string | null;
+    apiKeyPrefix?: string | null;
+    proxyRequestLogCount: number;
+    apiKeyDeactivated: boolean;
+    rentalClosed: boolean;
+    orderClosed: boolean;
+    walletReset: boolean;
+  };
 }
 
 interface Sub2BindingIssueRow {
@@ -2471,6 +2482,9 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
             <div><span>临时 Key</span><strong>{smoke.keyDisabled ? "已禁用" : "未清理"}</strong></div>
             <div><span>Models</span><strong>{smoke.models.ok ? `通过 / ${smoke.models.modelCount}` : `失败 / HTTP ${smoke.models.statusCode}`}</strong></div>
             <div><span>Responses</span><strong>{smoke.responses.ok ? "通过" : smoke.responses.errorMessage ?? smoke.responses.errorType ?? `HTTP ${smoke.responses.statusCode}`}</strong></div>
+            <div><span>本地代理</span><strong>{smoke.localProxy?.ok ? "通过" : "失败"}</strong></div>
+            <div><span>代理日志</span><strong>{smoke.localProxy?.proxyRequestLogCount ?? 0}</strong></div>
+            <div><span>本地清理</span><strong>{smoke.localProxy?.apiKeyDeactivated && smoke.localProxy.rentalClosed && smoke.localProxy.orderClosed && smoke.localProxy.walletReset ? "完成" : "待复查"}</strong></div>
           </div>
         )}
       </div>
@@ -3280,6 +3294,10 @@ function smokeSummary(result: Sub2ProxySmokeTestResult) {
   if (!result.provisioning.ok) return result.provisioning.error ?? "开通临时 Key 失败";
   if (!result.models.ok) return result.models.error ?? `Models HTTP ${result.models.statusCode}`;
   if (!result.responses.ok) return result.responses.errorMessage ?? result.responses.errorType ?? `Responses HTTP ${result.responses.statusCode}`;
+  if (!result.localProxy?.ok) {
+    const cleanupOk = result.localProxy?.apiKeyDeactivated && result.localProxy.rentalClosed && result.localProxy.orderClosed && result.localProxy.walletReset;
+    return cleanupOk ? `本地代理日志不足：${result.localProxy?.proxyRequestLogCount ?? 0}` : "本地 smoke 租赁清理失败";
+  }
   if (!result.keyDisabled) return result.cleanupError ?? "临时 Key 清理失败";
   return "-";
 }
