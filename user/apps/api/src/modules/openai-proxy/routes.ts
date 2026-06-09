@@ -41,6 +41,11 @@ interface ProxyRequestLogEntry {
   estimatedInputTokens?: number;
 }
 
+interface ForwardedUpstream {
+  response: Response;
+  cleanup: () => void;
+}
+
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
   await app.register(async (proxy) => {
     proxy.removeAllContentTypeParsers();
@@ -113,7 +118,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         });
 
         const upstreamUrl = `${sub2BaseUrl}${request.raw.url ?? request.url}`;
-        let upstream: Response;
+        let upstream: ForwardedUpstream;
         try {
           upstream = await forwardToSub2(request, reply, upstreamUrl, apiKey);
         } catch (error) {
@@ -132,11 +137,12 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
             timedOut ? "Sub2API upstream timed out" : "Sub2API upstream is unavailable"
           );
         }
+        const upstreamResponse = upstream.response;
 
         request.log.info({
           method: request.method,
           path: request.url,
-          upstreamStatus: upstream.status,
+          upstreamStatus: upstreamResponse.status,
           durationMs: Date.now() - startedAt,
           apiKeyId: keyRecord.apiKey.id,
           rentalId: keyRecord.apiKey.rentalId,
@@ -155,20 +161,23 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
 
         await writeProxyRequestLog(request, startedAt, {
           ...logContext,
-          statusCode: upstream.status,
-          upstreamStatusCode: upstream.status,
+          statusCode: upstreamResponse.status,
+          upstreamStatusCode: upstreamResponse.status,
           estimatedInputTokens: rateLimitCheck.estimatedTokens
         });
 
-        copyResponseHeaders(upstream, reply);
+        copyResponseHeaders(upstreamResponse, reply);
         reply.header("x-proxy-request-id", request.id);
-        reply.status(upstream.status);
+        reply.status(upstreamResponse.status);
 
-        if (request.method === "HEAD" || !upstream.body) {
+        if (request.method === "HEAD" || !upstreamResponse.body) {
+          upstream.cleanup();
           return reply.send();
         }
 
-        return reply.send(Readable.fromWeb(upstream.body as never));
+        const upstreamStream = Readable.fromWeb(upstreamResponse.body as never);
+        cleanupForwardedUpstreamOnStreamEnd(upstreamStream, upstream.cleanup);
+        return reply.send(upstreamStream);
       }
     });
   });
@@ -477,6 +486,18 @@ function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {
   reply.raw.once("close", release);
 }
 
+function cleanupForwardedUpstreamOnStreamEnd(stream: Readable, cleanup: () => void) {
+  let cleaned = false;
+  const runCleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    cleanup();
+  };
+  stream.once("end", runCleanup);
+  stream.once("error", runCleanup);
+  stream.once("close", runCleanup);
+}
+
 function isMetadataRequest(request: FastifyRequest) {
   const method = request.method.toUpperCase();
   if (!["GET", "HEAD"].includes(method)) return false;
@@ -508,17 +529,25 @@ async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: 
   const abortOnClose = () => {
     if (!reply.raw.writableEnded) controller.abort();
   };
+  const cleanup = () => {
+    reply.raw.off("close", abortOnClose);
+  };
   reply.raw.once("close", abortOnClose);
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       method: request.method,
       headers,
       body,
       signal: controller.signal
     });
+    clearTimeout(timeout);
+    return { response, cleanup };
+  } catch (error) {
+    clearTimeout(timeout);
+    cleanup();
+    throw error;
   } finally {
     clearTimeout(timeout);
-    reply.raw.off("close", abortOnClose);
   }
 }
 
