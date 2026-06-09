@@ -950,6 +950,61 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, paged(rentals, total, query));
   });
 
+  app.get("/api/admin/rentals/:id", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    const { id } = request.params as { id: string };
+    const [rental, usageSummary, proxyRequestSummary] = await Promise.all([
+      prisma.rental.findUnique({
+        where: { id },
+        include: {
+          user: { include: { roles: true, wallet: true } },
+          product: true,
+          limits: true,
+          order: {
+            include: {
+              user: true,
+              items: { include: { product: true } }
+            }
+          },
+          apiKeys: { orderBy: { createdAt: "desc" }, take: 20 },
+          usages: {
+            include: {
+              supplierResource: { include: { supplier: { include: { user: true } } } },
+              settlements: true
+            },
+            orderBy: { occurredAt: "desc" },
+            take: 50
+          },
+          proxyRequestLogs: {
+            include: {
+              user: { select: { id: true, email: true, displayName: true } },
+              apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
+            },
+            orderBy: { createdAt: "desc" },
+            take: 50
+          }
+        }
+      }),
+      prisma.usageRecord.aggregate({
+        where: { rentalId: id },
+        _count: true,
+        _sum: {
+          inputUnits: true,
+          outputUnits: true,
+          apiEquivalentCost: true,
+          buyerCharge: true,
+          supplierIncome: true
+        }
+      }),
+      prisma.proxyRequestLog.aggregate({
+        where: { rentalId: id },
+        _count: true
+      })
+    ]);
+    if (!rental) throw new AppError("rental_not_found", "Rental not found", 404);
+    return adminOk(reply, { ...rental, usageSummary, proxyRequestSummary });
+  });
+
   app.post("/api/admin/rentals/expire-overdue", async (request, reply) => {
     const actor = await requireRole(request, ["admin"]);
     const input = expireOverdueRentalsSchema.parse(request.body ?? {});

@@ -340,11 +340,17 @@ interface OrderStatusHistoryRow {
 
 interface RentalRow {
   id: string;
+  userId?: string;
+  orderId?: string;
+  productId?: string;
   status: string;
   resourceType: string;
   endpointUrl?: string | null;
+  sub2UserId?: string | null;
   sub2KeyId?: string | null;
+  startsAt?: string;
   createdAt: string;
+  updatedAt?: string;
   endsAt?: string | null;
   user?: UserRow;
   order?: OrderRow;
@@ -358,6 +364,14 @@ interface RentalRow {
     spendLimit?: string | null;
     remainingSpend?: string | null;
   } | null;
+}
+
+interface RentalDetailRow extends RentalRow {
+  order?: OrderRow;
+  usages?: UsageRecordRow[];
+  proxyRequestLogs?: ProxyRequestLogRow[];
+  usageSummary?: AggregateSummary;
+  proxyRequestSummary?: { _count: number };
 }
 
 interface ResourceRow {
@@ -701,6 +715,7 @@ function App() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<OrderDetailRow | null>(null);
   const [rentals, setRentals] = useState<RentalRow[]>([]);
+  const [selectedRental, setSelectedRental] = useState<RentalDetailRow | null>(null);
   const [usages, setUsages] = useState<UsageRecordRow[]>([]);
   const [usageSummary, setUsageSummary] = useState<AggregateSummary | null>(null);
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
@@ -1100,6 +1115,7 @@ function App() {
     if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
       await openOrderDetail(selectedOrder.id);
     }
+    if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
   }
 
   async function updateRentalLimits(event: FormEvent<HTMLFormElement>, rentalId: string) {
@@ -1122,6 +1138,7 @@ function App() {
     if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
       await openOrderDetail(selectedOrder.id);
     }
+    if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
   }
 
   async function setApiKeyStatus(apiKeyId: string, status: string) {
@@ -1138,6 +1155,9 @@ function App() {
     if (selectedUser?.apiKeys?.some((apiKey) => apiKey.id === apiKeyId)) {
       await openUserDetail(selectedUser.id);
     }
+    if (selectedRental?.apiKeys?.some((apiKey) => apiKey.id === apiKeyId)) {
+      await openRentalDetail(selectedRental.id);
+    }
   }
 
   async function rotateRentalKey(rentalId: string) {
@@ -1150,6 +1170,7 @@ function App() {
     if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
       await openOrderDetail(selectedOrder.id);
     }
+    if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
   }
 
   async function expireOverdueRentals() {
@@ -1165,6 +1186,7 @@ function App() {
     });
     setMessage(`Expired ${result.expired}/${result.matched} rentals, disabled ${result.apiKeysDeactivated} local keys${result.sub2DisableFailed ? `, ${result.sub2DisableFailed} Sub2 disables need review` : ""}`);
     await refresh("rentals");
+    if (selectedRental) await openRentalDetail(selectedRental.id);
   }
 
   async function runSystemMaintenance() {
@@ -1259,6 +1281,14 @@ function App() {
   async function openOrderDetail(orderId: string) {
     try {
       setSelectedOrder(await api<OrderDetailRow>(`/api/admin/orders/${orderId}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function openRentalDetail(rentalId: string) {
+    try {
+      setSelectedRental(await api<RentalDetailRow>(`/api/admin/rentals/${rentalId}`));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     }
@@ -1637,8 +1667,11 @@ function App() {
         {view === "rentals" && (
           <RentalsView
             rentals={rentals}
+            selectedRental={selectedRental}
             query={listQueries.rentals}
             meta={listMeta.rentals}
+            onDetail={openRentalDetail}
+            onCloseDetail={() => setSelectedRental(null)}
             onRentalStatus={setRentalStatus}
             onUpdateLimits={updateRentalLimits}
             onApiKeyStatus={setApiKeyStatus}
@@ -2711,8 +2744,11 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
   );
 }
 
-function RentalsView({ rentals, query, meta, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
+  selectedRental: RentalDetailRow | null;
+  onDetail: (rentalId: string) => void;
+  onCloseDetail: () => void;
   onRentalStatus: (rentalId: string, status: string) => void;
   onUpdateLimits: (event: FormEvent<HTMLFormElement>, rentalId: string) => void;
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
@@ -2771,6 +2807,7 @@ function RentalsView({ rentals, query, meta, onRentalStatus, onUpdateLimits, onA
             <td>{dateTime(rental.endsAt)}</td>
             <td>
               <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onDetail(rental.id)}>Detail</button>
                 <button type="button" className="secondary mini" onClick={() => onRotateKey(rental.id)}>Rotate Key</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "active")}>恢复</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "suspended")}>暂停</button>
@@ -2780,7 +2817,142 @@ function RentalsView({ rentals, query, meta, onRentalStatus, onUpdateLimits, onA
           </tr>
         ))}
       </TablePanel>
+      {selectedRental && <RentalDetailPanel rental={selectedRental} onClose={onCloseDetail} />}
     </>
+  );
+}
+
+function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClose: () => void }) {
+  const apiKeys = rental.apiKeys ?? [];
+  const usages = rental.usages ?? [];
+  const proxyRequests = rental.proxyRequestLogs ?? [];
+  const usageCount = rental.usageSummary?._count ?? usages.length;
+  const proxyRequestCount = rental.proxyRequestSummary?._count ?? proxyRequests.length;
+  const usageSum = (key: string) => rental.usageSummary?._sum?.[key];
+
+  return (
+    <section className="panel glass-panel wide detail-panel">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Rental Detail</span>
+          <h2>{rental.id}</h2>
+        </div>
+        <div className="row-actions">
+          <StatusPill status={rental.status} />
+          <button className="secondary mini" onClick={onClose}>Close</button>
+        </div>
+      </div>
+
+      <div className="diagnostic-grid">
+        <div><span>User</span><strong>{rental.user?.email ?? rental.userId ?? "-"}</strong></div>
+        <div><span>Product</span><strong>{rental.product?.name ?? rental.resourceType}</strong></div>
+        <div><span>Order</span><strong>{rental.order?.id ?? "-"}</strong></div>
+        <div><span>Endpoint</span><strong>{rental.endpointUrl ?? "-"}</strong></div>
+        <div><span>Sub2 user</span><strong>{rental.sub2UserId ?? "-"}</strong></div>
+        <div><span>Sub2 key</span><strong>{rental.sub2KeyId ?? "-"}</strong></div>
+        <div><span>API keys</span><strong>{apiKeys.length}</strong></div>
+        <div><span>Usage records</span><strong>{usageCount}</strong></div>
+        <div><span>Buyer charge</span><strong>{money(usageSum("buyerCharge"))}</strong></div>
+        <div><span>Supplier income</span><strong>{money(usageSum("supplierIncome"))}</strong></div>
+        <div><span>Proxy requests</span><strong>{proxyRequestCount}</strong></div>
+        <div><span>Ends at</span><strong>{dateTime(rental.endsAt)}</strong></div>
+      </div>
+
+      <section className="detail-grid">
+        <DetailBlock title="Delivery">
+          <MiniTable headers={["Field", "Value"]}>
+            <tr><td>Rental ID</td><td><small>{rental.id}</small></td></tr>
+            <tr><td>Status</td><td><StatusPill status={rental.status} /></td></tr>
+            <tr><td>Resource type</td><td>{rental.resourceType}</td></tr>
+            <tr><td>Endpoint</td><td><small>{rental.endpointUrl ?? "-"}</small></td></tr>
+            <tr><td>Sub2 user ID</td><td><small>{rental.sub2UserId ?? "-"}</small></td></tr>
+            <tr><td>Sub2 key ID</td><td><small>{rental.sub2KeyId ?? "-"}</small></td></tr>
+            <tr><td>Created</td><td>{dateTime(rental.createdAt)}</td></tr>
+            <tr><td>Expires</td><td>{dateTime(rental.endsAt)}</td></tr>
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="Limits">
+          <MiniTable headers={["Field", "Value"]}>
+            <tr><td>Max concurrency</td><td>{rental.limits?.maxConcurrency ?? "-"}</td></tr>
+            <tr><td>RPM</td><td>{rental.limits?.rpmLimit ?? "-"}</td></tr>
+            <tr><td>TPM</td><td>{rental.limits?.tpmLimit ?? "-"}</td></tr>
+            <tr><td>Request limit</td><td>{rental.limits?.requestLimit ?? "-"}</td></tr>
+            <tr><td>Spend limit</td><td>{money(rental.limits?.spendLimit)}</td></tr>
+            <tr><td>Remaining spend</td><td>{money(rental.limits?.remainingSpend)}</td></tr>
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="API Keys">
+          <MiniTable headers={["Name", "Prefix", "Status", "Last used", "Created"]}>
+            {apiKeys.map((apiKey) => (
+              <tr key={apiKey.id}>
+                <td>{apiKey.name}</td>
+                <td><small>{apiKey.keyPrefix}</small></td>
+                <td><StatusPill status={apiKey.status} /></td>
+                <td>{dateTime(apiKey.lastUsedAt)}</td>
+                <td>{dateTime(apiKey.createdAt)}</td>
+              </tr>
+            ))}
+            {apiKeys.length === 0 && (
+              <tr><td colSpan={5}><small>No API keys linked to this rental.</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="Recent Usage">
+          <MiniTable headers={["Request", "Model", "Status", "Tokens", "Charge", "Supplier", "Time"]}>
+            {usages.slice(0, 10).map((usage) => (
+              <tr key={usage.id}>
+                <td><small>{usage.sub2RequestId}</small></td>
+                <td>{usage.model ?? "-"}</td>
+                <td><StatusPill status={usage.status} /></td>
+                <td>{Number(usage.inputUnits).toFixed(0)} / {Number(usage.outputUnits).toFixed(0)}</td>
+                <td><strong>{money(usage.buyerCharge)}</strong><small>Cost {money(usage.apiEquivalentCost)}</small></td>
+                <td><strong>{money(usage.supplierIncome)}</strong><small>{usage.supplierResource?.supplier?.user?.email ?? usage.supplierResource?.sub2AccountId ?? "-"}</small></td>
+                <td>{dateTime(usage.occurredAt)}</td>
+              </tr>
+            ))}
+            {usages.length === 0 && (
+              <tr><td colSpan={7}><small>No usage records linked to this rental.</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="Recent Proxy Requests">
+          <MiniTable headers={["Status", "Request", "Key", "Duration", "Size", "Source", "Time"]}>
+            {proxyRequests.slice(0, 10).map((log) => (
+              <tr key={log.id}>
+                <td>
+                  <StatusPill status={proxyStatusTone(log.statusCode)} />
+                  <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
+                  {log.errorCode && <small>{log.errorCode}</small>}
+                </td>
+                <td><strong>{log.method}</strong><small>{log.path}</small></td>
+                <td><strong>{log.apiKey?.name ?? log.apiKeyPrefix ?? "-"}</strong><small>{log.apiKey?.keyPrefix ?? log.apiKeyPrefix ?? "-"}</small></td>
+                <td>{log.durationMs}ms</td>
+                <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
+                <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
+                <td>{dateTime(log.createdAt)}</td>
+              </tr>
+            ))}
+            {proxyRequests.length === 0 && (
+              <tr><td colSpan={7}><small>No proxy requests linked to this rental.</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="Order">
+          <MiniTable headers={["Field", "Value"]}>
+            <tr><td>Order ID</td><td><small>{rental.order?.id ?? "-"}</small></td></tr>
+            <tr><td>Order status</td><td>{rental.order ? <StatusPill status={rental.order.status} /> : "-"}</td></tr>
+            <tr><td>Paid / total</td><td>{money(rental.order?.paidAmount)} / {money(rental.order?.totalAmount)}</td></tr>
+            <tr><td>Items</td><td>{rental.order?.items?.length ?? 0}</td></tr>
+            <tr><td>Created</td><td>{dateTime(rental.order?.createdAt)}</td></tr>
+          </MiniTable>
+        </DetailBlock>
+      </section>
+    </section>
   );
 }
 
