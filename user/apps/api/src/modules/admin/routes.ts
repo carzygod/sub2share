@@ -8,6 +8,7 @@ import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
+import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
@@ -164,6 +165,10 @@ const usageSyncSchema = z.object({
 
 const expireOverdueRentalsSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100)
+});
+
+const releaseSettlementsSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).default(200)
 });
 
 const createWithdrawalSchema = z.object({
@@ -1442,6 +1447,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       prisma.settlementRecord.count({ where })
     ]);
     return adminOk(reply, paged(settlements, total, query));
+  });
+
+  app.post("/api/admin/settlements/release-available", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const input = releaseSettlementsSchema.parse(request.body ?? {});
+    const result = await releaseAvailableSettlements({ limit: input.limit });
+    await writeAuditLog(request, actor.id, "admin.settlement.release_available", "settlement", undefined, null, result);
+    return adminOk(reply, result);
   });
 
   app.get("/api/admin/withdrawals", async (request, reply) => {

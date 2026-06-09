@@ -844,6 +844,15 @@ function App() {
     await refresh("withdrawals");
   }
 
+  async function releaseAvailableSettlements() {
+    const result = await api<{ matched: number; released: number; amountMatched: string }>("/api/admin/settlements/release-available", {
+      method: "POST",
+      body: JSON.stringify({ limit: 200 })
+    });
+    setMessage(`Released ${result.released}/${result.matched} settlements, amount ${result.amountMatched}`);
+    await refresh("settlements");
+  }
+
   async function setWithdrawalStatus(withdrawalId: string, status: string, payoutRef?: string) {
     await api(`/api/admin/withdrawals/${withdrawalId}`, {
       method: "PATCH",
@@ -1218,6 +1227,7 @@ function App() {
             settlements={settlements}
             query={listQueries.settlements}
             meta={listMeta.settlements}
+            onReleaseAvailable={releaseAvailableSettlements}
             onDraft={(patch) => updateListDraft("settlements", patch)}
             onFilter={(event) => submitListFilters("settlements", event)}
             onClear={() => clearListFilters("settlements")}
@@ -2302,9 +2312,16 @@ function ResourceDetailPanel({ resource, onClose }: { resource: ResourceDetailRo
   );
 }
 
-function SettlementsView({ settlements, query, meta, onDraft, onFilter, onClear, onPage, onExport }: { settlements: SettlementRow[] } & ManagedListProps) {
+function SettlementsView({ settlements, query, meta, onReleaseAvailable, onDraft, onFilter, onClear, onPage, onExport }: {
+  settlements: SettlementRow[];
+  onReleaseAvailable: () => void;
+} & ManagedListProps) {
   return (
     <>
+      <div className="panel glass-panel export-strip">
+        <span className="eyebrow">Maintenance</span>
+        <button className="secondary" onClick={onReleaseAvailable}><RefreshCw size={16} />Release available</button>
+      </div>
       <ListControls
         query={query}
         meta={meta}
