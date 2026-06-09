@@ -145,9 +145,6 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
       });
       if (existing) return "skipped";
 
-      const wallet = await tx.walletAccount.findUnique({ where: { userId: rental.userId } });
-      const canBillWallet = !buyerCharge.gt(0) || Boolean(wallet && wallet.availableBalance.gte(buyerCharge));
-
       const usage = await tx.usageRecord.create({
         data: {
           sub2RequestId: record.id,
@@ -161,42 +158,46 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
           apiEquivalentCost,
           buyerCharge,
           supplierIncome,
-          status: canBillWallet ? "billed" : "pending",
+          status: buyerCharge.gt(0) ? "pending" : "billed",
           occurredAt: new Date(record.occurredAt)
         }
       });
 
       const limitStatus = await updateRentalLimitsAfterUsage(tx, rental.id, buyerCharge);
 
-      if (!canBillWallet) {
-        await tx.rental.update({ where: { id: rental.id }, data: { status: "low_balance" } });
-        return "imported";
-      }
-
-      if (limitStatus.exhausted) {
-        await tx.rental.update({ where: { id: rental.id }, data: { status: "limited" } });
-      }
-
-      if (wallet && buyerCharge.gt(0)) {
-        const nextBalance = wallet.availableBalance.minus(buyerCharge);
-        await tx.walletAccount.update({
-          where: { id: wallet.id },
+      if (buyerCharge.gt(0)) {
+        const debit = await tx.walletAccount.updateMany({
+          where: {
+            userId: rental.userId,
+            availableBalance: { gte: buyerCharge }
+          },
           data: {
-            availableBalance: nextBalance,
-            totalSpent: wallet.totalSpent.plus(buyerCharge)
+            availableBalance: { decrement: buyerCharge },
+            totalSpent: { increment: buyerCharge }
           }
         });
+        if (debit.count !== 1) {
+          await tx.rental.update({ where: { id: rental.id }, data: { status: "low_balance" } });
+          return "imported";
+        }
+
+        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: rental.userId } });
         await tx.walletTransaction.create({
           data: {
             walletId: wallet.id,
             type: "consume",
             amount: buyerCharge,
-            balanceAfter: nextBalance,
+            balanceAfter: wallet.availableBalance,
             refType: "usage",
             refId: usage.id,
             note: "sub2 usage billing"
           }
         });
+        await tx.usageRecord.update({ where: { id: usage.id }, data: { status: "billed" } });
+      }
+
+      if (limitStatus.exhausted) {
+        await tx.rental.update({ where: { id: rental.id }, data: { status: "limited" } });
       }
 
       if (supplierResource && supplierIncome.gt(0)) {

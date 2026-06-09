@@ -57,18 +57,6 @@ export async function registerOrderRoutes(app: FastifyInstance) {
 
     try {
       result = await prisma.$transaction(async (tx) => {
-        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
-        if (wallet.availableBalance.lessThan(amount)) {
-          throw new AppError("insufficient_balance", "Insufficient wallet balance", 402);
-        }
-        const nextBalance = wallet.availableBalance.minus(amount);
-        await tx.walletAccount.update({
-          where: { id: wallet.id },
-          data: {
-            availableBalance: nextBalance,
-            totalSpent: wallet.totalSpent.plus(amount)
-          }
-        });
         const order = await tx.order.create({
           data: {
             userId: user.id,
@@ -85,12 +73,26 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             }
           }
         });
+        const debit = await tx.walletAccount.updateMany({
+          where: {
+            userId: user.id,
+            availableBalance: { gte: amount }
+          },
+          data: {
+            availableBalance: { decrement: amount },
+            totalSpent: { increment: amount }
+          }
+        });
+        if (debit.count !== 1) {
+          throw new AppError("insufficient_balance", "Insufficient wallet balance", 402);
+        }
+        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
         await tx.walletTransaction.create({
           data: {
             walletId: wallet.id,
             type: "consume",
             amount,
-            balanceAfter: nextBalance,
+            balanceAfter: wallet.availableBalance,
             refType: "order",
             refId: order.id,
             note: "purchase rental"

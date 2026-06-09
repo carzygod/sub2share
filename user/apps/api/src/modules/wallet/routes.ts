@@ -27,20 +27,20 @@ export async function registerWalletRoutes(app: FastifyInstance) {
 
     const wallet = await prisma.$transaction(async (tx) => {
       const current = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
-      const nextBalance = current.availableBalance.plus(input.amount);
-      const updated = await tx.walletAccount.update({
+      await tx.walletAccount.update({
         where: { id: current.id },
         data: {
-          availableBalance: nextBalance,
-          totalRecharged: current.totalRecharged.plus(input.amount)
+          availableBalance: { increment: input.amount },
+          totalRecharged: { increment: input.amount }
         }
       });
+      const updated = await tx.walletAccount.findUniqueOrThrow({ where: { id: current.id } });
       await tx.walletTransaction.create({
         data: {
           walletId: current.id,
           type: "recharge",
           amount: input.amount,
-          balanceAfter: nextBalance,
+          balanceAfter: updated.availableBalance,
           note: "mock recharge"
         }
       });
@@ -61,4 +61,3 @@ export async function registerWalletRoutes(app: FastifyInstance) {
     return ok(reply, rows);
   });
 }
-

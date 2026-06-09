@@ -374,20 +374,34 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         update: {},
         create: { userId: id, currency: "USD" }
       });
-      const nextBalance = current.availableBalance.plus(amount);
-      if (nextBalance.lt(0)) {
-        throw new AppError("insufficient_balance", "Wallet adjustment would make balance negative", 400);
+      if (amount.lt(0)) {
+        const debit = await tx.walletAccount.updateMany({
+          where: {
+            id: current.id,
+            availableBalance: { gte: amount.abs() }
+          },
+          data: {
+            availableBalance: { decrement: amount.abs() }
+          }
+        });
+        if (debit.count !== 1) {
+          throw new AppError("insufficient_balance", "Wallet adjustment would make balance negative", 400);
+        }
+      } else {
+        await tx.walletAccount.update({
+          where: { id: current.id },
+          data: {
+            availableBalance: { increment: amount }
+          }
+        });
       }
-      const updated = await tx.walletAccount.update({
-        where: { id: current.id },
-        data: { availableBalance: nextBalance }
-      });
+      const updated = await tx.walletAccount.findUniqueOrThrow({ where: { id: current.id } });
       await tx.walletTransaction.create({
         data: {
           walletId: current.id,
           type: "adjustment",
           amount,
-          balanceAfter: nextBalance,
+          balanceAfter: updated.availableBalance,
           refType: "admin_adjustment",
           refId: id,
           note: input.note ?? "admin wallet adjustment"
