@@ -79,6 +79,21 @@ const rentalStatusSchema = z.object({
   status: z.enum(rentalStatuses)
 });
 
+const nullablePositiveInteger = z.union([z.coerce.number().int().positive(), z.null()]).optional();
+const nullablePositiveDecimal = z.union([z.coerce.number().positive(), z.null()]).optional();
+const nullableNonNegativeDecimal = z.union([z.coerce.number().nonnegative(), z.null()]).optional();
+
+const rentalLimitsSchema = z.object({
+  maxConcurrency: z.coerce.number().int().min(1).max(200).optional(),
+  rpmLimit: nullablePositiveInteger,
+  tpmLimit: nullablePositiveInteger,
+  requestLimit: nullablePositiveInteger,
+  spendLimit: nullablePositiveDecimal,
+  remainingSpend: nullableNonNegativeDecimal
+}).refine((input) => Object.values(input).some((value) => value !== undefined), {
+  message: "At least one limit field must be provided"
+});
+
 const apiKeyStatusSchema = z.object({
   status: z.enum(["active", "inactive"])
 });
@@ -804,6 +819,41 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       status: rental.status,
       sub2Sync
     });
+    return adminOk(reply, rental);
+  });
+
+  app.patch("/api/admin/rentals/:id/limits", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = rentalLimitsSchema.parse(request.body ?? {});
+    const before = await prisma.rental.findUnique({
+      where: { id },
+      include: { limits: true }
+    });
+    if (!before) throw new AppError("rental_not_found", "Rental not found", 404);
+
+    const rental = await prisma.$transaction(async (tx) => {
+      await tx.rentalLimit.upsert({
+        where: { rentalId: id },
+        create: {
+          rentalId: id,
+          maxConcurrency: input.maxConcurrency ?? 1,
+          rpmLimit: input.rpmLimit ?? null,
+          tpmLimit: input.tpmLimit ?? null,
+          requestLimit: input.requestLimit ?? null,
+          spendLimit: decimalOrNull(input.spendLimit),
+          remainingSpend: input.remainingSpend !== undefined
+            ? decimalOrNull(input.remainingSpend)
+            : decimalOrNull(input.spendLimit)
+        },
+        update: rentalLimitUpdateData(input)
+      });
+      return tx.rental.findUniqueOrThrow({
+        where: { id },
+        include: { user: true, product: true, limits: true, order: true, apiKeys: { orderBy: { createdAt: "desc" }, take: 5 } }
+      });
+    });
+    await writeAuditLog(request, actor.id, "admin.rental.limits", "rental", id, before.limits, rental.limits);
     return adminOk(reply, rental);
   });
 
@@ -1583,6 +1633,22 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
 function adminOk(reply: FastifyReply, data: unknown) {
   return ok(reply, redactSecrets(data));
+}
+
+function rentalLimitUpdateData(input: z.infer<typeof rentalLimitsSchema>): Prisma.RentalLimitUpdateInput {
+  const data: Prisma.RentalLimitUpdateInput = {};
+  if (input.maxConcurrency !== undefined) data.maxConcurrency = input.maxConcurrency;
+  if (input.rpmLimit !== undefined) data.rpmLimit = input.rpmLimit;
+  if (input.tpmLimit !== undefined) data.tpmLimit = input.tpmLimit;
+  if (input.requestLimit !== undefined) data.requestLimit = input.requestLimit;
+  if (input.spendLimit !== undefined) data.spendLimit = decimalOrNull(input.spendLimit);
+  if (input.remainingSpend !== undefined) data.remainingSpend = decimalOrNull(input.remainingSpend);
+  return data;
+}
+
+function decimalOrNull(value: number | null | undefined) {
+  if (value === undefined || value === null) return null;
+  return new Prisma.Decimal(value);
 }
 
 function parseListQuery(raw: unknown): ListQuery {

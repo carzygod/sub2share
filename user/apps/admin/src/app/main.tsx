@@ -257,6 +257,7 @@ interface RentalRow {
     rpmLimit?: number | null;
     tpmLimit?: number | null;
     requestLimit?: number | null;
+    spendLimit?: string | null;
     remainingSpend?: string | null;
   } | null;
 }
@@ -752,6 +753,27 @@ function App() {
     }
   }
 
+  async function updateRentalLimits(event: FormEvent<HTMLFormElement>, rentalId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await api(`/api/admin/rentals/${rentalId}/limits`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        maxConcurrency: form.get("maxConcurrency"),
+        rpmLimit: nullableFormNumber(form, "rpmLimit"),
+        tpmLimit: nullableFormNumber(form, "tpmLimit"),
+        requestLimit: nullableFormNumber(form, "requestLimit"),
+        spendLimit: nullableFormNumber(form, "spendLimit"),
+        remainingSpend: nullableFormNumber(form, "remainingSpend")
+      })
+    });
+    setMessage("Rental limits updated");
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((rental) => rental.id === rentalId)) {
+      await openOrderDetail(selectedOrder.id);
+    }
+  }
+
   async function setApiKeyStatus(apiKeyId: string, status: string) {
     await api(`/api/admin/api-keys/${apiKeyId}/status`, {
       method: "PATCH",
@@ -1151,6 +1173,7 @@ function App() {
             query={listQueries.rentals}
             meta={listMeta.rentals}
             onRentalStatus={setRentalStatus}
+            onUpdateLimits={updateRentalLimits}
             onApiKeyStatus={setApiKeyStatus}
             onRotateKey={rotateRentalKey}
             onExpireOverdue={expireOverdueRentals}
@@ -1929,7 +1952,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
         </DetailBlock>
 
         <DetailBlock title="租赁限制">
-          <MiniTable headers={["租赁", "并发", "RPM", "TPM", "请求数", "剩余额度"]}>
+          <MiniTable headers={["租赁", "并发", "RPM", "TPM", "请求数", "消费上限", "剩余额度"]}>
             {order.rentals.map((rental) => (
               <tr key={rental.id}>
                 <td><small>{rental.id}</small></td>
@@ -1937,6 +1960,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
                 <td>{rental.limits?.rpmLimit ?? "-"}</td>
                 <td>{rental.limits?.tpmLimit ?? "-"}</td>
                 <td>{rental.limits?.requestLimit ?? "-"}</td>
+                <td>{rental.limits?.spendLimit ?? "-"}</td>
                 <td>{rental.limits?.remainingSpend ?? "-"}</td>
               </tr>
             ))}
@@ -1962,9 +1986,10 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
   );
 }
 
-function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, query, meta, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   onRentalStatus: (rentalId: string, status: string) => void;
+  onUpdateLimits: (event: FormEvent<HTMLFormElement>, rentalId: string) => void;
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
   onRotateKey: (rentalId: string) => void;
   onExpireOverdue: () => void;
@@ -1987,12 +2012,23 @@ function RentalsView({ rentals, query, meta, onRentalStatus, onApiKeyStatus, onR
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="租赁通道" count={meta.total} headers={["用户", "资源", "状态", "Endpoint", "API Key", "到期", "操作"]}>
+      <TablePanel title="租赁通道" count={meta.total} headers={["用户", "资源", "状态", "限制", "Endpoint", "API Key", "到期", "操作"]}>
         {rentals.map((rental) => (
           <tr key={rental.id}>
             <td><strong>{rental.user?.email ?? "-"}</strong><small>{rental.id}</small></td>
             <td>{rental.product?.name ?? rental.resourceType}</td>
             <td><StatusPill status={rental.status} /></td>
+            <td>
+              <form className="limits-form" onSubmit={(event) => onUpdateLimits(event, rental.id)}>
+                <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={rental.limits?.maxConcurrency ?? 1} aria-label="并发" />
+                <input name="rpmLimit" type="number" min={1} defaultValue={rental.limits?.rpmLimit ?? ""} placeholder="RPM" aria-label="RPM" />
+                <input name="tpmLimit" type="number" min={1} defaultValue={rental.limits?.tpmLimit ?? ""} placeholder="TPM" aria-label="TPM" />
+                <input name="requestLimit" type="number" min={1} defaultValue={rental.limits?.requestLimit ?? ""} placeholder="请求" aria-label="请求数" />
+                <input name="spendLimit" type="number" step="0.000001" min={0.000001} defaultValue={rental.limits?.spendLimit ?? ""} placeholder="消费" aria-label="消费上限" />
+                <input name="remainingSpend" type="number" step="0.000001" min={0} defaultValue={rental.limits?.remainingSpend ?? ""} placeholder="剩余" aria-label="剩余额度" />
+                <button type="submit" className="secondary mini">保存</button>
+              </form>
+            </td>
             <td>{rental.endpointUrl ?? "-"}</td>
             <td>
               {(rental.apiKeys ?? []).slice(0, 3).map((apiKey) => (
@@ -2529,6 +2565,11 @@ function buildListUrl(path: string, query: ListQueryState) {
 function optionalFormString(form: FormData, name: string) {
   const value = String(form.get(name) || "").trim();
   return value || undefined;
+}
+
+function nullableFormNumber(form: FormData, name: string) {
+  const value = String(form.get(name) || "").trim();
+  return value || null;
 }
 
 type CsvCell = string | number | null | undefined;

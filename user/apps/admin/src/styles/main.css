@@ -400,6 +400,23 @@ select option { color: #111; }
   gap: 6px;
   flex-wrap: wrap;
 }
+.limits-form {
+  min-width: 360px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(74px, 1fr)) auto;
+  gap: 6px;
+  align-items: center;
+}
+.limits-form input {
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.limits-form button {
+  grid-column: 4;
+  grid-row: 1 / span 2;
+  height: 100%;
+}
 .price-line {
   display: grid;
   gap: 7px;
