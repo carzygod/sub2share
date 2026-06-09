@@ -26,6 +26,7 @@ const productStatuses = ["draft", "active", "offline"] as const;
 const billingModes = ["pay_as_you_go", "daily", "weekly", "monthly"] as const;
 const usageStatuses = ["pending", "billed", "refunded", "ignored", "disputed"] as const;
 const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"] as const;
+const resourceLevels = ["L0", "L1", "L2", "L3", "L4"] as const;
 type ResourceStatus = (typeof resourceStatuses)[number];
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
@@ -179,9 +180,21 @@ const updateProductPriceSchema = createProductPriceSchema
   .partial();
 
 const resourceStatusSchema = z.object({
-  status: z.enum(["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"]),
-  level: z.enum(["L0", "L1", "L2", "L3", "L4"]).optional(),
-  sub2AccountId: z.string().trim().min(1).optional()
+  status: z.enum(resourceStatuses),
+  level: z.enum(resourceLevels).optional(),
+  sub2AccountId: z.string().trim().min(1).nullable().optional()
+});
+
+const updateResourceSchema = z.object({
+  status: z.enum(resourceStatuses).optional(),
+  level: z.enum(resourceLevels).optional(),
+  maxConcurrency: z.coerce.number().int().min(1).max(200).optional(),
+  shareRate: z.coerce.number().min(0).max(1).optional(),
+  reserveRatio: z.coerce.number().min(0).max(1).optional(),
+  dailyCap: z.union([z.coerce.number().positive(), z.null()]).optional(),
+  sub2AccountId: z.string().trim().min(1).nullable().optional()
+}).refine((input) => Object.values(input).some((value) => value !== undefined), {
+  message: "At least one resource field must be provided"
 });
 
 const createResourceSchema = z.object({
@@ -189,7 +202,7 @@ const createResourceSchema = z.object({
   displayName: z.string().trim().min(1).max(64).optional(),
   resourceType: z.enum(["codex", "claude_code", "gemini", "antigravity"]),
   status: z.enum(["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"]).default("pending"),
-  level: z.enum(["L0", "L1", "L2", "L3", "L4"]).default("L0"),
+  level: z.enum(resourceLevels).default("L0"),
   maxConcurrency: z.coerce.number().int().min(1).max(200).default(1),
   shareRate: z.coerce.number().min(0).max(1).default(0.7),
   reserveRatio: z.coerce.number().min(0).max(1).default(0.2),
@@ -1385,7 +1398,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { supplier: { user: { email: containsText(query.q) } } },
           { supplier: { user: { displayName: containsText(query.q) } } },
           ...(oneOf(resourceTypes, query.q) ? [{ resourceType: oneOf(resourceTypes, query.q) }] : []),
-          ...(oneOf(["L0", "L1", "L2", "L3", "L4"] as const, query.q) ? [{ level: oneOf(["L0", "L1", "L2", "L3", "L4"] as const, query.q) }] : [])
+          ...(oneOf(resourceLevels, query.q) ? [{ level: oneOf(resourceLevels, query.q) }] : [])
         ]
       } : {})
     };
@@ -1477,6 +1490,47 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, { ...resource, usageSummary, settlementSummary });
   });
 
+  app.patch("/api/admin/resources/:id", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = updateResourceSchema.parse(request.body);
+    const before = await prisma.supplierResource.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        level: true,
+        maxConcurrency: true,
+        shareRate: true,
+        reserveRatio: true,
+        dailyCap: true,
+        sub2AccountId: true,
+        lastCheckedAt: true
+      }
+    });
+    if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+
+    const data: Prisma.SupplierResourceUpdateInput = {};
+    if (input.status !== undefined) data.status = input.status;
+    if (input.level !== undefined) data.level = input.level;
+    if (input.maxConcurrency !== undefined) data.maxConcurrency = input.maxConcurrency;
+    if (input.shareRate !== undefined) data.shareRate = new Prisma.Decimal(input.shareRate);
+    if (input.reserveRatio !== undefined) data.reserveRatio = new Prisma.Decimal(input.reserveRatio);
+    if (input.dailyCap !== undefined) data.dailyCap = input.dailyCap === null ? null : new Prisma.Decimal(input.dailyCap);
+    if (input.sub2AccountId !== undefined) {
+      data.sub2AccountId = input.sub2AccountId;
+      data.lastCheckedAt = null;
+    }
+
+    const resource = await prisma.supplierResource.update({
+      where: { id },
+      data,
+      include: { supplier: { include: { user: true } } }
+    });
+    await writeAuditLog(request, actor.id, "admin.resource.update", "supplier_resource", id, resourceConfigAuditPayload(before), resourceConfigAuditPayload(resource));
+    return adminOk(reply, resource);
+  });
+
   app.post("/api/admin/resources/:id/test", async (request, reply) => {
     const actor = await requireRole(request, ["operator", "admin"]);
     const { id } = request.params as { id: string };
@@ -1522,14 +1576,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       where: { id },
       select: { id: true, status: true, level: true, sub2AccountId: true }
     });
+    if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    const data: Prisma.SupplierResourceUpdateInput = {
+      status: input.status,
+      lastCheckedAt: new Date()
+    };
+    if (input.level !== undefined) data.level = input.level;
+    if (input.sub2AccountId !== undefined) data.sub2AccountId = input.sub2AccountId;
     const resource = await prisma.supplierResource.update({
       where: { id },
-      data: {
-        status: input.status,
-        level: input.level,
-        sub2AccountId: input.sub2AccountId,
-        lastCheckedAt: new Date()
-      },
+      data,
       include: { supplier: { include: { user: true } } }
     });
     await writeAuditLog(request, actor.id, "admin.resource.status", "supplier_resource", id, before, {
@@ -3547,6 +3603,28 @@ function redactSensitiveText(value: string) {
     .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/g, "Bearer [REDACTED]")
     .replace(/(zyz_[A-Za-z0-9]{8})[A-Za-z0-9]+/g, "$1[REDACTED]")
     .replace(/(sk-[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+/g, "$1[REDACTED]");
+}
+
+function resourceConfigAuditPayload(resource: {
+  status: string;
+  level: string;
+  maxConcurrency: number;
+  shareRate: Prisma.Decimal | string | number;
+  reserveRatio: Prisma.Decimal | string | number;
+  dailyCap: Prisma.Decimal | string | number | null;
+  sub2AccountId: string | null;
+  lastCheckedAt?: Date | string | null;
+}) {
+  return {
+    status: resource.status,
+    level: resource.level,
+    maxConcurrency: resource.maxConcurrency,
+    shareRate: String(resource.shareRate),
+    reserveRatio: String(resource.reserveRatio),
+    dailyCap: resource.dailyCap === null ? null : String(resource.dailyCap),
+    sub2AccountId: resource.sub2AccountId,
+    lastCheckedAt: resource.lastCheckedAt instanceof Date ? resource.lastCheckedAt.toISOString() : resource.lastCheckedAt ?? null
+  };
 }
 
 async function writeAuditLog(

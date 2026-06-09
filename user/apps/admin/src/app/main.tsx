@@ -1275,6 +1275,26 @@ function App() {
     await openResourceDetail(resource.id);
   }
 
+  async function updateResourceConfig(event: FormEvent<HTMLFormElement>, resourceId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const resource = await api<ResourceRow>(`/api/admin/resources/${resourceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        status: form.get("status"),
+        level: form.get("level"),
+        maxConcurrency: form.get("maxConcurrency"),
+        shareRate: form.get("shareRate"),
+        reserveRatio: form.get("reserveRatio"),
+        dailyCap: nullableFormNumber(form, "dailyCap"),
+        sub2AccountId: nullableFormString(form, "sub2AccountId")
+      })
+    });
+    setMessage("共享资源配置已更新");
+    await refresh("resources");
+    await openResourceDetail(resource.id);
+  }
+
   async function refreshSub2Account(accountId: number) {
     const result = await api<{ ok: boolean; error?: string | null }>(`/api/admin/sub2/accounts/${accountId}/refresh`, {
       method: "POST",
@@ -1592,6 +1612,7 @@ function App() {
             query={listQueries.resources}
             meta={listMeta.resources}
             onCreate={createResource}
+            onUpdate={updateResourceConfig}
             onStatus={setResourceStatus}
             onTest={testResource}
             onDetail={openResourceDetail}
@@ -2754,10 +2775,11 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
   );
 }
 
-function ResourcesView({ resources, selectedResource, query, meta, onCreate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onStatus: (resourceId: string, status: ResourceStatus) => void;
   onTest: (resourceId: string) => void;
   onDetail: (resourceId: string) => void;
@@ -2797,13 +2819,14 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onS
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "Sub2 账号", "操作"]}>
+      <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "分成 / 日限额", "Sub2 账号", "操作"]}>
         {resources.map((resource) => (
           <tr key={resource.id}>
             <td><strong>{resource.supplier?.user?.email ?? "-"}</strong><small>{resource.id}</small></td>
             <td>{resource.resourceType} / 并发 {resource.maxConcurrency}</td>
             <td><StatusPill status={resource.status} /></td>
             <td>{resource.level}</td>
+            <td><strong>{resource.shareRate ?? "-"}</strong><small>{resource.reserveRatio ?? "-"} / {money(resource.dailyCap)}</small></td>
             <td>{resource.sub2AccountId ?? "-"}</td>
             <td>
               <div className="row-actions">
@@ -2817,12 +2840,16 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onS
           </tr>
         ))}
       </TablePanel>
-      {selectedResource && <ResourceDetailPanel resource={selectedResource} onClose={onCloseDetail} />}
+      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onClose={onCloseDetail} />}
     </>
   );
 }
 
-function ResourceDetailPanel({ resource, onClose }: { resource: ResourceDetailRow; onClose: () => void }) {
+function ResourceDetailPanel({ resource, onUpdate, onClose }: {
+  resource: ResourceDetailRow;
+  onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
+  onClose: () => void;
+}) {
   const usages = resource.usages ?? [];
   const settlements = resource.settlements ?? [];
   const usageCount = resource.usageSummary?._count ?? usages.length;
@@ -2862,6 +2889,23 @@ function ResourceDetailPanel({ resource, onClose }: { resource: ResourceDetailRo
             <tr><td>创建时间</td><td>{dateTime(resource.createdAt)}</td></tr>
             <tr><td>更新时间</td><td>{dateTime(resource.updatedAt)}</td></tr>
           </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="配置调整">
+          <form className="resource-config-form" key={`${resource.id}-${resource.updatedAt ?? ""}`} onSubmit={(event) => onUpdate(event, resource.id)}>
+            <select name="status" defaultValue={resource.status} required>
+              {resourceStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+            <select name="level" defaultValue={resource.level} required>
+              {["L0", "L1", "L2", "L3", "L4"].map((level) => <option key={level} value={level}>{level}</option>)}
+            </select>
+            <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={resource.maxConcurrency} placeholder="并发" required />
+            <input name="shareRate" type="number" step="0.01" min={0} max={1} defaultValue={resource.shareRate ?? "0.7"} placeholder="分成" required />
+            <input name="reserveRatio" type="number" step="0.01" min={0} max={1} defaultValue={resource.reserveRatio ?? "0.2"} placeholder="保留比例" required />
+            <input name="dailyCap" type="number" step="0.01" min={0} defaultValue={resource.dailyCap ?? ""} placeholder="日上限，留空清除" />
+            <input name="sub2AccountId" defaultValue={resource.sub2AccountId ?? ""} placeholder="Sub2 账号 ID，留空清除" />
+            <button>保存配置</button>
+          </form>
         </DetailBlock>
 
         <DetailBlock title="供给方">
@@ -3227,6 +3271,11 @@ function nullableFormNumber(form: FormData, name: string) {
   return value || null;
 }
 
+function nullableFormString(form: FormData, name: string) {
+  const value = String(form.get(name) || "").trim();
+  return value || null;
+}
+
 type CsvCell = string | number | null | undefined;
 
 function exportUsersCsv(rows: UserRow[], scope = "current-page") {
@@ -3333,14 +3382,18 @@ function exportRentalsCsv(rows: RentalRow[], scope = "current-page") {
 }
 
 function exportResourcesCsv(rows: ResourceRow[], scope = "current-page") {
-  downloadCsv(`resources-${scope}`, ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "sub2AccountId", "updatedAt"], rows.map((resource) => [
+  downloadCsv(`resources-${scope}`, ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "shareRate", "reserveRatio", "dailyCap", "sub2AccountId", "lastCheckedAt", "updatedAt"], rows.map((resource) => [
     resource.id,
     resource.supplier?.user?.email,
     resource.resourceType,
     resource.status,
     resource.level,
     resource.maxConcurrency,
+    resource.shareRate,
+    resource.reserveRatio,
+    resource.dailyCap,
     resource.sub2AccountId,
+    resource.lastCheckedAt,
     resource.updatedAt
   ]));
 }

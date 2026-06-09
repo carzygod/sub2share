@@ -417,6 +417,14 @@ select option { color: #111; }
   grid-row: 1 / span 2;
   height: 100%;
 }
+.resource-config-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.resource-config-form button {
+  grid-column: 1 / -1;
+}
 .price-line {
   display: grid;
   gap: 7px;
@@ -491,6 +499,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
   .admin-shell { grid-template-columns: 1fr; }
   .login-copy, .login-shell form, .panel, .topbar { padding: 20px; }
   .sidebar nav { grid-template-columns: 1fr; }
+  .resource-config-form { grid-template-columns: 1fr; }
   .actions, .filter-actions { flex-direction: column; }
   button { width: 100%; }
   .pager { width: 100%; justify-content: space-between; }
