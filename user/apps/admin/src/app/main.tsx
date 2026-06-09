@@ -1108,6 +1108,30 @@ function App() {
     await refresh("products");
   }
 
+  async function updateProductPrice(event: FormEvent<HTMLFormElement>, priceId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认更新价格档位？", `价格 ID：${priceId}\n名称：${form.get("displayName")}\n固定价格：${form.get("fixedPrice")}\n租期：${nullableFormNumber(form, "durationDays") ?? "-"}\n并发：${form.get("maxConcurrency")}\nRPM：${nullableFormNumber(form, "rpmLimit") ?? "-"}\nTPM：${nullableFormNumber(form, "tpmLimit") ?? "-"}\n请求数：${nullableFormNumber(form, "requestLimit") ?? "-"}\n消费上限：${nullableFormNumber(form, "spendLimit") ?? "-"}\n状态：${form.get("status")}`)) return;
+    await api(`/api/admin/product-prices/${priceId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        displayName: form.get("displayName"),
+        fixedPrice: form.get("fixedPrice"),
+        durationDays: nullableFormNumber(form, "durationDays"),
+        maxConcurrency: form.get("maxConcurrency"),
+        rpmLimit: nullableFormNumber(form, "rpmLimit"),
+        tpmLimit: nullableFormNumber(form, "tpmLimit"),
+        requestLimit: nullableFormNumber(form, "requestLimit"),
+        spendLimit: nullableFormNumber(form, "spendLimit"),
+        discountRate: form.get("discountRate"),
+        tierMultiplier: form.get("tierMultiplier"),
+        status: form.get("status")
+      })
+    });
+    setMessage("Product price updated");
+    await refresh("products");
+  }
+
   async function setRentalStatus(rentalId: string, status: string) {
     if (status !== "active" && !confirmAdminAction("确认调整租赁状态？", `租赁 ID：${rentalId}\n目标状态：${status}`)) return;
     await api(`/api/admin/rentals/${rentalId}/status`, {
@@ -1643,6 +1667,7 @@ function App() {
             onCreate={createProduct}
             onProductStatus={setProductStatus}
             onCreatePrice={createProductPrice}
+            onUpdatePrice={updateProductPrice}
             onPriceStatus={setProductPriceStatus}
             onDraft={(patch) => updateListDraft("products", patch)}
             onFilter={(event) => submitListFilters("products", event)}
@@ -2456,11 +2481,12 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, 
   );
 }
 
-function ProductsView({ products, query, meta, onCreate, onProductStatus, onCreatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function ProductsView({ products, query, meta, onCreate, onProductStatus, onCreatePrice, onUpdatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
   products: ProductRow[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onProductStatus: (productId: string, status: string) => void;
   onCreatePrice: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdatePrice: (event: FormEvent<HTMLFormElement>, priceId: string) => void;
   onPriceStatus: (priceId: string, status: string) => void;
 } & ManagedListProps) {
   return (
@@ -2533,6 +2559,22 @@ function ProductsView({ products, query, meta, onCreate, onProductStatus, onCrea
                     <button className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>
                     <button className="secondary mini" onClick={() => onPriceStatus(price.id, "offline")}>下线</button>
                   </div>
+                  <form className="limits-form" key={`${price.id}-${price.updatedAt ?? ""}`} onSubmit={(event) => onUpdatePrice(event, price.id)}>
+                    <input name="displayName" defaultValue={price.displayName} placeholder="名称" required />
+                    <input name="fixedPrice" type="number" step="0.01" min={0.01} defaultValue={price.fixedPrice ?? ""} placeholder="价格" required />
+                    <input name="durationDays" type="number" min={1} defaultValue={price.durationDays ?? ""} placeholder="天数" />
+                    <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={price.maxConcurrency} placeholder="并发" required />
+                    <input name="rpmLimit" type="number" min={1} defaultValue={price.rpmLimit ?? ""} placeholder="RPM" />
+                    <input name="tpmLimit" type="number" min={1} defaultValue={price.tpmLimit ?? ""} placeholder="TPM" />
+                    <input name="requestLimit" type="number" min={1} defaultValue={price.requestLimit ?? ""} placeholder="请求" />
+                    <input name="spendLimit" type="number" step="0.000001" min={0.000001} defaultValue={price.spendLimit ?? ""} placeholder="消费" />
+                    <input name="discountRate" type="number" step="0.01" min={0} max={1} defaultValue={price.discountRate} placeholder="折扣" required />
+                    <input name="tierMultiplier" type="number" step="0.01" min={0.01} defaultValue={price.tierMultiplier} placeholder="倍率" required />
+                    <select name="status" defaultValue={price.status} required>
+                      {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                    </select>
+                    <button type="submit" className="secondary mini">保存价格</button>
+                  </form>
                 </div>
               ))}
             </td>

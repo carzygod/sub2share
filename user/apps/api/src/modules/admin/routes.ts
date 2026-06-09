@@ -189,7 +189,17 @@ const createProductPriceSchema = z.object({
 
 const updateProductPriceSchema = createProductPriceSchema
   .omit({ tierCode: true })
-  .partial();
+  .partial()
+  .extend({
+    durationDays: nullablePositiveInteger,
+    rpmLimit: nullablePositiveInteger,
+    tpmLimit: nullablePositiveInteger,
+    requestLimit: nullablePositiveInteger,
+    spendLimit: nullablePositiveDecimal
+  })
+  .refine((input) => Object.values(input).some((value) => value !== undefined), {
+    message: "At least one product price field must be provided"
+  });
 
 const resourceStatusSchema = z.object({
   status: z.enum(resourceStatuses),
@@ -1529,7 +1539,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ...(input.rpmLimit !== undefined ? { rpmLimit: input.rpmLimit } : {}),
         ...(input.tpmLimit !== undefined ? { tpmLimit: input.tpmLimit } : {}),
         ...(input.requestLimit !== undefined ? { requestLimit: input.requestLimit } : {}),
-        ...(input.spendLimit !== undefined ? { spendLimit: new Prisma.Decimal(input.spendLimit) } : {}),
+        ...(input.spendLimit !== undefined ? { spendLimit: decimalOrNull(input.spendLimit) } : {}),
         ...(input.discountRate !== undefined ? { discountRate: new Prisma.Decimal(input.discountRate) } : {}),
         ...(input.tierMultiplier !== undefined ? { tierMultiplier: new Prisma.Decimal(input.tierMultiplier) } : {}),
         ...(input.status !== undefined ? { status: input.status } : {})
@@ -1539,9 +1549,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       productId: price.productId,
       displayName: price.displayName,
       fixedPrice: String(price.fixedPrice),
+      durationDays: price.durationDays,
+      maxConcurrency: price.maxConcurrency,
       rpmLimit: price.rpmLimit,
       tpmLimit: price.tpmLimit,
+      requestLimit: price.requestLimit,
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
+      discountRate: String(price.discountRate),
+      tierMultiplier: String(price.tierMultiplier),
       status: price.status
     });
     return adminOk(reply, price);

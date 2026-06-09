@@ -13,6 +13,7 @@ OpenAI/Codex 本地反代入口已经支持租赁级 RPM/TPM 闸门，`RentalLim
 - 种子套餐为 Codex 标准月租写入默认 `rpmLimit=60`、`tpmLimit=120000`。
 - 管理员创建/更新价格时支持传入 `rpmLimit` 和 `tpmLimit`。
 - 管理后台创建价格表单新增 RPM/TPM 输入框。
+- 管理后台价格档位维护表单支持更新或清空 RPM/TPM。
 - 管理后台商品价格摘要展示 RPM/TPM。
 - 管理后台产品 CSV 导出新增套餐限额摘要，包含并发、RPM、TPM、请求数和消费上限。
 - 买家端套餐卡片展示 RPM/TPM。
