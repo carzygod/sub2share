@@ -24,6 +24,7 @@
 - 用户状态：统计 active、disabled、banned 用户。
 - 订单状态：提示 failed、refunding 等需要人工复查的订单。
 - 租赁可用性：检查 active 租赁是否已过期，以及 low_balance、limited、suspended 等受限租赁。
+- API Key 可用性：检查 OpenAI/Codex 本地反代 active Key 是否能通过用户、钱包、租赁、到期时间和 Key hash 准入条件。
 - 余额账户：检查钱包可用余额或冻结余额是否出现负数。
 - 共享资源：检查异常资源和 online Codex 资源数量。
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况。
@@ -48,6 +49,8 @@
 - 本功能只读，不自动修复问题。
 - Sub2/OpenAI 上游状态仍依赖 Sub2API 实时返回。
 - 账务对账采用当前有界扫描策略，适合后台快速巡检；全量对账仍可后续扩展为异步任务。
+- API Key 可用性巡检只聚焦 OpenAI/Codex 本地 `/v1/*` 反代准入，不把其他资源类型的 active Key 视为错误。
+- API Key 可用性巡检默认扫描最近 500 条 active OpenAI/Codex Key，并在 `detail.issues` 中返回最多 50 条样本，避免巡检响应过大。
 - 巡检结果用于帮助管理员定位方向，具体修复仍通过订单、租赁、余额、资源、反代状态、反代请求、账务对账、结算和提现等页面执行。
 - 客户端中途断开通常标记为 warning，用于提示长流式请求或客户端取消较多；上游流异常会标记为 error，提示 Sub2API 或上游连接链路需要复查。
 

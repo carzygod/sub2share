@@ -36,6 +36,8 @@ const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
+const systemHealthApiKeyScanLimit = 500;
+const systemHealthApiKeyIssueLimit = 50;
 const sub2BindingReconciliationLimit = 500;
 
 const listQuerySchema = z.object({
@@ -82,6 +84,17 @@ interface Sub2BindingIssue {
   sub2Type?: string;
   expected?: string | null;
   actual?: string | null;
+  message: string;
+}
+
+interface ApiKeyReadinessIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  apiKeyId: string;
+  rentalId?: string | null;
+  userId: string;
+  keyPrefix: string;
   message: string;
 }
 
@@ -2538,7 +2551,8 @@ async function buildSystemHealthReport() {
     proxyRecentStreamErrors,
     billingSync,
     reconciliation,
-    sub2Bindings
+    sub2Bindings,
+    apiKeyReadiness
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -2565,7 +2579,8 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed"] } } }),
     getSub2UsageSyncState(),
     findBillingReconciliationIssues(),
-    findSub2BindingIssues()
+    findSub2BindingIssues(),
+    inspectOpenAiProxyApiKeys(checkedAt)
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const usersByStatus = countGroups(userCounts, "status");
@@ -2604,6 +2619,16 @@ async function buildSystemHealthReport() {
         ? `${overdueActiveRentals} 个 active 租赁已过期`
         : constrainedRentals > 0 ? `${constrainedRentals} 个租赁处于余额/限额/暂停状态` : "租赁状态正常",
       { activeRentals, overdueActiveRentals, constrainedRentals }
+    ),
+    systemHealthCheck(
+      "apiKeys",
+      "API Key 可用性",
+      apiKeyReadiness.errors > 0 ? "error" : apiKeyReadiness.warnings > 0 ? "warning" : "ok",
+      apiKeyReadiness.totalIssues > 0
+        ? `${apiKeyReadiness.totalIssues} 个 OpenAI/Codex Key 准入问题`
+        : "OpenAI/Codex Key 准入状态正常",
+      apiKeyReadiness.summary,
+      { issues: apiKeyReadiness.issues }
     ),
     systemHealthCheck(
       "wallets",
@@ -3209,6 +3234,115 @@ function aggregateHealthStatus(checks: SystemHealthCheck[]): SystemHealthStatus 
   if (checks.some((check) => check.status === "error")) return "error";
   if (checks.some((check) => check.status === "warning")) return "warning";
   return "ok";
+}
+
+async function inspectOpenAiProxyApiKeys(checkedAt: Date) {
+  const openAiProxyKeyWhere: Prisma.ApiKeyWhereInput = {
+    status: "active",
+    user: nonSmokeUserWhere(),
+    OR: [
+      { rentalId: null },
+      { rental: { resourceType: "codex" } },
+      { rental: { product: { resourceType: "codex" } } }
+    ]
+  };
+  const [total, apiKeys] = await Promise.all([
+    prisma.apiKey.count({ where: openAiProxyKeyWhere }),
+    prisma.apiKey.findMany({
+      where: openAiProxyKeyWhere,
+      include: {
+        user: { include: { wallet: true } },
+        rental: { include: { product: true } }
+      },
+      orderBy: { createdAt: "desc" },
+      take: systemHealthApiKeyScanLimit
+    })
+  ]);
+  const minimumBalance = new Prisma.Decimal(env.OPENAI_PROXY_MIN_WALLET_BALANCE);
+  const issues: ApiKeyReadinessIssue[] = [];
+  const counters = {
+    inactiveUsers: 0,
+    insufficientWallets: 0,
+    missingRentals: 0,
+    inactiveRentals: 0,
+    expiredRentals: 0,
+    missingSub2KeyIds: 0,
+    missingSub2KeyHashes: 0,
+    keyRentalMismatches: 0
+  };
+
+  const pushIssue = (
+    apiKey: (typeof apiKeys)[number],
+    type: keyof typeof counters,
+    severity: ApiKeyReadinessIssue["severity"],
+    message: string
+  ) => {
+    counters[type] += 1;
+    if (issues.length >= systemHealthApiKeyIssueLimit) return;
+    issues.push({
+      id: `${type}:${apiKey.id}`,
+      type,
+      severity,
+      apiKeyId: apiKey.id,
+      rentalId: apiKey.rentalId,
+      userId: apiKey.userId,
+      keyPrefix: apiKey.keyPrefix,
+      message
+    });
+  };
+
+  for (const apiKey of apiKeys) {
+    if (apiKey.user.status !== "active") {
+      pushIssue(apiKey, "inactiveUsers", "error", `API key ${apiKey.id} belongs to non-active user ${apiKey.userId}.`);
+    }
+    if (!apiKey.user.wallet || apiKey.user.wallet.availableBalance.lte(minimumBalance)) {
+      pushIssue(apiKey, "insufficientWallets", "warning", `API key ${apiKey.id} user wallet cannot pass OpenAI proxy balance gate.`);
+    }
+    if (!apiKey.rental) {
+      pushIssue(apiKey, "missingRentals", "error", `API key ${apiKey.id} is active but has no linked rental.`);
+      continue;
+    }
+    if (apiKey.rental.status !== "active") {
+      pushIssue(apiKey, "inactiveRentals", "error", `API key ${apiKey.id} is active but rental ${apiKey.rental.id} is ${apiKey.rental.status}.`);
+    }
+    if (apiKey.rental.endsAt && apiKey.rental.endsAt.getTime() <= checkedAt.getTime()) {
+      pushIssue(apiKey, "expiredRentals", "error", `API key ${apiKey.id} rental ${apiKey.rental.id} is expired.`);
+    }
+    if (!apiKey.rental.sub2KeyId) {
+      pushIssue(apiKey, "missingSub2KeyIds", "warning", `API key ${apiKey.id} rental ${apiKey.rental.id} has no Sub2 key id.`);
+    }
+    if (!apiKey.rental.sub2KeyHash) {
+      pushIssue(apiKey, "missingSub2KeyHashes", "warning", `API key ${apiKey.id} rental ${apiKey.rental.id} has no Sub2 key hash.`);
+    } else if (apiKey.rental.sub2KeyHash !== apiKey.keyHash) {
+      pushIssue(apiKey, "keyRentalMismatches", "error", `API key ${apiKey.id} hash does not match rental ${apiKey.rental.id}.`);
+    }
+  }
+
+  const errors = counters.inactiveUsers
+    + counters.missingRentals
+    + counters.inactiveRentals
+    + counters.expiredRentals
+    + counters.keyRentalMismatches;
+  const warnings = counters.insufficientWallets
+    + counters.missingSub2KeyIds
+    + counters.missingSub2KeyHashes;
+  const totalIssues = errors + warnings;
+
+  return {
+    ok: totalIssues === 0,
+    totalIssues,
+    errors,
+    warnings,
+    issues,
+    summary: {
+      activeOpenAiProxyApiKeys: total,
+      scanned: apiKeys.length,
+      scanLimit: systemHealthApiKeyScanLimit,
+      truncated: total > apiKeys.length,
+      issueSamples: issues.length,
+      ...counters
+    }
+  };
 }
 
 async function fetchSub2HealthStatus() {
