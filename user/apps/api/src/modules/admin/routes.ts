@@ -616,12 +616,25 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/orders/:id", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const { id } = request.params as { id: string };
-    const order = await prisma.order.findUnique({
-      where: { id },
-      include: orderDetailInclude
-    });
+    const [order, walletTransactions, walletTransactionSummary] = await Promise.all([
+      prisma.order.findUnique({
+        where: { id },
+        include: orderDetailInclude
+      }),
+      prisma.walletTransaction.findMany({
+        where: { refType: "order", refId: id },
+        include: { wallet: { include: { user: true } } },
+        orderBy: { createdAt: "desc" },
+        take: 50
+      }),
+      prisma.walletTransaction.aggregate({
+        where: { refType: "order", refId: id },
+        _count: true,
+        _sum: { amount: true }
+      })
+    ]);
     if (!order) throw new AppError("order_not_found", "Order not found", 404);
-    return adminOk(reply, order);
+    return adminOk(reply, { ...order, walletTransactions, walletTransactionSummary });
   });
 
   app.post("/api/admin/orders/:id/cancel", async (request, reply) => {

@@ -321,6 +321,8 @@ interface OrderDetailRow extends OrderRow {
   items: OrderItemRow[];
   rentals: RentalRow[];
   statusHistory?: OrderStatusHistoryRow[];
+  walletTransactions?: WalletTransactionRow[];
+  walletTransactionSummary?: AggregateSummary;
 }
 
 interface OrderStatusHistoryRow {
@@ -2556,6 +2558,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
 }
 
 function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onClose: () => void }) {
+  const walletTransactions = order.walletTransactions ?? [];
   return (
     <section className="panel glass-panel wide detail-panel">
       <div className="section-head">
@@ -2580,9 +2583,29 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
         <div><span>租赁</span><strong>{order.rentals.length}</strong></div>
         <div><span>创建时间</span><strong>{dateTime(order.createdAt)}</strong></div>
         <div><span>更新时间</span><strong>{dateTime(order.updatedAt)}</strong></div>
+        <div><span>钱包流水</span><strong>{order.walletTransactionSummary?._count ?? walletTransactions.length}</strong></div>
+        <div><span>流水金额</span><strong>{money(order.walletTransactionSummary?._sum?.amount)}</strong></div>
       </div>
 
       <section className="detail-grid">
+        <DetailBlock title="钱包流水">
+          <MiniTable headers={["类型", "金额", "余额后", "用户", "备注", "时间"]}>
+            {walletTransactions.slice(0, 10).map((transaction) => (
+              <tr key={transaction.id}>
+                <td><StatusPill status={transaction.type} /></td>
+                <td>{money(transaction.amount)}</td>
+                <td>{money(transaction.balanceAfter)}</td>
+                <td><small>{transaction.wallet?.user?.email ?? transaction.walletId}</small></td>
+                <td><small>{transaction.note ?? "-"}</small></td>
+                <td>{dateTime(transaction.createdAt)}</td>
+              </tr>
+            ))}
+            {walletTransactions.length === 0 && (
+              <tr><td colSpan={6}><small>暂无关联钱包流水。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
         <DetailBlock title="状态历史">
           <MiniTable headers={["从", "到", "原因", "操作者", "Meta", "时间"]}>
             {(order.statusHistory ?? []).map((history) => (
