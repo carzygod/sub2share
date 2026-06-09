@@ -7,6 +7,7 @@ import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
+const activeProxyRequests = new Map<string, number>();
 const hopByHopHeaders = new Set([
   "connection",
   "content-encoding",
@@ -52,6 +53,12 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
         }
 
+        const concurrencyLease = acquireProxyConcurrency(keyRecord.apiKey.rental);
+        if (!concurrencyLease.ok) {
+          return openAiError(reply, concurrencyLease.statusCode, concurrencyLease.code, concurrencyLease.message);
+        }
+        releaseLeaseOnReplyEnd(reply, concurrencyLease.release);
+
         await prisma.apiKey.update({
           where: { id: keyRecord.apiKey.id },
           data: { lastUsedAt: new Date() }
@@ -78,7 +85,9 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           upstreamStatus: upstream.status,
           durationMs: Date.now() - startedAt,
           apiKeyId: keyRecord.apiKey.id,
-          rentalId: keyRecord.apiKey.rentalId
+          rentalId: keyRecord.apiKey.rentalId,
+          activeProxyRequests: concurrencyLease.activeCount,
+          proxyConcurrencyLimit: concurrencyLease.limit
         }, "openai proxy request");
 
         copyResponseHeaders(upstream, reply);
@@ -180,6 +189,43 @@ async function checkRentalRequestLimit(
   }
 
   return { ok: true as const };
+}
+
+function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
+  if (!rental) {
+    return failure(403, "rental_not_active", "Rental is not active");
+  }
+
+  const limit = Math.max(1, rental?.limits?.maxConcurrency ?? 1);
+  const key = rental.id;
+  const activeCount = activeProxyRequests.get(key) ?? 0;
+
+  if (activeCount >= limit) {
+    return failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached");
+  }
+
+  activeProxyRequests.set(key, activeCount + 1);
+  let released = false;
+  return {
+    ok: true as const,
+    activeCount: activeCount + 1,
+    limit,
+    release: () => {
+      if (released) return;
+      released = true;
+      const current = activeProxyRequests.get(key) ?? 0;
+      if (current <= 1) {
+        activeProxyRequests.delete(key);
+      } else {
+        activeProxyRequests.set(key, current - 1);
+      }
+    }
+  };
+}
+
+function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {
+  reply.raw.once("finish", release);
+  reply.raw.once("close", release);
 }
 
 function isMetadataRequest(request: FastifyRequest) {
