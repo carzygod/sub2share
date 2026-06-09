@@ -29,6 +29,8 @@ const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "canc
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
 const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
+const systemHealthProxyWindowMs = 60 * 60 * 1000;
+const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -52,6 +54,17 @@ interface BillingReconciliationIssue {
   expected?: string;
   actual?: string;
   createdAt?: string;
+}
+
+type SystemHealthStatus = "ok" | "warning" | "error";
+
+interface SystemHealthCheck {
+  id: string;
+  label: string;
+  status: SystemHealthStatus;
+  summary: string;
+  metrics?: Record<string, string | number | boolean | null>;
+  detail?: unknown;
 }
 
 const orderDetailInclude = {
@@ -247,6 +260,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       paidOrderCount: orderAgg._count,
       paidOrderAmount: orderAgg._sum.paidAmount ?? 0
     });
+  });
+
+  app.get("/api/admin/system-health", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    return adminOk(reply, await buildSystemHealthReport());
   });
 
   app.post("/api/admin/users", async (request, reply) => {
@@ -1980,6 +1998,157 @@ function decimalMax(left: Prisma.Decimal, right: Prisma.Decimal) {
   return left.gte(right) ? left : right;
 }
 
+async function buildSystemHealthReport() {
+  const checkedAt = new Date();
+  const proxySince = new Date(checkedAt.getTime() - systemHealthProxyWindowMs);
+  const [
+    userCounts,
+    activeRentals,
+    overdueActiveRentals,
+    constrainedRentals,
+    negativeWallets,
+    orderCounts,
+    resourceCounts,
+    pendingWithdrawals,
+    pendingSettlements,
+    proxyRecentTotal,
+    proxyRecentClientErrors,
+    proxyRecentServerErrors,
+    proxyRecentLocalErrors,
+    billingSync,
+    reconciliation
+  ] = await Promise.all([
+    prisma.user.groupBy({ by: ["status"], _count: true }),
+    prisma.rental.count({ where: { status: "active" } }),
+    prisma.rental.count({ where: { status: "active", endsAt: { lte: checkedAt } } }),
+    prisma.rental.count({ where: { status: { in: ["low_balance", "limited", "suspended"] } } }),
+    prisma.walletAccount.count({
+      where: {
+        OR: [
+          { availableBalance: { lt: 0 } },
+          { frozenBalance: { lt: 0 } }
+        ]
+      }
+    }),
+    prisma.order.groupBy({ by: ["status"], _count: true }),
+    prisma.supplierResource.groupBy({ by: ["status"], _count: true }),
+    prisma.withdrawal.count({ where: { status: "pending" } }),
+    prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 400, lt: 500 } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 500 } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
+    getSub2UsageSyncState(),
+    findBillingReconciliationIssues()
+  ]);
+  const sub2Status = await fetchSub2HealthStatus();
+  const usersByStatus = countGroups(userCounts, "status");
+  const ordersByStatus = countGroups(orderCounts, "status");
+  const resourcesByStatus = countGroups(resourceCounts, "status");
+  const failedOrders = (ordersByStatus.failed ?? 0) + (ordersByStatus.refunding ?? 0);
+  const abnormalResources = resourcesByStatus.abnormal ?? 0;
+  const onlineCodexResources = await prisma.supplierResource.count({
+    where: { resourceType: "codex", status: "online" }
+  });
+
+  const checks: SystemHealthCheck[] = [
+    systemHealthCheck("database", "数据库", "ok", "Prisma 查询正常", {
+      users: totalGroupCount(userCounts),
+      rentals: activeRentals
+    }),
+    systemHealthCheck(
+      "users",
+      "用户状态",
+      (usersByStatus.banned ?? 0) > 0 ? "warning" : "ok",
+      `active ${usersByStatus.active ?? 0}, disabled ${usersByStatus.disabled ?? 0}, banned ${usersByStatus.banned ?? 0}`,
+      usersByStatus
+    ),
+    systemHealthCheck(
+      "orders",
+      "订单状态",
+      failedOrders > 0 ? "warning" : "ok",
+      failedOrders > 0 ? `${failedOrders} 个订单需要人工复查` : "订单状态无明显阻断",
+      ordersByStatus
+    ),
+    systemHealthCheck(
+      "rentals",
+      "租赁可用性",
+      overdueActiveRentals > 0 ? "error" : constrainedRentals > 0 ? "warning" : "ok",
+      overdueActiveRentals > 0
+        ? `${overdueActiveRentals} 个 active 租赁已过期`
+        : constrainedRentals > 0 ? `${constrainedRentals} 个租赁处于余额/限额/暂停状态` : "租赁状态正常",
+      { activeRentals, overdueActiveRentals, constrainedRentals }
+    ),
+    systemHealthCheck(
+      "wallets",
+      "余额账户",
+      negativeWallets > 0 ? "error" : "ok",
+      negativeWallets > 0 ? `${negativeWallets} 个钱包出现负余额` : "余额账户未发现负数",
+      { negativeWallets }
+    ),
+    systemHealthCheck(
+      "resources",
+      "共享资源",
+      abnormalResources > 0 ? "warning" : onlineCodexResources === 0 ? "warning" : "ok",
+      abnormalResources > 0
+        ? `${abnormalResources} 个资源异常`
+        : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常",
+      { ...resourcesByStatus, onlineCodexResources }
+    ),
+    systemHealthCheck(
+      "sub2",
+      "Sub2/OpenAI 上游",
+      sub2Status.ready ? "ok" : "error",
+      sub2Status.ready ? "Sub2API OpenAI 上游可调度" : `阻断：${sub2Status.blockingReasons.join(", ") || "unknown"}`,
+      {
+        gatewayReachable: sub2Status.gatewayReachable,
+        ready: sub2Status.ready,
+        defaultGroupId: sub2Status.defaultGroupId ?? null,
+        accounts: sub2Status.accountCount
+      },
+      sub2Status.error ? { error: sub2Status.error } : { blockingReasons: sub2Status.blockingReasons }
+    ),
+    systemHealthCheck(
+      "proxy",
+      "反代请求",
+      proxyRecentServerErrors > 0 ? "error" : proxyRecentClientErrors > 0 || proxyRecentLocalErrors > 0 ? "warning" : "ok",
+      proxyRecentTotal === 0
+        ? "最近 1 小时无反代请求"
+        : `${proxyRecentTotal} 次请求，${proxyRecentServerErrors} 次 5xx，${proxyRecentClientErrors} 次 4xx`,
+      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors }
+    ),
+    billingSyncHealthCheck(billingSync, checkedAt),
+    systemHealthCheck(
+      "reconciliation",
+      "账务对账",
+      reconciliation.ok ? "ok" : "error",
+      reconciliation.ok ? "账务对账未发现问题" : `${reconciliation.summary.totalIssues} 个账务一致性问题`,
+      reconciliation.summary
+    ),
+    systemHealthCheck(
+      "settlements",
+      "结算提现",
+      pendingSettlements > 0 || pendingWithdrawals > 0 ? "warning" : "ok",
+      pendingSettlements > 0 || pendingWithdrawals > 0
+        ? `${pendingSettlements} 条到期待释放结算，${pendingWithdrawals} 条待处理提现`
+        : "结算提现无待处理阻塞",
+      { pendingSettlements, pendingWithdrawals }
+    )
+  ];
+
+  return {
+    checkedAt: checkedAt.toISOString(),
+    status: aggregateHealthStatus(checks),
+    summary: {
+      totalChecks: checks.length,
+      ok: checks.filter((check) => check.status === "ok").length,
+      warning: checks.filter((check) => check.status === "warning").length,
+      error: checks.filter((check) => check.status === "error").length
+    },
+    checks
+  };
+}
+
 async function findBillingReconciliationIssues() {
   const [
     billedUsages,
@@ -2183,6 +2352,100 @@ function decimalEquals(left: Prisma.Decimal, right: Prisma.Decimal) {
 
 function decimalText(value: Prisma.Decimal) {
   return value.toFixed(6);
+}
+
+function systemHealthCheck(
+  id: string,
+  label: string,
+  status: SystemHealthStatus,
+  summary: string,
+  metrics?: Record<string, string | number | boolean | null>,
+  detail?: unknown
+): SystemHealthCheck {
+  return { id, label, status, summary, metrics, detail };
+}
+
+function aggregateHealthStatus(checks: SystemHealthCheck[]): SystemHealthStatus {
+  if (checks.some((check) => check.status === "error")) return "error";
+  if (checks.some((check) => check.status === "warning")) return "warning";
+  return "ok";
+}
+
+async function fetchSub2HealthStatus() {
+  try {
+    const status = await sub2Client.fetchGatewayStatus();
+    return {
+      gatewayReachable: status.gatewayReachable,
+      ready: status.ready,
+      blockingReasons: status.blockingReasons,
+      defaultGroupId: status.defaultGroupId ?? null,
+      accountCount: status.accounts.length,
+      error: null as string | null
+    };
+  } catch (error) {
+    return {
+      gatewayReachable: false,
+      ready: false,
+      blockingReasons: ["sub2_status_query_failed"],
+      defaultGroupId: null,
+      accountCount: 0,
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+    };
+  }
+}
+
+function billingSyncHealthCheck(
+  sync: Awaited<ReturnType<typeof getSub2UsageSyncState>>,
+  checkedAt: Date
+) {
+  const state = sync.state;
+  if (!state) {
+    return systemHealthCheck("billingSync", "用量同步", "warning", "尚未发现 Sub2 usage 同步状态", {
+      runs: sync.runs.length
+    });
+  }
+
+  const lastFinishedAt = state.lastFinishedAt?.getTime() ?? 0;
+  const stale = lastFinishedAt === 0 || checkedAt.getTime() - lastFinishedAt > systemHealthBillingSyncStaleMs;
+  const failed = state.lastStatus === "failed";
+  return systemHealthCheck(
+    "billingSync",
+    "用量同步",
+    failed ? "error" : stale ? "warning" : "ok",
+    failed
+      ? `最近同步失败：${state.lastError ?? "unknown"}`
+      : stale ? "Sub2 usage 最近同步时间超过 24 小时" : "Sub2 usage 同步状态正常",
+    {
+      lastStatus: state.lastStatus ?? null,
+      lastImported: state.lastImported,
+      lastSkipped: state.lastSkipped,
+      lastUnmatched: state.lastUnmatched,
+      lastFinishedAt: state.lastFinishedAt?.toISOString() ?? null,
+      runs: sync.runs.length
+    }
+  );
+}
+
+function countGroups(groups: Array<Record<string, unknown>>, field: string) {
+  const result: Record<string, number> = {};
+  for (const group of groups) {
+    const key = String(group[field] ?? "unknown");
+    result[key] = groupCount(group);
+  }
+  return result;
+}
+
+function totalGroupCount(groups: Array<Record<string, unknown>>) {
+  return groups.reduce((sum, group) => sum + groupCount(group), 0);
+}
+
+function groupCount(group: Record<string, unknown>) {
+  const count = group._count;
+  if (typeof count === "number") return count;
+  if (count && typeof count === "object" && "_all" in count) {
+    return Number((count as { _all?: number })._all ?? 0);
+  }
+  return 0;
 }
 
 function parseListQuery(raw: unknown): ListQuery {

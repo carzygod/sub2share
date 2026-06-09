@@ -28,7 +28,7 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "systemHealth" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
 type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
@@ -139,6 +139,27 @@ interface Dashboard {
   totalSpent: string;
   paidOrderCount: number;
   paidOrderAmount: string;
+}
+
+interface SystemHealthCheckRow {
+  id: string;
+  label: string;
+  status: "ok" | "warning" | "error";
+  summary: string;
+  metrics?: Record<string, string | number | boolean | null>;
+  detail?: unknown;
+}
+
+interface SystemHealthResult {
+  checkedAt: string;
+  status: "ok" | "warning" | "error";
+  summary: {
+    totalChecks: number;
+    ok: number;
+    warning: number;
+    error: number;
+  };
+  checks: SystemHealthCheckRow[];
 }
 
 interface RoleRow {
@@ -574,6 +595,7 @@ const resourceTypeOptions = ["codex", "claude_code", "gemini", "antigravity"];
 function App() {
   const [view, setView] = useState<View>("dashboard");
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthResult | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -657,6 +679,7 @@ function App() {
     try {
       setView(nextView);
       if (nextView === "dashboard") setDashboard(await api<Dashboard>("/api/admin/dashboard"));
+      if (nextView === "systemHealth") setSystemHealth(await api<SystemHealthResult>("/api/admin/system-health"));
       if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
@@ -1124,6 +1147,7 @@ function App() {
         </div>
         <nav>
           <NavButton active={view === "dashboard"} onClick={() => refresh("dashboard")} icon={<BarChart3 size={18} />}>经营看板</NavButton>
+          <NavButton active={view === "systemHealth"} onClick={() => refresh("systemHealth")} icon={<ShieldCheck size={18} />}>可用性巡检</NavButton>
           <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户管理</NavButton>
           <NavButton active={view === "wallets"} onClick={() => refresh("wallets")} icon={<WalletCards size={18} />}>余额管理</NavButton>
           <NavButton active={view === "walletTransactions"} onClick={() => refresh("walletTransactions")} icon={<ReceiptText size={18} />}>余额流水</NavButton>
@@ -1157,6 +1181,12 @@ function App() {
 
         {message && <div className="notice glass-panel">{message}</div>}
         {view === "dashboard" && <DashboardView dashboard={dashboard} />}
+        {view === "systemHealth" && (
+          <SystemHealthView
+            health={systemHealth}
+            onRefresh={() => refresh("systemHealth")}
+          />
+        )}
         {view === "users" && (
           <UsersView
             users={users}
@@ -1423,6 +1453,49 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
         </div>
       </section>
     </>
+  );
+}
+
+function SystemHealthView({ health, onRefresh }: {
+  health: SystemHealthResult | null;
+  onRefresh: () => void;
+}) {
+  const checks = health?.checks ?? [];
+  return (
+    <section className="stack">
+      <div className="panel glass-panel export-strip">
+        <div>
+          <span className="eyebrow">System health</span>
+          <div className={health?.status === "ok" ? "health-row" : "health-row warning"}>
+            {health?.status === "ok" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            <strong>{health ? healthStatusText(health.status) : "等待巡检"}</strong>
+          </div>
+          {health && <small>检查时间 {dateTime(health.checkedAt)}</small>}
+        </div>
+        <button className="secondary" onClick={onRefresh}><RefreshCw size={16} />重新巡检</button>
+      </div>
+      <section className="cards compact-cards">
+        <Metric label="检查项" value={health?.summary.totalChecks ?? 0} />
+        <Metric label="正常" value={health?.summary.ok ?? 0} />
+        <Metric label="警告" value={health?.summary.warning ?? 0} />
+        <Metric label="错误" value={health?.summary.error ?? 0} />
+      </section>
+      <TablePanel title="可用性检查项" count={checks.length} headers={["状态", "检查项", "结论", "关键指标"]}>
+        {checks.map((check) => (
+          <tr key={check.id}>
+            <td><StatusPill status={healthStatusTone(check.status)} /></td>
+            <td><strong>{check.label}</strong><small>{check.id}</small></td>
+            <td><small>{check.summary}</small></td>
+            <td><small>{healthMetricSummary(check.metrics)}</small></td>
+          </tr>
+        ))}
+        {!health && (
+          <tr>
+            <td colSpan={4}><small>点击重新巡检开始读取系统健康信号。</small></td>
+          </tr>
+        )}
+      </TablePanel>
+    </section>
   );
 }
 
@@ -2756,9 +2829,30 @@ function proxyStatusTone(statusCode?: number | null) {
   return "failed";
 }
 
+function healthStatusTone(status: SystemHealthResult["status"]) {
+  if (status === "ok") return "active";
+  if (status === "warning") return "warning";
+  return "error";
+}
+
+function healthStatusText(status: SystemHealthResult["status"]) {
+  if (status === "ok") return "系统可用";
+  if (status === "warning") return "存在警告";
+  return "存在阻断";
+}
+
+function healthMetricSummary(metrics?: Record<string, string | number | boolean | null>) {
+  if (!metrics) return "-";
+  const text = Object.entries(metrics)
+    .map(([key, value]) => `${key}: ${value ?? "-"}`)
+    .join(" / ");
+  return text || "-";
+}
+
 function titleFor(view: View) {
   const map: Record<View, string> = {
     dashboard: "经营看板",
+    systemHealth: "可用性巡检",
     users: "用户管理",
     wallets: "余额管理",
     walletTransactions: "余额流水",
