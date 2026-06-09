@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "node:crypto";
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/auth.js";
@@ -84,25 +84,58 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }));
 
     const token = signAuthToken(app, user);
+    await writeAuthAuditLog(request, user.id, "auth.register.success", user.id, {
+      email: user.email,
+      roles: user.roles.map((role) => role.role)
+    });
     return ok(reply, { token, user: publicUser(user) });
   });
 
   app.post("/api/auth/login", async (request, reply) => {
     const input = loginSchema.parse(request.body);
     const user = await prisma.user.findUnique({ where: { email: input.email.toLowerCase() }, include: { roles: true } });
-    if (!user) throw new AppError("invalid_credentials", "Invalid email or password", 401);
+    if (!user) {
+      await writeAuthAuditLog(request, undefined, "auth.login.failure", undefined, {
+        email: input.email.toLowerCase(),
+        reason: "user_not_found"
+      });
+      throw new AppError("invalid_credentials", "Invalid email or password", 401);
+    }
 
     const valid = await bcrypt.compare(input.password, user.passwordHash);
-    if (!valid) throw new AppError("invalid_credentials", "Invalid email or password", 401);
-    if (user.status !== "active") throw new AppError("account_disabled", "Account is disabled", 403);
+    if (!valid) {
+      await writeAuthAuditLog(request, undefined, "auth.login.failure", user.id, {
+        email: user.email,
+        reason: "invalid_password"
+      });
+      throw new AppError("invalid_credentials", "Invalid email or password", 401);
+    }
+    if (user.status !== "active") {
+      await writeAuthAuditLog(request, undefined, "auth.login.failure", user.id, {
+        email: user.email,
+        reason: "account_disabled",
+        status: user.status
+      });
+      throw new AppError("account_disabled", "Account is disabled", 403);
+    }
 
     const roles = user.roles.map((role) => role.role);
     const canUsePasswordLogin = isPasswordAuthEnabled() || roles.includes("admin") || roles.includes("operator");
     if (!canUsePasswordLogin) {
+      await writeAuthAuditLog(request, undefined, "auth.login.failure", user.id, {
+        email: user.email,
+        reason: "oauth_required",
+        roles
+      });
       throw new AppError("oauth_required", "User password login is disabled. Please sign in with Google or X.", 403);
     }
 
     const token = signAuthToken(app, user);
+    await writeAuthAuditLog(request, user.id, "auth.login.success", user.id, {
+      email: user.email,
+      method: "password",
+      roles
+    });
     return ok(reply, { token, user: publicUser(user) });
   });
 
@@ -118,24 +151,72 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     const query = oauthCallbackQuerySchema.parse(request.query);
 
     if (query.error) {
+      await writeAuthAuditLog(request, undefined, "auth.oauth.failure", undefined, {
+        provider,
+        reason: "provider_error",
+        error: query.error
+      });
       return redirectOAuthResult(reply, { error: query.error });
     }
 
     if (!query.code || !query.state) {
+      await writeAuthAuditLog(request, undefined, "auth.oauth.failure", undefined, {
+        provider,
+        reason: "missing_callback_params"
+      });
       return redirectOAuthResult(reply, { error: "missing_oauth_callback_params" });
     }
 
-    const state = consumeState(provider, query.state);
-    const profile = provider === "google"
-      ? await fetchGoogleProfile(query.code, state.codeVerifier)
-      : await fetchXProfile(query.code, state.codeVerifier);
-    const user = await findOrCreateOAuthUser(profile);
+    let state: OAuthState;
+    try {
+      state = consumeState(provider, query.state);
+    } catch (error) {
+      await writeAuthAuditLog(request, undefined, "auth.oauth.failure", undefined, {
+        provider,
+        reason: "invalid_oauth_state"
+      });
+      throw error;
+    }
+    let profile: OAuthProfile;
+    try {
+      profile = provider === "google"
+        ? await fetchGoogleProfile(query.code, state.codeVerifier)
+        : await fetchXProfile(query.code, state.codeVerifier);
+    } catch (error) {
+      await writeAuthAuditLog(request, undefined, "auth.oauth.failure", undefined, {
+        provider,
+        reason: error instanceof AppError ? error.code : "oauth_profile_failed"
+      });
+      throw error;
+    }
+    const oauthResult = await findOrCreateOAuthUser(profile);
+    const { user } = oauthResult;
 
     if (user.status !== "active") {
+      await writeAuthAuditLog(request, undefined, "auth.oauth.failure", user.id, {
+        provider,
+        reason: "account_disabled",
+        status: user.status
+      });
       return redirectOAuthResult(reply, { error: "account_disabled" });
     }
 
+    if (oauthResult.identityCreated) {
+      await writeAuthAuditLog(request, user.id, "auth.oauth.identity.create", user.id, {
+        provider,
+        email: user.email,
+        userCreated: oauthResult.userCreated
+      });
+    }
+
     const token = signAuthToken(app, user);
+    await writeAuthAuditLog(request, user.id, "auth.oauth.login.success", user.id, {
+      provider,
+      email: user.email,
+      userCreated: oauthResult.userCreated,
+      identityCreated: oauthResult.identityCreated,
+      roles: user.roles.map((role) => role.role)
+    });
     return redirectOAuthResult(reply, { token });
   });
 
@@ -301,7 +382,11 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
         avatarUrl: profile.avatarUrl
       }
     });
-    return existingIdentity.user;
+    return {
+      user: existingIdentity.user,
+      userCreated: false,
+      identityCreated: false
+    };
   }
 
   return prisma.$transaction(async (tx) => {
@@ -329,7 +414,11 @@ async function findOrCreateOAuthUser(profile: OAuthProfile) {
       }
     });
 
-    return user;
+    return {
+      user,
+      userCreated: !existingUser,
+      identityCreated: true
+    };
   });
 }
 
@@ -406,4 +495,47 @@ function createCodeChallenge(verifier: string) {
 
 function randomToken(bytes: number) {
   return randomBytes(bytes).toString("base64url");
+}
+
+async function writeAuthAuditLog(
+  request: FastifyRequest,
+  actorUserId: string | undefined,
+  action: string,
+  objectId: string | undefined,
+  details: unknown
+) {
+  await prisma.auditLog.create({
+    data: {
+      actorUserId,
+      action,
+      objectType: "auth",
+      objectId,
+      after: JSON.parse(JSON.stringify(redactAuthAudit(details))),
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"]
+    }
+  });
+}
+
+function redactAuthAudit(value: unknown): unknown {
+  if (typeof value === "string") return redactSensitiveText(value);
+  if (Array.isArray(value)) return value.map(redactAuthAudit);
+  if (!value || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key,
+      isSensitiveAuditKey(key) ? "[REDACTED]" : redactAuthAudit(entry)
+    ])
+  );
+}
+
+function isSensitiveAuditKey(key: string) {
+  return /(password|token|secret|code|verifier|authorization|cookie)/i.test(key);
+}
+
+function redactSensitiveText(value: string) {
+  return value
+    .replace(/(access_token|refresh_token|id_token|token|key|password|secret|code|verifier)\s*[:=]\s*[^,}\s]+/gi, "$1:[REDACTED]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/g, "Bearer [REDACTED]");
 }
