@@ -505,7 +505,32 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
     });
     if (!before) throw new AppError("order_not_found", "Order not found", 404);
+    const existingRefund = await prisma.walletTransaction.findFirst({
+      where: { type: "refund", refType: "order", refId: id },
+      select: { id: true, amount: true }
+    });
     if (["refunded", "cancelled"].includes(before.status)) {
+      if (before.status === "refunded" && existingRefund) {
+        const order = await prisma.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude });
+        await writeAuditLog(request, actor.id, "admin.order.refund", "order", id, {
+          status: before.status,
+          paidAmount: String(before.paidAmount),
+          existingRefundId: existingRefund.id
+        }, {
+          status: order.status,
+          refundAmount: "0",
+          walletRefunded: false,
+          replayed: true,
+          note: input.note
+        });
+        return adminOk(reply, {
+          order,
+          refundAmount: "0",
+          walletRefunded: false,
+          existingRefundId: existingRefund.id,
+          sub2Sync: []
+        });
+      }
       throw new AppError("order_already_terminal", `Order is already ${before.status}`, 400);
     }
     if (!["paid", "provisioning", "active", "failed", "refunding", "closed", "expired"].includes(before.status)) {
@@ -515,43 +540,103 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       throw new AppError("order_has_no_paid_amount", "Order has no paid amount to refund", 400);
     }
 
-    const existingRefund = await prisma.walletTransaction.findFirst({
-      where: { type: "refund", refType: "order", refId: id },
-      select: { id: true, amount: true }
-    });
     const rentalIds = before.rentals.map((rental) => rental.id);
-    const refundAmount = existingRefund ? new Prisma.Decimal(0) : before.paidAmount;
+    if (existingRefund) {
+      const order = await prisma.$transaction(async (tx) => {
+        await tx.order.update({ where: { id }, data: { status: "refunded" } });
+        await tx.rental.updateMany({
+          where: { orderId: id, status: { not: "refunded" } },
+          data: { status: "refunded" }
+        });
+        if (rentalIds.length > 0) {
+          await tx.apiKey.updateMany({
+            where: { rentalId: { in: rentalIds } },
+            data: { status: "inactive" }
+          });
+        }
+        return tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude });
+      });
 
-    const order = await prisma.$transaction(async (tx) => {
-      if (!existingRefund) {
-        const wallet = await tx.walletAccount.upsert({
-          where: { userId: before.userId },
-          update: {},
-          create: { userId: before.userId, currency: before.currency }
-        });
-        const nextBalance = wallet.availableBalance.plus(refundAmount);
-        const nextSpent = wallet.totalSpent.lessThan(refundAmount) ? new Prisma.Decimal(0) : wallet.totalSpent.minus(refundAmount);
-        await tx.walletAccount.update({
-          where: { id: wallet.id },
-          data: {
-            availableBalance: nextBalance,
-            totalSpent: nextSpent
-          }
-        });
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: "refund",
-            amount: refundAmount,
-            balanceAfter: nextBalance,
-            currency: before.currency,
-            refType: "order",
-            refId: id,
-            note: input.note ?? "admin order refund"
-          }
+      const sub2Sync = [];
+      for (const rental of before.rentals) {
+        sub2Sync.push({
+          rentalId: rental.id,
+          sub2KeyId: rental.sub2KeyId,
+          ...(await syncSub2KeyForRental(rental.userId, rental.sub2KeyId, false))
         });
       }
+      await writeAuditLog(request, actor.id, "admin.order.refund", "order", id, {
+        status: before.status,
+        paidAmount: String(before.paidAmount),
+        existingRefundId: existingRefund.id
+      }, {
+        status: order.status,
+        refundAmount: "0",
+        walletRefunded: false,
+        existingRefundId: existingRefund.id,
+        replayed: true,
+        sub2Sync,
+        note: input.note
+      });
+      return adminOk(reply, {
+        order,
+        refundAmount: "0",
+        walletRefunded: false,
+        existingRefundId: existingRefund.id,
+        sub2Sync
+      });
+    }
 
+    const refundResult = await prisma.$transaction(async (tx) => {
+      const claim = await tx.order.updateMany({
+        where: {
+          id,
+          status: { in: ["paid", "provisioning", "active", "failed", "closed", "expired"] }
+        },
+        data: { status: "refunding" }
+      });
+      if (claim.count !== 1) {
+        const transaction = await tx.walletTransaction.findFirst({
+          where: { type: "refund", refType: "order", refId: id },
+          select: { id: true }
+        });
+        if (!transaction) {
+          throw new AppError("refund_in_progress", "Order refund is already in progress", 409);
+        }
+        return {
+          order: await tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude }),
+          refundAmount: new Prisma.Decimal(0),
+          walletRefunded: false,
+          existingRefundId: transaction.id
+        };
+      }
+
+      const wallet = await tx.walletAccount.upsert({
+        where: { userId: before.userId },
+        update: {},
+        create: { userId: before.userId, currency: before.currency }
+      });
+      await tx.$executeRaw`
+        UPDATE "WalletAccount"
+        SET
+          "availableBalance" = "availableBalance" + ${before.paidAmount},
+          "totalSpent" = GREATEST("totalSpent" - ${before.paidAmount}, 0),
+          "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = ${wallet.id}
+      `;
+      const updatedWallet = await tx.walletAccount.findUniqueOrThrow({ where: { id: wallet.id } });
+      await tx.walletTransaction.create({
+        data: {
+          walletId: wallet.id,
+          type: "refund",
+          amount: before.paidAmount,
+          balanceAfter: updatedWallet.availableBalance,
+          currency: before.currency,
+          refType: "order",
+          refId: id,
+          note: input.note ?? "admin order refund"
+        }
+      });
       await tx.order.update({ where: { id }, data: { status: "refunded" } });
       await tx.rental.updateMany({
         where: { orderId: id, status: { not: "refunded" } },
@@ -563,8 +648,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           data: { status: "inactive" }
         });
       }
-      return tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude });
+      return {
+        order: await tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude }),
+        refundAmount: before.paidAmount,
+        walletRefunded: true,
+        existingRefundId: null
+      };
     });
+    const order = refundResult.order;
 
     const sub2Sync = [];
     for (const rental of before.rentals) {
@@ -581,17 +672,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       apiKeyStatuses: before.rentals.flatMap((rental) => rental.apiKeys.map((apiKey) => ({ id: apiKey.id, status: apiKey.status })))
     }, {
       status: order.status,
-      refundAmount: String(refundAmount),
-      walletRefunded: !existingRefund,
-      existingRefundId: existingRefund?.id,
+      refundAmount: String(refundResult.refundAmount),
+      walletRefunded: refundResult.walletRefunded,
+      existingRefundId: refundResult.existingRefundId,
       sub2Sync,
       note: input.note
     });
     return adminOk(reply, {
       order,
-      refundAmount: String(refundAmount),
-      walletRefunded: !existingRefund,
-      existingRefundId: existingRefund?.id,
+      refundAmount: String(refundResult.refundAmount),
+      walletRefunded: refundResult.walletRefunded,
+      existingRefundId: refundResult.existingRefundId,
       sub2Sync
     });
   });
