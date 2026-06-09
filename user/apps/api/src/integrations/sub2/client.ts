@@ -187,6 +187,31 @@ export interface Sub2ApplyOpenAiRefreshTokenResult {
   error?: string | null;
 }
 
+export type Sub2ApiErrorKind =
+  | "authentication"
+  | "parameter"
+  | "resource"
+  | "rate_limited"
+  | "conflict"
+  | "timeout"
+  | "network"
+  | "upstream"
+  | "invalid_response"
+  | "unknown";
+
+export class Sub2ApiError extends Error {
+  constructor(
+    public readonly kind: Sub2ApiErrorKind,
+    message: string,
+    public readonly statusCode?: number,
+    public readonly retryable = false,
+    public readonly body?: string
+  ) {
+    super(message);
+    this.name = "Sub2ApiError";
+  }
+}
+
 const MANAGED_USER_GATEWAY_BALANCE = 100000000;
 const ADMIN_SMOKE_BUYER_ID = "admin-sub2-proxy-smoke";
 
@@ -253,11 +278,11 @@ export class Sub2ApiClient {
   async fetchUsageSince(cursor?: string): Promise<{ records: Sub2UsageRecord[]; nextCursor?: string }> {
     const url = new URL(`${this.baseUrl}/api/v1/usage`);
     if (cursor) url.searchParams.set("cursor", cursor);
-    const response = await fetch(url, { headers: this.headers(await this.adminToken()) });
+    const response = await this.fetchWithTimeout(url.toString(), { headers: this.headers(await this.adminToken()) });
     if (!response.ok) {
-      throw new Error(`Sub2 usage sync failed: ${response.status} ${await response.text()}`);
+      throw await this.errorFromResponse(response, "Sub2 usage sync failed");
     }
-    const envelope = (await response.json()) as Sub2Envelope<Sub2UsageListDto>;
+    const envelope = await this.readJson<Sub2Envelope<Sub2UsageListDto>>(response);
     return {
       records: this.normalizeUsage(envelope.data.items ?? []),
       nextCursor: envelope.data.next_cursor
@@ -321,7 +346,7 @@ export class Sub2ApiClient {
     headers.set("accept", "text/event-stream");
     headers.set("authorization", `Bearer ${await this.adminToken()}`);
 
-    const response = await fetch(`${this.baseUrl}/api/v1/admin/accounts/${encodeURIComponent(String(accountId))}/test`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/admin/accounts/${encodeURIComponent(String(accountId))}/test`, {
       method: "POST",
       headers,
       body: JSON.stringify({})
@@ -611,7 +636,7 @@ export class Sub2ApiClient {
 
   private async isGatewayReachable() {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/health`, {}, 5_000);
       return response.ok;
     } catch {
       return false;
@@ -773,17 +798,66 @@ export class Sub2ApiClient {
     headers.set("content-type", "application/json");
     if (bearerToken) headers.set("authorization", `Bearer ${bearerToken}`);
 
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
       ...init,
       headers
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Sub2API request failed: ${response.status} ${body}`);
+      throw await this.errorFromResponse(response, "Sub2API request failed");
     }
 
-    return response.json() as Promise<T>;
+    return this.readJson<T>(response);
+  }
+
+  private async fetchWithTimeout(url: string, init: RequestInit, timeoutMs = env.SUB2_REQUEST_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal
+      });
+    } catch (error) {
+      if (error instanceof Sub2ApiError) throw error;
+      const timedOut = error instanceof Error && error.name === "AbortError";
+      if (timedOut) {
+        throw new Sub2ApiError("timeout", `Sub2API request timed out after ${timeoutMs}ms`, undefined, true);
+      }
+      const message = this.redactSensitiveText(error instanceof Error ? error.message : String(error)) ?? "Network error";
+      throw new Sub2ApiError("network", `Sub2API network error: ${message}`, undefined, true);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private async errorFromResponse(response: Response, prefix: string) {
+    const rawBody = await response.text();
+    const body = (this.redactSensitiveText(rawBody) ?? "").slice(0, 3000);
+    const kind = this.classifyHttpStatus(response.status, body);
+    const retryable = kind === "rate_limited" || kind === "upstream";
+    const message = `${prefix}: ${response.status} ${kind}${body ? ` ${body}` : ""}`;
+    return new Sub2ApiError(kind, message, response.status, retryable, body);
+  }
+
+  private async readJson<T>(response: Response): Promise<T> {
+    try {
+      return await response.json() as T;
+    } catch (error) {
+      const message = this.redactSensitiveText(error instanceof Error ? error.message : String(error)) ?? "Invalid JSON";
+      throw new Sub2ApiError("invalid_response", `Sub2API returned invalid JSON: ${message}`, response.status, false);
+    }
+  }
+
+  private classifyHttpStatus(statusCode: number, body: string): Sub2ApiErrorKind {
+    const normalized = body.toLowerCase();
+    if (statusCode === 401 || statusCode === 403) return "authentication";
+    if (statusCode === 400 || statusCode === 404 || statusCode === 422) return "parameter";
+    if (statusCode === 409) return "conflict";
+    if (statusCode === 402 || normalized.includes("quota") || normalized.includes("balance") || normalized.includes("insufficient")) return "resource";
+    if (statusCode === 429 || normalized.includes("rate limit") || normalized.includes("too many")) return "rate_limited";
+    if (statusCode >= 500) return "upstream";
+    return "unknown";
   }
 
   private headers(bearerToken?: string): HeadersInit {
