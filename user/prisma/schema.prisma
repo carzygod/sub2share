@@ -139,6 +139,7 @@ model User {
   apiKeys    ApiKey[]
   auditLogs  AuditLog[]
   identities UserIdentity[]
+  proxyRequestLogs ProxyRequestLog[]
 }
 
 model UserIdentity {
@@ -308,6 +309,7 @@ model Rental {
   limits  RentalLimit?
   apiKeys ApiKey[]
   usages  UsageRecord[]
+  proxyRequestLogs ProxyRequestLog[]
 }
 
 model RentalLimit {
@@ -339,6 +341,38 @@ model ApiKey {
 
   user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   rental Rental? @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  proxyRequestLogs ProxyRequestLog[]
+}
+
+model ProxyRequestLog {
+  id                   String   @id @default(uuid())
+  requestId            String   @unique
+  userId               String?
+  rentalId             String?
+  apiKeyId             String?
+  apiKeyPrefix         String?
+  method               String
+  path                 String
+  statusCode           Int?
+  upstreamStatusCode   Int?
+  errorCode            String?
+  durationMs           Int
+  requestBytes         Int      @default(0)
+  estimatedInputTokens Int      @default(0)
+  ipAddress            String?
+  userAgent            String?
+  createdAt            DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rental Rental? @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  apiKey ApiKey? @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([rentalId, createdAt])
+  @@index([apiKeyId, createdAt])
+  @@index([statusCode, createdAt])
+  @@index([errorCode, createdAt])
 }
 
 model Supplier {

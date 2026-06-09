@@ -30,6 +30,17 @@ interface ProxyRateWindow {
   tokens: Array<{ at: number; tokens: number }>;
 }
 
+interface ProxyRequestLogEntry {
+  userId?: string | null;
+  rentalId?: string | null;
+  apiKeyId?: string | null;
+  apiKeyPrefix?: string | null;
+  statusCode: number;
+  upstreamStatusCode?: number | null;
+  errorCode?: string | null;
+  estimatedInputTokens?: number;
+}
+
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
   await app.register(async (proxy) => {
     proxy.removeAllContentTypeParsers();
@@ -47,26 +58,51 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         const startedAt = Date.now();
         const apiKey = bearerToken(request);
         if (!apiKey) {
+          await writeProxyRequestLog(request, startedAt, {
+            statusCode: 401,
+            errorCode: "missing_api_key"
+          });
           return openAiError(reply, 401, "missing_api_key", "Missing bearer API key");
         }
 
         const keyRecord = await findActiveLocalKey(apiKey);
         if (!keyRecord.ok) {
+          await writeProxyRequestLog(request, startedAt, {
+            statusCode: keyRecord.statusCode,
+            errorCode: keyRecord.code
+          });
           return openAiError(reply, keyRecord.statusCode, keyRecord.code, keyRecord.message);
         }
+        const logContext = proxyRequestLogContext(keyRecord.apiKey);
 
         const limitCheck = await checkRentalRequestLimit(keyRecord.apiKey.rental, request);
         if (!limitCheck.ok) {
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: limitCheck.statusCode,
+            errorCode: limitCheck.code
+          });
           return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
         }
 
         const rateLimitCheck = checkAndRecordRentalRateLimits(keyRecord.apiKey.rental, request);
         if (!rateLimitCheck.ok) {
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: rateLimitCheck.statusCode,
+            errorCode: rateLimitCheck.code
+          });
           return openAiError(reply, rateLimitCheck.statusCode, rateLimitCheck.code, rateLimitCheck.message);
         }
 
         const concurrencyLease = acquireProxyConcurrency(keyRecord.apiKey.rental);
         if (!concurrencyLease.ok) {
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: concurrencyLease.statusCode,
+            errorCode: concurrencyLease.code,
+            estimatedInputTokens: rateLimitCheck.estimatedTokens
+          });
           return openAiError(reply, concurrencyLease.statusCode, concurrencyLease.code, concurrencyLease.message);
         }
         releaseLeaseOnReplyEnd(reply, concurrencyLease.release);
@@ -83,6 +119,12 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         } catch (error) {
           request.log.error({ error, path: request.url, apiKeyId: keyRecord.apiKey.id }, "openai proxy upstream request failed");
           const timedOut = error instanceof Error && error.name === "AbortError";
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: timedOut ? 504 : 502,
+            errorCode: timedOut ? "upstream_timeout" : "upstream_unavailable",
+            estimatedInputTokens: rateLimitCheck.estimatedTokens
+          });
           return openAiError(
             reply,
             timedOut ? 504 : 502,
@@ -106,6 +148,13 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           proxyTpmUsed: rateLimitCheck.tpmUsed,
           proxyEstimatedInputTokens: rateLimitCheck.estimatedTokens
         }, "openai proxy request");
+
+        await writeProxyRequestLog(request, startedAt, {
+          ...logContext,
+          statusCode: upstream.status,
+          upstreamStatusCode: upstream.status,
+          estimatedInputTokens: rateLimitCheck.estimatedTokens
+        });
 
         copyResponseHeaders(upstream, reply);
         reply.header("x-proxy-request-id", request.id);
@@ -183,6 +232,45 @@ async function findActiveLocalKey(apiKey: string) {
 
 function failure(statusCode: number, code: string, message: string) {
   return { ok: false as const, statusCode, code, message };
+}
+
+function proxyRequestLogContext(apiKey: ActiveApiKeyRecord): Pick<ProxyRequestLogEntry, "userId" | "rentalId" | "apiKeyId" | "apiKeyPrefix"> {
+  return {
+    userId: apiKey.userId,
+    rentalId: apiKey.rentalId,
+    apiKeyId: apiKey.id,
+    apiKeyPrefix: apiKey.keyPrefix
+  };
+}
+
+async function writeProxyRequestLog(
+  request: FastifyRequest,
+  startedAt: number,
+  entry: ProxyRequestLogEntry
+) {
+  try {
+    await prisma.proxyRequestLog.create({
+      data: {
+        requestId: request.id,
+        userId: entry.userId ?? null,
+        rentalId: entry.rentalId ?? null,
+        apiKeyId: entry.apiKeyId ?? null,
+        apiKeyPrefix: entry.apiKeyPrefix ?? null,
+        method: request.method.toUpperCase(),
+        path: proxyRequestPath(request).slice(0, 2048),
+        statusCode: entry.statusCode,
+        upstreamStatusCode: entry.upstreamStatusCode ?? null,
+        errorCode: entry.errorCode ?? null,
+        durationMs: Math.max(0, Date.now() - startedAt),
+        requestBytes: requestBodyByteLength(request),
+        estimatedInputTokens: entry.estimatedInputTokens ?? 0,
+        ipAddress: request.ip,
+        userAgent: requestUserAgent(request)
+      }
+    });
+  } catch (error) {
+    request.log.warn({ error, path: request.url }, "failed to persist openai proxy request log");
+  }
 }
 
 async function checkRentalRequestLimit(
@@ -321,6 +409,23 @@ function requestBodyText(request: FastifyRequest) {
   if (Buffer.isBuffer(body)) return body.toString("utf8");
   if (body instanceof Uint8Array) return Buffer.from(body).toString("utf8");
   return JSON.stringify(body);
+}
+
+function requestBodyByteLength(request: FastifyRequest) {
+  const body = request.body;
+  if (body === undefined || body === null) return 0;
+  if (typeof body === "string") return Buffer.byteLength(body);
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) return body.byteLength;
+  return Buffer.byteLength(JSON.stringify(body));
+}
+
+function proxyRequestPath(request: FastifyRequest) {
+  return request.raw.url ?? request.url;
+}
+
+function requestUserAgent(request: FastifyRequest) {
+  const value = request.headers["user-agent"];
+  return Array.isArray(value) ? value.join(", ") : value;
 }
 
 function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {

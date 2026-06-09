@@ -1652,6 +1652,49 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, paged(logs, total, query));
   });
 
+  app.get("/api/admin/proxy-requests", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    const query = parseListQuery(request.query);
+    const statusCode = numericStatusCode(query.status);
+    const where: Prisma.ProxyRequestLogWhereInput = {
+      ...(statusCode ? { statusCode } : {}),
+      ...(query.action ? { errorCode: containsText(query.action) } : {}),
+      ...(query.q ? {
+        OR: [
+          { id: containsText(query.q) },
+          { requestId: containsText(query.q) },
+          { userId: containsText(query.q) },
+          { rentalId: containsText(query.q) },
+          { apiKeyId: containsText(query.q) },
+          { apiKeyPrefix: containsText(query.q) },
+          { method: containsText(query.q) },
+          { path: containsText(query.q) },
+          { errorCode: containsText(query.q) },
+          { ipAddress: containsText(query.q) },
+          { userAgent: containsText(query.q) },
+          { user: { email: containsText(query.q) } },
+          { user: { displayName: containsText(query.q) } },
+          { rental: { product: { name: containsText(query.q) } } },
+          { apiKey: { name: containsText(query.q) } }
+        ]
+      } : {})
+    };
+    const [logs, total] = await Promise.all([
+      prisma.proxyRequestLog.findMany({
+        where,
+        include: {
+          user: { select: { id: true, email: true, displayName: true } },
+          rental: { select: { id: true, resourceType: true, status: true, product: { select: { name: true } } } },
+          apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        ...pageArgs(query)
+      }),
+      prisma.proxyRequestLog.count({ where })
+    ]);
+    return adminOk(reply, paged(logs, total, query));
+  });
+
   app.get("/api/admin/sub2/status", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     return adminOk(reply, await sub2Client.fetchGatewayStatus());
@@ -2176,6 +2219,12 @@ function containsText(value: string) {
 
 function oneOf<T extends string>(values: readonly T[], value: string | undefined): T | undefined {
   return value && (values as readonly string[]).includes(value) ? value as T : undefined;
+}
+
+function numericStatusCode(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed >= 100 && parsed <= 599 ? parsed : undefined;
 }
 
 function nonEmpty(value: string | undefined) {

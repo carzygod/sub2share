@@ -28,8 +28,8 @@ import { api, clearAdminToken, saveAdminToken } from "./api";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "resources" | "settlements" | "withdrawals" | "audit";
+type View = "dashboard" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "sub2" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
+type ManagedListView = "users" | "wallets" | "walletTransactions" | "usages" | "products" | "orders" | "rentals" | "proxyRequests" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -360,6 +360,39 @@ interface ApiKeyRow {
   createdAt: string;
 }
 
+interface ProxyRequestLogRow {
+  id: string;
+  requestId: string;
+  userId?: string | null;
+  rentalId?: string | null;
+  apiKeyId?: string | null;
+  apiKeyPrefix?: string | null;
+  method: string;
+  path: string;
+  statusCode?: number | null;
+  upstreamStatusCode?: number | null;
+  errorCode?: string | null;
+  durationMs: number;
+  requestBytes: number;
+  estimatedInputTokens: number;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+  user?: Pick<UserRow, "id" | "email" | "displayName"> | null;
+  rental?: {
+    id: string;
+    resourceType: string;
+    status: string;
+    product?: { name: string } | null;
+  } | null;
+  apiKey?: {
+    id: string;
+    name: string;
+    keyPrefix: string;
+    status: string;
+  } | null;
+}
+
 interface UserDetailRow extends UserRow {
   phone?: string | null;
   updatedAt?: string;
@@ -522,7 +555,7 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "usages", "products", "orders", "rentals", "resources", "settlements", "withdrawals", "audit"];
+const managedListViews: ManagedListView[] = ["users", "wallets", "walletTransactions", "usages", "products", "orders", "rentals", "proxyRequests", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const userStatusOptions = ["active", "disabled", "banned"];
@@ -535,6 +568,7 @@ const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused",
 const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
 const withdrawalStatusOptions = ["pending", "approved", "rejected", "paid", "cancelled"];
 const walletTransactionTypeOptions = ["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"];
+const proxyStatusOptions = ["200", "400", "401", "402", "403", "404", "408", "429", "500", "502", "503", "504"];
 const resourceTypeOptions = ["codex", "claude_code", "gemini", "antigravity"];
 
 function App() {
@@ -561,6 +595,7 @@ function App() {
   const [sub2Status, setSub2Status] = useState<Sub2Status | null>(null);
   const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
   const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
+  const [proxyRequests, setProxyRequests] = useState<ProxyRequestLogRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
   const [listMeta, setListMeta] = useState<Record<ManagedListView, PageMeta>>(() => createDefaultListMeta());
@@ -632,6 +667,7 @@ function App() {
       if (nextView === "orders") await loadPaged("orders", "/api/admin/orders", setOrders, queryOverride);
       if (nextView === "rentals") await loadPaged("rentals", "/api/admin/rentals", setRentals, queryOverride);
       if (nextView === "sub2") setSub2Status(await api<Sub2Status>("/api/admin/sub2/status"));
+      if (nextView === "proxyRequests") await loadPaged("proxyRequests", "/api/admin/proxy-requests", setProxyRequests, queryOverride);
       if (nextView === "resources") await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
       if (nextView === "settlements") await loadPaged("settlements", "/api/admin/settlements", setSettlements, queryOverride);
       if (nextView === "withdrawals") await loadWithdrawals(queryOverride);
@@ -1098,6 +1134,7 @@ function App() {
           <NavButton active={view === "orders"} onClick={() => refresh("orders")} icon={<KeyRound size={18} />}>订单</NavButton>
           <NavButton active={view === "rentals"} onClick={() => refresh("rentals")} icon={<ShieldCheck size={18} />}>租赁</NavButton>
           <NavButton active={view === "sub2"} onClick={() => refresh("sub2")} icon={<Activity size={18} />}>反代状态</NavButton>
+          <NavButton active={view === "proxyRequests"} onClick={() => refresh("proxyRequests")} icon={<ScrollText size={18} />}>反代请求</NavButton>
           <NavButton active={view === "resources"} onClick={() => refresh("resources")} icon={<Boxes size={18} />}>共享资源</NavButton>
           <NavButton active={view === "settlements"} onClick={() => refresh("settlements")} icon={<CircleDollarSign size={18} />}>结算</NavButton>
           <NavButton active={view === "withdrawals"} onClick={() => refresh("withdrawals")} icon={<WalletCards size={18} />}>提现</NavButton>
@@ -1254,6 +1291,18 @@ function App() {
             onTestAccount={testSub2Account}
             onSmokeTest={runSub2SmokeTest}
             onApplyRefreshToken={applySub2RefreshToken}
+          />
+        )}
+        {view === "proxyRequests" && (
+          <ProxyRequestsView
+            logs={proxyRequests}
+            query={listQueries.proxyRequests}
+            meta={listMeta.proxyRequests}
+            onDraft={(patch) => updateListDraft("proxyRequests", patch)}
+            onFilter={(event) => submitListFilters("proxyRequests", event)}
+            onClear={() => clearListFilters("proxyRequests")}
+            onPage={(page) => changeListPage("proxyRequests", page)}
+            onExport={() => exportProxyRequestsCsv(proxyRequests)}
           />
         )}
         {view === "resources" && (
@@ -2264,6 +2313,48 @@ function Sub2StatusView({ status, tests, smoke, onRefreshAccount, onTestAccount,
   );
 }
 
+function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport }: {
+  logs: ProxyRequestLogRow[];
+} & ManagedListProps) {
+  return (
+    <>
+      <ListControls
+        query={query}
+        meta={meta}
+        searchPlaceholder="user / rental / key / path / request id"
+        statusOptions={proxyStatusOptions}
+        actionPlaceholder="error code contains"
+        onDraft={onDraft}
+        onFilter={onFilter}
+        onClear={onClear}
+        onPage={onPage}
+        onExport={onExport}
+      />
+      <TablePanel title="OpenAI/Codex 反代请求" count={meta.total} headers={["用户", "租赁 / Key", "请求", "状态", "耗时", "用量估算", "来源", "时间"]}>
+        {logs.map((log) => (
+          <tr key={log.id}>
+            <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.requestId}</small></td>
+            <td>
+              <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
+              <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
+            </td>
+            <td><strong>{log.method}</strong><small>{log.path}</small></td>
+            <td>
+              <StatusPill status={proxyStatusTone(log.statusCode)} />
+              <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
+              {log.errorCode && <small>{log.errorCode}</small>}
+            </td>
+            <td>{log.durationMs}ms</td>
+            <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
+            <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
+            <td>{dateTime(log.createdAt)}</td>
+          </tr>
+        ))}
+      </TablePanel>
+    </>
+  );
+}
+
 function ResourcesView({ resources, selectedResource, query, meta, onCreate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
@@ -2658,6 +2749,13 @@ function StatusPill({ status }: { status: string }) {
   return <span className={`status status-${status}`}>{status}</span>;
 }
 
+function proxyStatusTone(statusCode?: number | null) {
+  if (!statusCode) return "pending";
+  if (statusCode < 300) return "active";
+  if (statusCode < 500) return "warning";
+  return "failed";
+}
+
 function titleFor(view: View) {
   const map: Record<View, string> = {
     dashboard: "经营看板",
@@ -2671,6 +2769,7 @@ function titleFor(view: View) {
     orders: "订单管理",
     rentals: "租赁通道",
     sub2: "反代状态",
+    proxyRequests: "反代请求",
     resources: "共享资源",
     settlements: "结算管理",
     withdrawals: "提现管理",
@@ -2861,6 +2960,27 @@ function exportAuditLogsCsv(rows: AuditLogRow[]) {
     log.objectType,
     log.objectId,
     auditSummary(log.after),
+    log.ipAddress,
+    log.userAgent,
+    log.createdAt
+  ]));
+}
+
+function exportProxyRequestsCsv(rows: ProxyRequestLogRow[]) {
+  downloadCsv("proxy-requests-current-page", ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+    log.id,
+    log.requestId,
+    log.user?.email,
+    log.rentalId,
+    log.apiKey?.keyPrefix ?? log.apiKeyPrefix,
+    log.method,
+    log.path,
+    log.statusCode,
+    log.upstreamStatusCode,
+    log.errorCode,
+    log.durationMs,
+    log.requestBytes,
+    log.estimatedInputTokens,
     log.ipAddress,
     log.userAgent,
     log.createdAt
