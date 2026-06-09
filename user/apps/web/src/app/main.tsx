@@ -178,9 +178,11 @@ function App() {
   async function buy(productId: string, priceId: string) {
     setLoading(true);
     try {
+      const idempotencyKey = createIdempotencyKey();
       const result = await api<{ apiKey: string }>("/api/orders", {
         method: "POST",
-        body: JSON.stringify({ productId, priceId })
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ productId, priceId, idempotencyKey })
       });
       setLastApiKey(result.apiKey);
       setMessage("资源已开通，新的 API Key 只显示一次");
@@ -577,6 +579,10 @@ function SupplierPage({ user, resources, onApply, onCreateResource }: {
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status status-${status}`}>{status === "active" || status === "online" ? <CheckCircle2 size={14} /> : null}{status}</span>;
+}
+
+function createIdempotencyKey() {
+  return globalThis.crypto?.randomUUID?.() ?? `order-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
