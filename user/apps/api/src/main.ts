@@ -16,6 +16,8 @@ import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { registerOpenAiProxyRoutes } from "./modules/openai-proxy/routes.js";
 import { startSub2UsageSyncScheduler } from "./jobs/sub2-usage-scheduler.js";
 
+const readinessTimeoutMs = 5_000;
+
 export async function buildServer() {
   const app = Fastify({
     logger: true,
@@ -32,6 +34,35 @@ export async function buildServer() {
     return ok(reply, { status: "ok", service: "zhisuan-yizhan-api" });
   });
 
+  app.get("/live", async (_request, reply) => {
+    return ok(reply, {
+      status: "ok",
+      service: "zhisuan-yizhan-api",
+      checkedAt: new Date().toISOString()
+    });
+  });
+
+  app.get("/ready", async (_request, reply) => {
+    const checkedAt = new Date().toISOString();
+    const [database, sub2api] = await Promise.all([
+      checkDatabase(),
+      checkSub2Api()
+    ]);
+    const ready = database.ok && sub2api.ok;
+    return reply.status(ready ? 200 : 503).send({
+      ok: ready,
+      data: {
+        status: ready ? "ok" : "degraded",
+        service: "zhisuan-yizhan-api",
+        checkedAt,
+        dependencies: {
+          database,
+          sub2api
+        }
+      }
+    });
+  });
+
   await registerAuthRoutes(app);
   await registerWalletRoutes(app);
   await registerProductRoutes(app);
@@ -43,6 +74,47 @@ export async function buildServer() {
   await registerOpenAiProxyRoutes(app);
 
   return app;
+}
+
+async function checkDatabase() {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return { ok: true, status: "ok" };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "error",
+      error: readinessError(error)
+    };
+  }
+}
+
+async function checkSub2Api() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), readinessTimeoutMs);
+  try {
+    const response = await fetch(`${env.SUB2_BASE_URL.replace(/\/$/, "")}/health`, {
+      signal: controller.signal
+    });
+    return {
+      ok: response.ok,
+      status: response.ok ? "ok" : "error",
+      statusCode: response.status
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "error",
+      error: readinessError(error)
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function readinessError(error: unknown) {
+  if (error instanceof Error && error.name === "AbortError") return "timeout";
+  return error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
 }
 
 if (process.env.NODE_ENV !== "test") {
