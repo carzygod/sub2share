@@ -4252,7 +4252,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["orderId", "rentalId", "apiKeyId", "userId", "bindingId", "refId", "expected", "actual"];
+  const fields = ["productId", "priceId", "orderId", "rentalId", "apiKeyId", "userId", "bindingId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);

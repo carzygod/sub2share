@@ -14,7 +14,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `orderId`、`rentalId`、`apiKeyId`、`userId`、`bindingId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`userId`、`bindingId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON。
 
 ## 管理价值
@@ -27,4 +27,3 @@
 
 - `npm.cmd --prefix user/apps/admin run typecheck`
 - `npm.cmd --prefix user/apps/admin run build`
-

@@ -24,6 +24,7 @@
 - 数据库：确认 Prisma 查询正常。
 - 用户状态：统计 active、disabled、banned 用户。
 - 订单状态：提示 failed、refunding 等需要人工复查的订单。
+- 商品目录：检查 active 商品是否存在当前下单链路可直接购买的 active 固定价格。
 - 售出交付：扫描近期 `paid`、`provisioning`、`active` 订单，检查租赁、endpoint、Sub2 Key 和 active 本地 API Key 是否完整。
 - 租赁可用性：检查 active 租赁是否已过期，以及 low_balance、limited、suspended 等受限租赁。
 - API Key 可用性：检查 OpenAI/Codex 本地反代 active Key 是否能通过用户、钱包、租赁、到期时间和 Key hash 准入条件。
@@ -57,6 +58,7 @@
 - Sub2/OpenAI 上游状态仍依赖 Sub2API 实时返回。
 - 账务对账采用当前有界扫描策略，适合后台快速巡检；全量对账仍可后续扩展为异步任务。
 - 售出交付巡检默认扫描最近 200 条应交付订单，并返回最多 50 条问题样本，已取消、已退款等终态订单不要求保持可用交付。
+- 商品目录巡检默认扫描最近 200 个 active 商品，并返回最多 50 条问题样本；公开商品接口会隐藏当前下单链路不支持的 active 价格。
 - API Key 可用性巡检只聚焦 OpenAI/Codex 本地 `/v1/*` 反代准入，不把其他资源类型的 active Key 视为错误。
 - API Key 可用性巡检默认扫描最近 500 条 active OpenAI/Codex Key，并在 `detail.issues` 中返回最多 50 条样本，避免巡检响应过大。
 - OpenAI 反代契约巡检是静态契约检查，不会发起真实上游请求；真实 Sub2API 调度仍由 `Sub2/OpenAI 上游` 和反代 smoke test 覆盖。

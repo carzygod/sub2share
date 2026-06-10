@@ -39,6 +39,8 @@ const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const systemHealthApiKeyScanLimit = 500;
 const systemHealthApiKeyIssueLimit = 50;
+const systemHealthProductCatalogScanLimit = 200;
+const systemHealthProductCatalogIssueLimit = 50;
 const systemHealthSalesDeliveryScanLimit = 200;
 const systemHealthSalesDeliveryIssueLimit = 50;
 const sub2BindingReconciliationLimit = 500;
@@ -110,6 +112,16 @@ interface SalesDeliveryIssue {
   userId: string;
   userEmail?: string | null;
   rentalId?: string;
+  message: string;
+}
+
+interface ProductCatalogIssue {
+  id: string;
+  type: string;
+  severity: "warning";
+  productId: string;
+  productName: string;
+  priceId?: string;
   message: string;
 }
 
@@ -2630,6 +2642,7 @@ async function buildSystemHealthReport() {
     reconciliation,
     sub2Bindings,
     apiKeyReadiness,
+    productCatalog,
     salesDelivery
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
@@ -2659,6 +2672,7 @@ async function buildSystemHealthReport() {
     findBillingReconciliationIssues(),
     findSub2BindingIssues(),
     inspectOpenAiProxyApiKeys(checkedAt),
+    inspectProductCatalogReadiness(),
     inspectSalesDeliveryReadiness()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
@@ -2690,6 +2704,16 @@ async function buildSystemHealthReport() {
       failedOrders > 0 ? "warning" : "ok",
       failedOrders > 0 ? `${failedOrders} 个订单需要人工复查` : "订单状态无明显阻断",
       ordersByStatus
+    ),
+    systemHealthCheck(
+      "productCatalog",
+      "商品目录",
+      productCatalog.warnings > 0 ? "warning" : "ok",
+      productCatalog.warnings > 0
+        ? `${productCatalog.warnings} 个商品目录可购买性问题`
+        : "公开商品目录可购买性正常",
+      productCatalog.summary,
+      productCatalog.issues.length > 0 ? { issues: productCatalog.issues } : undefined
     ),
     systemHealthCheck(
       "salesDelivery",
@@ -3747,6 +3771,105 @@ function paymentProviderHealthCheck() {
     },
     issues.length > 0 ? { issues } : undefined
   );
+}
+
+async function inspectProductCatalogReadiness() {
+  const where: Prisma.ProductWhereInput = {
+    status: "active",
+    ...nonSmokeProductWhere()
+  };
+  const [matched, products] = await Promise.all([
+    prisma.product.count({ where }),
+    prisma.product.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        resourceType: true,
+        billingMode: true,
+        prices: {
+          where: { status: "active" },
+          select: {
+            id: true,
+            tierCode: true,
+            displayName: true,
+            fixedPrice: true
+          }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: systemHealthProductCatalogScanLimit
+    })
+  ]);
+
+  const issues: ProductCatalogIssue[] = [];
+  const counters = {
+    productsWithoutActivePrices: 0,
+    productsWithoutPurchasablePrices: 0,
+    activePricesWithoutFixedPrice: 0
+  };
+  let warnings = 0;
+
+  const addIssue = (issue: Omit<ProductCatalogIssue, "id" | "severity">) => {
+    warnings += 1;
+    if (issues.length >= systemHealthProductCatalogIssueLimit) return;
+    issues.push({
+      id: `${issue.type}:${issue.productId}:${issue.priceId ?? "product"}`,
+      severity: "warning",
+      ...issue
+    });
+  };
+
+  for (const product of products) {
+    if (product.prices.length === 0) {
+      counters.productsWithoutActivePrices += 1;
+      counters.productsWithoutPurchasablePrices += 1;
+      addIssue({
+        type: "active_product_without_active_price",
+        productId: product.id,
+        productName: product.name,
+        message: `Active product ${product.name} has no active price and will not be purchasable.`
+      });
+      continue;
+    }
+
+    const purchasablePrices = product.prices.filter((price) => price.fixedPrice !== null);
+    if (purchasablePrices.length === 0) {
+      counters.productsWithoutPurchasablePrices += 1;
+      addIssue({
+        type: "active_product_without_purchasable_price",
+        productId: product.id,
+        productName: product.name,
+        message: `Active product ${product.name} has active prices but no fixed price supported by direct purchase.`
+      });
+    }
+
+    for (const price of product.prices) {
+      if (price.fixedPrice === null) {
+        counters.activePricesWithoutFixedPrice += 1;
+        addIssue({
+          type: "active_price_without_fixed_price",
+          productId: product.id,
+          productName: product.name,
+          priceId: price.id,
+          message: `Active price ${price.displayName} (${price.tierCode}) has no fixedPrice and is hidden from the public catalog.`
+        });
+      }
+    }
+  }
+
+  return {
+    ok: warnings === 0,
+    warnings,
+    summary: {
+      matched,
+      scanned: products.length,
+      truncated: matched > products.length,
+      returnedIssues: issues.length,
+      ...counters
+    },
+    issues
+  };
 }
 
 function aggregateHealthStatus(checks: SystemHealthCheck[]): SystemHealthStatus {
