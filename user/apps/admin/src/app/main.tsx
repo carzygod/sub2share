@@ -1258,7 +1258,7 @@ function App() {
       body: JSON.stringify({
         tierCode: form.get("tierCode"),
         displayName: form.get("displayName"),
-        fixedPrice: form.get("fixedPrice"),
+        fixedPrice: optionalFormString(form, "fixedPrice"),
         durationDays: optionalFormString(form, "durationDays"),
         maxConcurrency: form.get("maxConcurrency"),
         rpmLimit: optionalFormString(form, "rpmLimit"),
@@ -1288,12 +1288,12 @@ function App() {
   async function updateProductPrice(event: FormEvent<HTMLFormElement>, priceId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    if (!confirmAdminAction("确认更新价格档位？", `价格 ID：${priceId}\n名称：${form.get("displayName")}\n固定价格：${form.get("fixedPrice")}\n租期：${nullableFormNumber(form, "durationDays") ?? "-"}\n并发：${form.get("maxConcurrency")}\nRPM：${nullableFormNumber(form, "rpmLimit") ?? "-"}\nTPM：${nullableFormNumber(form, "tpmLimit") ?? "-"}\n请求数：${nullableFormNumber(form, "requestLimit") ?? "-"}\n消费上限：${nullableFormNumber(form, "spendLimit") ?? "-"}\n状态：${form.get("status")}`)) return;
+    if (!confirmAdminAction("确认更新价格档位？", `价格 ID：${priceId}\n名称：${form.get("displayName")}\n固定价格：${nullableFormNumber(form, "fixedPrice") ?? "按量"}\n租期：${nullableFormNumber(form, "durationDays") ?? "-"}\n并发：${form.get("maxConcurrency")}\nRPM：${nullableFormNumber(form, "rpmLimit") ?? "-"}\nTPM：${nullableFormNumber(form, "tpmLimit") ?? "-"}\n请求数：${nullableFormNumber(form, "requestLimit") ?? "-"}\n消费上限：${nullableFormNumber(form, "spendLimit") ?? "-"}\n状态：${form.get("status")}`)) return;
     await api(`/api/admin/product-prices/${priceId}`, {
       method: "PATCH",
       body: JSON.stringify({
         displayName: form.get("displayName"),
-        fixedPrice: form.get("fixedPrice"),
+        fixedPrice: nullableFormNumber(form, "fixedPrice"),
         durationDays: nullableFormNumber(form, "durationDays"),
         maxConcurrency: form.get("maxConcurrency"),
         rpmLimit: nullableFormNumber(form, "rpmLimit"),
@@ -2943,7 +2943,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
         </select>
         <input name="tierCode" placeholder="tier_code" pattern="[a-z0-9_-]+" required />
         <input name="displayName" placeholder="价格名称" required />
-        <input name="fixedPrice" type="number" step="0.01" min={0.01} placeholder="固定价格" required />
+        <input name="fixedPrice" type="number" step="0.01" min={0.01} placeholder="固定价格，按量可留空" />
         <input name="durationDays" type="number" min={1} placeholder="租期天数，可选" />
         <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={1} placeholder="并发" required />
         <input name="rpmLimit" type="number" min={1} placeholder="RPM，可选" />
@@ -2996,7 +2996,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
             <td>
               {(product.prices ?? []).map((price) => (
                 <div className="price-line" key={price.id}>
-                  <strong>{price.displayName} / {money(price.fixedPrice)}</strong>
+                  <strong>{price.displayName} / {priceAmountLabel(price.fixedPrice)}</strong>
                   <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / RPM {price.rpmLimit ?? "-"} / TPM {price.tpmLimit ?? "-"} / 请求 {price.requestLimit ?? "-"} / 消费 {price.spendLimit ?? "-"}</small>
                   <div className="row-actions">
                     <StatusPill status={price.status} />
@@ -3005,7 +3005,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
                   </div>
                   <form className="limits-form" key={`${price.id}-${price.updatedAt ?? ""}`} onSubmit={(event) => onUpdatePrice(event, price.id)}>
                     <input name="displayName" defaultValue={price.displayName} placeholder="名称" required />
-                    <input name="fixedPrice" type="number" step="0.01" min={0.01} defaultValue={price.fixedPrice ?? ""} placeholder="价格" required />
+                    <input name="fixedPrice" type="number" step="0.01" min={0.01} defaultValue={price.fixedPrice ?? ""} placeholder="价格，按量可留空" />
                     <input name="durationDays" type="number" min={1} defaultValue={price.durationDays ?? ""} placeholder="天数" />
                     <input name="maxConcurrency" type="number" min={1} max={200} defaultValue={price.maxConcurrency} placeholder="并发" required />
                     <input name="rpmLimit" type="number" min={1} defaultValue={price.rpmLimit ?? ""} placeholder="RPM" />
@@ -4611,6 +4611,11 @@ function csvCell(value: CsvCell) {
 function money(value?: string | number | null) {
   const numberValue = Number(value ?? 0);
   return `$${numberValue.toFixed(2)}`;
+}
+
+function priceAmountLabel(value?: string | number | null) {
+  if (value === undefined || value === null || value === "") return "按量";
+  return money(value);
 }
 
 function allocationAmount(settlements?: WithdrawalSettlementRow[]) {

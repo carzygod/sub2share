@@ -40,7 +40,7 @@ interface WalletAccount {
 interface ProductPrice {
   id: string;
   displayName: string;
-  fixedPrice: string;
+  fixedPrice?: string | null;
   durationDays?: number;
   maxConcurrency: number;
   rpmLimit?: number | null;
@@ -465,7 +465,7 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                   <span className="kicker">{product.resourceType}</span>
                   <h2>{product.name}</h2>
                 </div>
-                <strong>${price.fixedPrice}</strong>
+                <strong>{priceAmountLabel(price.fixedPrice)}</strong>
               </div>
               <p>{product.description}</p>
               <dl>
@@ -477,7 +477,7 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                 <dt>请求量</dt><dd>{price.requestLimit ?? "不限"}</dd>
                 <dt>消费上限</dt><dd>{price.spendLimit ?? "不限"}</dd>
               </dl>
-              <button onClick={() => onBuy(product.id, price.id)}>购买并开通<ArrowRight size={18} /></button>
+              <button onClick={() => onBuy(product.id, price.id)}>{price.fixedPrice ? "购买并开通" : "开通按量"}<ArrowRight size={18} /></button>
             </div>
           ))}
         </Fragment>
@@ -585,6 +585,11 @@ function SupplierPage({ user, resources, onApply, onCreateResource }: {
 
 function StatusPill({ status }: { status: string }) {
   return <span className={`status status-${status}`}>{status === "active" || status === "online" ? <CheckCircle2 size={14} /> : null}{status}</span>;
+}
+
+function priceAmountLabel(value?: string | null) {
+  if (!value) return "按量计费";
+  return `$${Number(value).toFixed(2)}`;
 }
 
 function createIdempotencyKey() {

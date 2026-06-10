@@ -233,7 +233,7 @@ const updateProductSchema = createProductSchema
 const createProductPriceSchema = z.object({
   tierCode: z.string().trim().min(1).max(80).regex(/^[a-z0-9_-]+$/),
   displayName: z.string().trim().min(1).max(120),
-  fixedPrice: z.coerce.number().positive(),
+  fixedPrice: nullablePositiveDecimal,
   durationDays: z.coerce.number().int().positive().optional(),
   maxConcurrency: z.coerce.number().int().min(1).max(200).default(1),
   rpmLimit: z.coerce.number().int().positive().optional(),
@@ -1692,8 +1692,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const { id } = request.params as { id: string };
     const input = createProductPriceSchema.parse(request.body);
-    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, name: true } });
+    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, name: true, billingMode: true } });
     if (!product) throw new AppError("product_not_found", "Product not found", 404);
+    validateProductPricePurchaseMode(product.billingMode, input.fixedPrice);
     const existing = await prisma.productPrice.findUnique({
       where: { productId_tierCode: { productId: id, tierCode: input.tierCode } },
       select: { id: true }
@@ -1704,7 +1705,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         productId: id,
         tierCode: input.tierCode,
         displayName: input.displayName,
-        fixedPrice: new Prisma.Decimal(input.fixedPrice),
+        fixedPrice: decimalOrNull(input.fixedPrice),
         durationDays: input.durationDays,
         maxConcurrency: input.maxConcurrency,
         rpmLimit: input.rpmLimit,
@@ -1720,7 +1721,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       productId: id,
       tierCode: price.tierCode,
       displayName: price.displayName,
-      fixedPrice: String(price.fixedPrice),
+      fixedPrice: price.fixedPrice ? String(price.fixedPrice) : null,
       rpmLimit: price.rpmLimit,
       tpmLimit: price.tpmLimit,
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
@@ -1748,15 +1749,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         spendLimit: true,
         discountRate: true,
         tierMultiplier: true,
-        status: true
+        status: true,
+        product: { select: { billingMode: true } }
       }
     });
     if (!before) throw new AppError("product_price_not_found", "Product price not found", 404);
+    if (input.fixedPrice !== undefined) {
+      validateProductPricePurchaseMode(before.product.billingMode, input.fixedPrice);
+    }
     const price = await prisma.productPrice.update({
       where: { id },
       data: {
         ...(input.displayName !== undefined ? { displayName: input.displayName } : {}),
-        ...(input.fixedPrice !== undefined ? { fixedPrice: new Prisma.Decimal(input.fixedPrice) } : {}),
+        ...(input.fixedPrice !== undefined ? { fixedPrice: decimalOrNull(input.fixedPrice) } : {}),
         ...(input.durationDays !== undefined ? { durationDays: input.durationDays } : {}),
         ...(input.maxConcurrency !== undefined ? { maxConcurrency: input.maxConcurrency } : {}),
         ...(input.rpmLimit !== undefined ? { rpmLimit: input.rpmLimit } : {}),
@@ -1771,7 +1776,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await writeAuditLog(request, actor.id, "admin.product_price.update", "product_price", id, before, {
       productId: price.productId,
       displayName: price.displayName,
-      fixedPrice: String(price.fixedPrice),
+      fixedPrice: price.fixedPrice ? String(price.fixedPrice) : null,
       durationDays: price.durationDays,
       maxConcurrency: price.maxConcurrency,
       rpmLimit: price.rpmLimit,
@@ -3833,7 +3838,7 @@ async function inspectProductCatalogReadiness() {
       continue;
     }
 
-    const purchasablePrices = product.prices.filter((price) => price.fixedPrice !== null);
+    const purchasablePrices = product.prices.filter((price) => product.billingMode === "pay_as_you_go" || price.fixedPrice !== null);
     if (purchasablePrices.length === 0) {
       counters.productsWithoutPurchasablePrices += 1;
       addIssue({
@@ -3845,6 +3850,7 @@ async function inspectProductCatalogReadiness() {
     }
 
     for (const price of product.prices) {
+      if (product.billingMode === "pay_as_you_go") continue;
       if (price.fixedPrice === null) {
         counters.activePricesWithoutFixedPrice += 1;
         addIssue({
@@ -3870,6 +3876,12 @@ async function inspectProductCatalogReadiness() {
     },
     issues
   };
+}
+
+function validateProductPricePurchaseMode(billingMode: (typeof billingModes)[number], fixedPrice: number | null | undefined) {
+  if (fixedPrice == null && billingMode !== "pay_as_you_go") {
+    throw new AppError("fixed_price_required", "Only pay-as-you-go products can use a price without fixedPrice");
+  }
 }
 
 function aggregateHealthStatus(checks: SystemHealthCheck[]): SystemHealthStatus {

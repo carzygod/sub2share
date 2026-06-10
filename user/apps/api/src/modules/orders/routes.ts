@@ -37,10 +37,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     if (!price || price.productId !== input.productId || price.status !== "active" || price.product.status !== "active") {
       throw new AppError("product_price_not_found", "Product price not found", 404);
     }
-    const amount = price.fixedPrice ?? 0;
-    if (!price.fixedPrice) {
-      throw new AppError("unsupported_price", "Only fixed price products can be purchased directly in MVP");
-    }
+    const amount = orderPurchaseAmount(price);
 
     if (idempotencyKey) {
       const existing = await findIdempotentOrder(user.id, idempotencyKey);
@@ -82,31 +79,35 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           reason: "user.order.create",
           meta: { productId: price.productId, priceId: price.id, amount: String(amount) }
         });
-        const debit = await tx.walletAccount.updateMany({
-          where: {
-            userId: user.id,
-            availableBalance: { gte: amount }
-          },
-          data: {
-            availableBalance: { decrement: amount },
-            totalSpent: { increment: amount }
+        if (amount.gt(0)) {
+          const debit = await tx.walletAccount.updateMany({
+            where: {
+              userId: user.id,
+              availableBalance: { gte: amount }
+            },
+            data: {
+              availableBalance: { decrement: amount },
+              totalSpent: { increment: amount }
+            }
+          });
+          if (debit.count !== 1) {
+            throw new AppError("insufficient_balance", "Insufficient wallet balance", 402);
           }
-        });
-        if (debit.count !== 1) {
-          throw new AppError("insufficient_balance", "Insufficient wallet balance", 402);
+          const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: "consume",
+              amount,
+              balanceAfter: wallet.availableBalance,
+              refType: "order",
+              refId: order.id,
+              note: "purchase rental"
+            }
+          });
+        } else {
+          await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
         }
-        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: "consume",
-            amount,
-            balanceAfter: wallet.availableBalance,
-            refType: "order",
-            refId: order.id,
-            note: "purchase rental"
-          }
-        });
 
         const endsAt = price.durationDays
           ? new Date(Date.now() + price.durationDays * 24 * 60 * 60 * 1000)
@@ -218,27 +219,29 @@ export async function registerOrderRoutes(app: FastifyInstance) {
         });
         await tx.rental.update({ where: { id: result.rental.id }, data: { status: "closed" } });
 
-        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
-        const nextBalance = wallet.availableBalance.plus(amount);
-        const nextSpent = wallet.totalSpent.lessThan(amount) ? 0 : wallet.totalSpent.minus(amount);
-        await tx.walletAccount.update({
-          where: { id: wallet.id },
-          data: {
-            availableBalance: nextBalance,
-            totalSpent: nextSpent
-          }
-        });
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: "refund",
-            amount,
-            balanceAfter: nextBalance,
-            refType: "order",
-            refId: result.order.id,
-            note: "provisioning failed"
-          }
-        });
+        if (amount.gt(0)) {
+          const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: user.id } });
+          const nextBalance = wallet.availableBalance.plus(amount);
+          const nextSpent = wallet.totalSpent.lessThan(amount) ? 0 : wallet.totalSpent.minus(amount);
+          await tx.walletAccount.update({
+            where: { id: wallet.id },
+            data: {
+              availableBalance: nextBalance,
+              totalSpent: nextSpent
+            }
+          });
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: "refund",
+              amount,
+              balanceAfter: nextBalance,
+              refType: "order",
+              refId: result.order.id,
+              note: "provisioning failed"
+            }
+          });
+        }
       });
       throw error;
     }
@@ -253,6 +256,12 @@ export async function registerOrderRoutes(app: FastifyInstance) {
     });
     return ok(reply, orders);
   });
+}
+
+function orderPurchaseAmount(price: { fixedPrice: Prisma.Decimal | null; product: { billingMode: string } }) {
+  if (price.fixedPrice !== null) return price.fixedPrice;
+  if (price.product.billingMode === "pay_as_you_go") return new Prisma.Decimal(0);
+  throw new AppError("unsupported_price", "Only fixed price or pay-as-you-go products can be purchased directly");
 }
 
 function getOrderIdempotencyKey(request: FastifyRequest, bodyKey?: string) {
