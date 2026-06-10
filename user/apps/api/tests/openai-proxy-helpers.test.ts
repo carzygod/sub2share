@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   attachProxyRequestIdHeader,
   estimateProxyInputTokens,
+  inspectOpenAiProxyContract,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
   openAiProxyErrorPayload,
@@ -86,4 +87,37 @@ test("builds OpenAI-compatible local proxy error payloads", () => {
       code: "request_limit_exceeded"
     }
   });
+});
+
+test("inspects the local OpenAI proxy public contract", () => {
+  const result = inspectOpenAiProxyContract(" https://api.example.com/v1/ ");
+
+  assert.equal(result.ok, true);
+  assert.equal(result.summary.endpoint, "https://api.example.com/v1");
+  assert.equal(result.summary.endpointEndsWithV1, true);
+  assert.equal(result.summary.corsExposesRequestId, true);
+  assert.equal(result.summary.insufficientQuotaErrorType, "insufficient_quota");
+  assert.equal(result.summary.rateLimitErrorType, "rate_limit_error");
+  assert.equal(result.summary.apiErrorType, "api_error");
+  assert.deepEqual(result.errorTypes, {
+    insufficientQuota: "insufficient_quota",
+    rateLimit: "rate_limit_error",
+    apiError: "api_error"
+  });
+  assert.deepEqual(result.issues, []);
+});
+
+test("reports invalid OpenAI proxy contract endpoints", () => {
+  const invalidUrl = inspectOpenAiProxyContract("not-a-url");
+  assert.equal(invalidUrl.ok, false);
+  assert.equal(invalidUrl.issues.some((issue) => issue.type === "invalid_endpoint_url"), true);
+  assert.equal(invalidUrl.issues.some((issue) => issue.type === "endpoint_not_v1"), true);
+
+  const missingV1 = inspectOpenAiProxyContract("https://api.example.com");
+  assert.equal(missingV1.ok, false);
+  assert.equal(missingV1.issues.some((issue) => issue.type === "endpoint_not_v1"), true);
+
+  const invalidProtocol = inspectOpenAiProxyContract("ftp://api.example.com/v1");
+  assert.equal(invalidProtocol.ok, false);
+  assert.equal(invalidProtocol.issues.some((issue) => issue.type === "invalid_endpoint_protocol"), true);
 });

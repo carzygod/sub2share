@@ -1,6 +1,13 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
 export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName];
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
+export type OpenAiProxyContractIssueSeverity = "warning" | "error";
+
+export interface OpenAiProxyContractIssue {
+  type: string;
+  severity: OpenAiProxyContractIssueSeverity;
+  message: string;
+}
 
 export function attachProxyRequestIdHeader(reply: { header: (name: string, value: string) => unknown }, requestId: string) {
   reply.header(proxyRequestIdHeaderName, requestId);
@@ -30,6 +37,91 @@ export function openAiProxyErrorPayload(statusCode: number, code: string, messag
       type: openAiProxyErrorType(statusCode, code),
       code
     }
+  };
+}
+
+export function inspectOpenAiProxyContract(endpoint: string) {
+  const trimmedEndpoint = endpoint.trim();
+  const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
+  const issues: OpenAiProxyContractIssue[] = [];
+
+  let endpointProtocol: string | null = null;
+  try {
+    const parsed = new URL(trimmedEndpoint);
+    endpointProtocol = parsed.protocol.replace(/:$/, "");
+    if (!["http", "https"].includes(endpointProtocol)) {
+      issues.push({
+        type: "invalid_endpoint_protocol",
+        severity: "error",
+        message: "OpenAI proxy public endpoint must use http or https"
+      });
+    }
+  } catch {
+    issues.push({
+      type: "invalid_endpoint_url",
+      severity: "error",
+      message: "OpenAI proxy public endpoint is not a valid URL"
+    });
+  }
+
+  if (!normalizedEndpoint.endsWith("/v1")) {
+    issues.push({
+      type: "endpoint_not_v1",
+      severity: "error",
+      message: "OpenAI proxy public endpoint must point to the /v1 API base path"
+    });
+  }
+
+  const corsExposesRequestId = openAiProxyCorsExposedHeaders.includes(proxyRequestIdHeaderName);
+  if (!corsExposesRequestId) {
+    issues.push({
+      type: "request_id_header_not_exposed",
+      severity: "error",
+      message: "CORS must expose x-proxy-request-id for browser clients"
+    });
+  }
+
+  const errorTypes = {
+    insufficientQuota: openAiProxyErrorPayload(402, "insufficient_balance", "Wallet balance is not enough").error.type,
+    rateLimit: openAiProxyErrorPayload(429, "rpm_limit_exceeded", "RPM limit has been reached").error.type,
+    apiError: openAiProxyErrorPayload(502, "upstream_unavailable", "Sub2API upstream is unavailable").error.type
+  };
+  if (errorTypes.insufficientQuota !== "insufficient_quota") {
+    issues.push({
+      type: "insufficient_quota_error_type_mismatch",
+      severity: "error",
+      message: "402 local proxy errors must map to insufficient_quota"
+    });
+  }
+  if (errorTypes.rateLimit !== "rate_limit_error") {
+    issues.push({
+      type: "rate_limit_error_type_mismatch",
+      severity: "error",
+      message: "429 local proxy errors must map to rate_limit_error"
+    });
+  }
+  if (errorTypes.apiError !== "api_error") {
+    issues.push({
+      type: "api_error_type_mismatch",
+      severity: "error",
+      message: "5xx local proxy errors must map to api_error"
+    });
+  }
+
+  return {
+    ok: issues.length === 0,
+    summary: {
+      endpoint: normalizedEndpoint || trimmedEndpoint,
+      endpointProtocol,
+      endpointEndsWithV1: normalizedEndpoint.endsWith("/v1"),
+      requestIdHeader: proxyRequestIdHeaderName,
+      corsExposesRequestId,
+      insufficientQuotaErrorType: errorTypes.insufficientQuota,
+      rateLimitErrorType: errorTypes.rateLimit,
+      apiErrorType: errorTypes.apiError
+    },
+    errorTypes,
+    issues
   };
 }
 

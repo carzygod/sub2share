@@ -16,11 +16,13 @@
 - 429 请求量、RPM/TPM 和并发限制返回 `rate_limit_error`。
 - 502/504 上游不可用或超时返回 `api_error`。
 - 新增 Node test 覆盖类型映射和 payload 结构，避免后续网关错误格式回归。
+- `GET /api/admin/system-health` 新增 `openAiProxyContract` 检查项，会验证公开 endpoint、CORS 请求 ID 暴露头和关键本地错误类型映射。
 
 ## 管理员价值
 
 - 用户侧 SDK 或集成方可以按 `error.type` 区分余额问题、限流问题和上游可用性问题。
 - 管理员排障时仍可依赖原有 `error.code`、HTTP 状态码和 `x-proxy-request-id` 精确定位。
+- 管理员可以在 `可用性巡检` 中提前发现反代契约配置或本地错误结构回归。
 - 该能力提升 OpenAI/Codex 反代入口对通用 OpenAI 客户端的兼容性，同时不改变已有业务错误码。
 
 ## 验收方式

@@ -13,7 +13,7 @@ import { sub2Client, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from ".
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
-import { normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
+import { inspectOpenAiProxyContract, normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 
@@ -2626,6 +2626,7 @@ async function buildSystemHealthReport() {
     inspectOpenAiProxyApiKeys(checkedAt)
   ]);
   const sub2Status = await fetchSub2HealthStatus();
+  const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
@@ -2701,6 +2702,14 @@ async function buildSystemHealthReport() {
         accounts: sub2Status.accountCount
       },
       sub2Status.error ? { error: sub2Status.error } : { blockingReasons: sub2Status.blockingReasons }
+    ),
+    systemHealthCheck(
+      "openAiProxyContract",
+      "OpenAI 反代契约",
+      openAiProxyContract.ok ? "ok" : "error",
+      openAiProxyContract.ok ? "OpenAI/Codex 本地反代契约正常" : `${openAiProxyContract.issues.length} 个本地反代契约问题`,
+      openAiProxyContract.summary,
+      { issues: openAiProxyContract.issues }
     ),
     systemHealthCheck(
       "sub2Bindings",
