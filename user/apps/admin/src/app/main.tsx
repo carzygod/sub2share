@@ -151,6 +151,16 @@ interface SystemHealthCheckRow {
   detail?: unknown;
 }
 
+interface SystemHealthIssueRow {
+  id: string;
+  checkId: string;
+  checkLabel: string;
+  severity: string;
+  type: string;
+  ref: string;
+  message: string;
+}
+
 interface DeliverySummary {
   status: "ok" | "warning" | "error";
   summary: {
@@ -2118,6 +2128,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onRunMaintenance: () => void;
 }) {
   const checks = health?.checks ?? [];
+  const issueRows = checks.flatMap(systemHealthIssueRows);
   return (
     <section className="stack">
       <div className="panel glass-panel export-strip">
@@ -2167,6 +2178,23 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
           <tr>
             <td colSpan={4}><small>点击重新巡检开始读取系统健康信号。</small></td>
           </tr>
+        )}
+      </TablePanel>
+      <TablePanel title="巡检问题样本" count={issueRows.length} headers={["级别", "检查项", "类型", "对象", "说明"]}>
+        {issueRows.map((issue) => (
+          <tr key={`${issue.checkId}-${issue.id}`}>
+            <td><StatusPill status={healthIssueTone(issue.severity)} /></td>
+            <td><strong>{issue.checkLabel}</strong><small>{issue.checkId}</small></td>
+            <td><small>{issue.type}</small></td>
+            <td><small>{issue.ref}</small></td>
+            <td><small>{issue.message}</small></td>
+          </tr>
+        ))}
+        {health && issueRows.length === 0 && (
+          <tr><td colSpan={5}><small>暂无巡检问题样本。</small></td></tr>
+        )}
+        {!health && (
+          <tr><td colSpan={5}><small>点击重新巡检开始读取问题样本。</small></td></tr>
         )}
       </TablePanel>
       <TablePanel title="巡检历史" count={snapshots.length} headers={["状态", "来源", "摘要", "操作者", "时间"]}>
@@ -4171,6 +4199,58 @@ function healthMetricSummary(metrics?: Record<string, string | number | boolean 
     .map(([key, value]) => `${key}: ${value ?? "-"}`)
     .join(" / ");
   return text || "-";
+}
+
+function systemHealthIssueRows(check: SystemHealthCheckRow) {
+  if (!isPlainRecord(check.detail) || !Array.isArray(check.detail.issues)) return [];
+
+  return check.detail.issues.slice(0, 100).map((issue, index): SystemHealthIssueRow => {
+    const record = isPlainRecord(issue) ? issue : {};
+    return {
+      id: textValue(record.id) ?? String(index),
+      checkId: check.id,
+      checkLabel: check.label,
+      severity: textValue(record.severity) ?? check.status,
+      type: textValue(record.type) ?? "-",
+      ref: systemHealthIssueRef(record),
+      message: textValue(record.message) ?? compactJson(issue)
+    };
+  });
+}
+
+function systemHealthIssueRef(issue: Record<string, unknown>) {
+  const fields = ["orderId", "rentalId", "apiKeyId", "userId", "bindingId", "refId", "expected", "actual"];
+  const parts = fields
+    .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
+    .filter(Boolean);
+  return parts.join(" / ") || textValue(issue.id) || "-";
+}
+
+function healthIssueTone(severity: string) {
+  if (severity === "error") return "error";
+  if (severity === "warning") return "warning";
+  if (severity === "ok") return "active";
+  return severity;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function textValue(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
+}
+
+function compactJson(value: unknown) {
+  try {
+    const text = JSON.stringify(value);
+    if (!text) return "-";
+    return text.length > 180 ? `${text.slice(0, 177)}...` : text;
+  } catch {
+    return "-";
+  }
 }
 
 function titleFor(view: View) {
