@@ -5,6 +5,8 @@ import {
   estimateProxyInputTokens,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
+  openAiProxyErrorPayload,
+  openAiProxyErrorType,
   openAiProxyCorsExposedHeaders,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
@@ -63,4 +65,25 @@ test("normalizes copied proxy request id headers for admin search", () => {
 
 test("exposes the proxy request id header to browser clients", () => {
   assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName]);
+});
+
+test("maps local proxy errors to OpenAI-compatible error types", () => {
+  assert.equal(openAiProxyErrorType(401, "missing_api_key"), "invalid_request_error");
+  assert.equal(openAiProxyErrorType(403, "rental_not_active"), "invalid_request_error");
+  assert.equal(openAiProxyErrorType(402, "insufficient_balance"), "insufficient_quota");
+  assert.equal(openAiProxyErrorType(402, "spend_limit_exhausted"), "insufficient_quota");
+  assert.equal(openAiProxyErrorType(429, "rpm_limit_exceeded"), "rate_limit_error");
+  assert.equal(openAiProxyErrorType(429, "concurrency_limit_exceeded"), "rate_limit_error");
+  assert.equal(openAiProxyErrorType(502, "upstream_unavailable"), "api_error");
+  assert.equal(openAiProxyErrorType(504, "upstream_timeout"), "api_error");
+});
+
+test("builds OpenAI-compatible local proxy error payloads", () => {
+  assert.deepEqual(openAiProxyErrorPayload(429, "request_limit_exceeded", "Rental request limit has been exhausted"), {
+    error: {
+      message: "Rental request limit has been exhausted",
+      type: "rate_limit_error",
+      code: "request_limit_exceeded"
+    }
+  });
 });

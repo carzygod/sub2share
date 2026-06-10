@@ -18,7 +18,7 @@
 {
   "error": {
     "message": "Rental concurrency limit has been reached",
-    "type": "invalid_request_error",
+    "type": "rate_limit_error",
     "code": "concurrency_limit_exceeded"
   }
 }

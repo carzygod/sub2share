@@ -5,7 +5,14 @@ import { Readable } from "node:stream";
 import { prisma } from "../../common/prisma.js";
 import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
-import { attachProxyRequestIdHeader, estimateProxyInputTokens, isMetadataProxyRequest, proxyBodyByteLength, proxyBodyText } from "./helpers.js";
+import {
+  attachProxyRequestIdHeader,
+  estimateProxyInputTokens,
+  isMetadataProxyRequest,
+  openAiProxyErrorPayload,
+  proxyBodyByteLength,
+  proxyBodyText
+} from "./helpers.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
@@ -625,11 +632,5 @@ function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
 }
 
 function openAiError(reply: FastifyReply, statusCode: number, code: string, message: string) {
-  return reply.status(statusCode).send({
-    error: {
-      message,
-      type: "invalid_request_error",
-      code
-    }
-  });
+  return reply.status(statusCode).send(openAiProxyErrorPayload(statusCode, code, message));
 }
