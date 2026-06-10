@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
-import { Readable } from "node:stream";
+import { Readable, Transform } from "node:stream";
 import { prisma } from "../../common/prisma.js";
 import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
@@ -52,6 +52,7 @@ interface ProxyRequestLogEntry {
 interface ForwardedUpstream {
   response: Response;
   cleanup: () => void;
+  abort: () => void;
 }
 
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
@@ -185,12 +186,14 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         }
 
         const upstreamStream = Readable.fromWeb(upstreamResponse.body as never);
-        trackForwardedUpstreamStream(request, reply, upstreamStream, {
+        const forwardedStream = trackForwardedUpstreamStream(request, reply, upstreamStream, {
+          abort: upstream.abort,
           cleanup: upstream.cleanup,
+          idleTimeoutMs: env.OPENAI_PROXY_STREAM_IDLE_TIMEOUT_MS,
           logId: proxyRequestLogId,
           startedAt
         });
-        return reply.send(upstreamStream);
+        return reply.send(forwardedStream);
       }
     });
   });
@@ -514,18 +517,54 @@ function trackForwardedUpstreamStream(
   reply: FastifyReply,
   stream: Readable,
   options: {
+    abort: () => void;
     cleanup: () => void;
+    idleTimeoutMs: number;
     logId: string | null;
     startedAt: number;
   }
 ) {
+  const monitoredStream = new Transform({
+    transform(chunk, encoding, callback) {
+      resetIdleTimer();
+      callback(null, chunk);
+    }
+  });
   let cleaned = false;
   let streamEnded = false;
   let clientClosedEarly = false;
+  let idleTimedOut = false;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearIdleTimer = () => {
+    if (!idleTimer) return;
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+
+  const resetIdleTimer = () => {
+    clearIdleTimer();
+    idleTimer = setTimeout(() => {
+      idleTimedOut = true;
+      request.log.warn({
+        path: request.url,
+        idleTimeoutMs: options.idleTimeoutMs,
+        proxyRequestLogId: options.logId
+      }, "openai proxy upstream stream idle timeout");
+      options.abort();
+      stream.destroy(new Error("upstream_stream_idle_timeout"));
+      monitoredStream.destroy(new Error("upstream_stream_idle_timeout"));
+      finalize("upstream_stream_idle_timeout");
+    }, options.idleTimeoutMs);
+    idleTimer.unref?.();
+  };
 
   const markClientClose = () => {
     if (!reply.raw.writableEnded && !streamEnded) {
       clientClosedEarly = true;
+      options.abort();
+      stream.destroy();
+      monitoredStream.destroy();
       finalize("client_disconnected");
     }
   };
@@ -533,6 +572,7 @@ function trackForwardedUpstreamStream(
   const finalize = (errorCode?: string) => {
     if (cleaned) return;
     cleaned = true;
+    clearIdleTimer();
     reply.raw.off("close", markClientClose);
     options.cleanup();
     void updateProxyRequestLogCompletion(request, options.logId, options.startedAt, errorCode);
@@ -543,14 +583,21 @@ function trackForwardedUpstreamStream(
     streamEnded = true;
     finalize();
   });
-  stream.once("error", () => {
-    finalize(clientClosedEarly ? "client_disconnected" : "upstream_stream_error");
+  stream.once("error", (error) => {
+    if (!monitoredStream.destroyed) {
+      monitoredStream.destroy(error instanceof Error ? error : undefined);
+    }
+    finalize(idleTimedOut ? "upstream_stream_idle_timeout" : clientClosedEarly ? "client_disconnected" : "upstream_stream_error");
   });
   stream.once("close", () => {
     if (!streamEnded) {
-      finalize(clientClosedEarly ? "client_disconnected" : "upstream_stream_closed");
+      finalize(idleTimedOut ? "upstream_stream_idle_timeout" : clientClosedEarly ? "client_disconnected" : "upstream_stream_closed");
     }
   });
+  monitoredStream.once("error", () => undefined);
+  resetIdleTimer();
+  stream.pipe(monitoredStream);
+  return monitoredStream;
 }
 
 function isMetadataRequest(request: FastifyRequest) {
@@ -577,11 +624,17 @@ async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: 
 
   const body = bodyForUpstream(request);
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), env.OPENAI_PROXY_UPSTREAM_TIMEOUT_MS);
+  const abort = () => {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  };
+  const timeout = setTimeout(abort, env.OPENAI_PROXY_UPSTREAM_TIMEOUT_MS);
   const abortOnClose = () => {
-    if (!reply.raw.writableEnded) controller.abort();
+    if (!reply.raw.writableEnded) abort();
   };
   const cleanup = () => {
+    clearTimeout(timeout);
     reply.raw.off("close", abortOnClose);
   };
   reply.raw.once("close", abortOnClose);
@@ -593,9 +646,8 @@ async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: 
       signal: controller.signal
     });
     clearTimeout(timeout);
-    return { response, cleanup };
+    return { response, cleanup, abort };
   } catch (error) {
-    clearTimeout(timeout);
     cleanup();
     throw error;
   } finally {

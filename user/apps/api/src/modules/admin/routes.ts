@@ -2691,7 +2691,7 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 500 } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: "client_disconnected" } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed"] } } }),
+    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] } } }),
     getSub2UsageSyncState(),
     inspectPendingUsageBilling(checkedAt),
     findBillingReconciliationIssues(),

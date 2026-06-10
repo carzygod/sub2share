@@ -51,7 +51,7 @@ Sub2ApiError
 - 资源账号测试。
 - `/health` 网关健康探测。
 
-OpenAI/Codex `/v1/*` 反代自身仍使用独立的 `OPENAI_PROXY_UPSTREAM_TIMEOUT_MS`，用于长时间流式生成场景。
+OpenAI/Codex `/v1/*` 反代自身仍使用独立的 `OPENAI_PROXY_UPSTREAM_TIMEOUT_MS`，用于响应头返回前的上游请求超时；流式响应体返回后的无数据卡顿由 `OPENAI_PROXY_STREAM_IDLE_TIMEOUT_MS` 控制。
 
 ## 可用性结论
 

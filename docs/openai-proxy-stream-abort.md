@@ -10,7 +10,7 @@
 
 ## 已实现范围
 
-- `forwardToSub2` 返回上游 `Response` 和 `cleanup` 函数。
+- `forwardToSub2` 返回上游 `Response`、`cleanup` 函数和 `abort` 函数。
 - 上游响应头返回后，继续保留 `reply.raw.close` 监听。
 - 当客户端在流式响应过程中断开时，通过 `AbortController` 中止上游 fetch。
 - `HEAD` 请求或无响应体请求会立即清理监听。
@@ -18,7 +18,10 @@
 - `ProxyRequestLog.durationMs` 会在响应流结束、错误或客户端断开后回写为完整持续时间。
 - 客户端中途断开时，`ProxyRequestLog.errorCode` 会回写为 `client_disconnected`。
 - 上游流错误或异常关闭时，`ProxyRequestLog.errorCode` 会回写为 `upstream_stream_error` 或 `upstream_stream_closed`。
+- 上游流超过 `OPENAI_PROXY_STREAM_IDLE_TIMEOUT_MS` 没有输出数据时，`ProxyRequestLog.errorCode` 会回写为 `upstream_stream_idle_timeout`。
 - 该行为不改变对用户可见的 OpenAI 兼容响应结构、状态码、响应头或 `x-proxy-request-id`。
+
+流式空闲超时的独立说明见 `docs/openai-proxy-stream-idle-timeout.md`。
 
 ## 验收方式
 
