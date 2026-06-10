@@ -14,7 +14,7 @@ import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { inspectOpenAiProxyContract, normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
-import { inspectOpenAiProxyRuntimeState } from "../openai-proxy/routes.js";
+import { inspectOpenAiProxyRuntimeState } from "../openai-proxy/limiter-store.js";
 import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
 import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
@@ -2707,7 +2707,7 @@ async function buildSystemHealthReport() {
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
-  const openAiProxyRuntime = inspectOpenAiProxyRuntimeState(checkedAt.getTime());
+  const openAiProxyRuntime = await inspectOpenAiProxyRuntimeState(checkedAt.getTime());
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");

@@ -7,24 +7,15 @@ import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 import {
   attachProxyRequestIdHeader,
-  evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
-  inspectOpenAiProxyRuntime,
-  isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   proxyBodyByteLength,
-  proxyBodyText,
-  pruneProxyRateLimitWindow,
-  type ProxyRateLimitWindow
+  proxyBodyText
 } from "./helpers.js";
+import { acquireOpenAiProxyConcurrency, consumeOpenAiProxyRateLimit } from "./limiter-store.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
-const activeProxyRequests = new Map<string, number>();
-const proxyRateWindows = new Map<string, ProxyRateLimitWindow>();
-const RATE_WINDOW_MS = 60_000;
-const RATE_WINDOW_CLEANUP_INTERVAL_MS = RATE_WINDOW_MS;
-let lastProxyRateWindowCleanupAt = 0;
 const hopByHopHeaders = new Set([
   "connection",
   "content-encoding",
@@ -55,33 +46,6 @@ interface ForwardedUpstream {
   response: Response;
   cleanup: () => void;
   abort: () => void;
-}
-
-export function inspectOpenAiProxyRuntimeState(now = Date.now()) {
-  cleanupInactiveProxyRateWindows(now, true);
-
-  let activeRateWindowRequests = 0;
-  let activeRateWindowTokenEvents = 0;
-  let activeRateWindowEstimatedTokens = 0;
-  for (const window of proxyRateWindows.values()) {
-    activeRateWindowRequests += window.requests.length;
-    activeRateWindowTokenEvents += window.tokens.length;
-    activeRateWindowEstimatedTokens += window.tokens.reduce((total, event) => total + event.tokens, 0);
-  }
-
-  return inspectOpenAiProxyRuntime({
-    nodeEnv: env.NODE_ENV,
-    limiterScope: "process",
-    rateWindowMs: RATE_WINDOW_MS,
-    rateWindowCleanupIntervalMs: RATE_WINDOW_CLEANUP_INTERVAL_MS,
-    activeConcurrencyRentals: activeProxyRequests.size,
-    activeConcurrencyLeases: [...activeProxyRequests.values()].reduce((total, count) => total + count, 0),
-    activeRateWindowRentals: proxyRateWindows.size,
-    activeRateWindowRequests,
-    activeRateWindowTokenEvents,
-    activeRateWindowEstimatedTokens,
-    lastRateWindowCleanupAt: lastProxyRateWindowCleanupAt ? new Date(lastProxyRateWindowCleanupAt).toISOString() : null
-  });
 }
 
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
@@ -129,27 +93,54 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
         }
 
-        const rateLimitCheck = checkRentalRateLimits(keyRecord.apiKey.rental, request);
-        if (!rateLimitCheck.ok) {
+        const estimatedTokens = estimateRateLimitTokens(keyRecord.apiKey.rental, request);
+        let concurrencyLease: Awaited<ReturnType<typeof acquireProxyConcurrency>>;
+        try {
+          concurrencyLease = await acquireProxyConcurrency(keyRecord.apiKey.rental);
+        } catch (error) {
+          request.log.error({ error, rentalId: keyRecord.apiKey.rentalId }, "openai proxy concurrency limiter failed");
           await writeProxyRequestLog(request, startedAt, {
             ...logContext,
-            statusCode: rateLimitCheck.statusCode,
-            errorCode: rateLimitCheck.code
+            statusCode: 503,
+            errorCode: "proxy_limiter_unavailable",
+            estimatedInputTokens: estimatedTokens
           });
-          return openAiError(reply, rateLimitCheck.statusCode, rateLimitCheck.code, rateLimitCheck.message);
+          return openAiError(reply, 503, "proxy_limiter_unavailable", "OpenAI proxy limiter is unavailable");
         }
-
-        const concurrencyLease = acquireProxyConcurrency(keyRecord.apiKey.rental);
         if (!concurrencyLease.ok) {
           await writeProxyRequestLog(request, startedAt, {
             ...logContext,
             statusCode: concurrencyLease.statusCode,
             errorCode: concurrencyLease.code,
-            estimatedInputTokens: rateLimitCheck.estimatedTokens
+            estimatedInputTokens: estimatedTokens
           });
           return openAiError(reply, concurrencyLease.statusCode, concurrencyLease.code, concurrencyLease.message);
         }
-        rateLimitCheck.record();
+
+        let rateLimitCheck: Awaited<ReturnType<typeof checkRentalRateLimits>>;
+        try {
+          rateLimitCheck = await checkRentalRateLimits(keyRecord.apiKey.rental, request, estimatedTokens);
+        } catch (error) {
+          await releaseConcurrencyLease(concurrencyLease.release);
+          request.log.error({ error, rentalId: keyRecord.apiKey.rentalId }, "openai proxy limiter store failed");
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: 503,
+            errorCode: "proxy_limiter_unavailable",
+            estimatedInputTokens: estimatedTokens
+          });
+          return openAiError(reply, 503, "proxy_limiter_unavailable", "OpenAI proxy limiter is unavailable");
+        }
+        if (!rateLimitCheck.ok) {
+          await releaseConcurrencyLease(concurrencyLease.release);
+          await writeProxyRequestLog(request, startedAt, {
+            ...logContext,
+            statusCode: rateLimitCheck.statusCode,
+            errorCode: rateLimitCheck.code,
+            estimatedInputTokens: estimatedTokens
+          });
+          return openAiError(reply, rateLimitCheck.statusCode, rateLimitCheck.code, rateLimitCheck.message);
+        }
         releaseLeaseOnReplyEnd(reply, concurrencyLease.release);
 
         await prisma.apiKey.update({
@@ -417,41 +408,19 @@ function metadataProxyRequestLogFilters(): Prisma.ProxyRequestLogWhereInput[] {
   ];
 }
 
-function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
+async function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
   if (!rental) {
     return failure(403, "rental_not_active", "Rental is not active");
   }
 
   const limit = Math.max(1, rental?.limits?.maxConcurrency ?? 1);
-  const key = rental.id;
-  const activeCount = activeProxyRequests.get(key) ?? 0;
-
-  if (activeCount >= limit) {
-    return failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached");
-  }
-
-  activeProxyRequests.set(key, activeCount + 1);
-  let released = false;
-  return {
-    ok: true as const,
-    activeCount: activeCount + 1,
-    limit,
-    release: () => {
-      if (released) return;
-      released = true;
-      const current = activeProxyRequests.get(key) ?? 0;
-      if (current <= 1) {
-        activeProxyRequests.delete(key);
-      } else {
-        activeProxyRequests.set(key, current - 1);
-      }
-    }
-  };
+  return acquireOpenAiProxyConcurrency(rental.id, limit);
 }
 
-function checkRentalRateLimits(
+async function checkRentalRateLimits(
   rental: ActiveApiKeyRecord["rental"],
-  request: FastifyRequest
+  request: FastifyRequest,
+  estimatedTokens: number
 ) {
   if (!rental) {
     return failure(403, "rental_not_active", "Rental is not active");
@@ -464,69 +433,30 @@ function checkRentalRateLimits(
       tpmLimit: rental.limits?.tpmLimit ?? null,
       tpmUsed: null,
       estimatedTokens: 0,
-      record: noop
     };
   }
 
   const rpmLimit = rental.limits?.rpmLimit ?? null;
   const tpmLimit = rental.limits?.tpmLimit ?? null;
   if (!rpmLimit && !tpmLimit) {
-    return { ok: true as const, rpmLimit, rpmUsed: null, tpmLimit, tpmUsed: null, estimatedTokens: 0, record: noop };
+    return { ok: true as const, rpmLimit, rpmUsed: null, tpmLimit, tpmUsed: null, estimatedTokens: 0 };
   }
 
-  const now = Date.now();
-  cleanupInactiveProxyRateWindows(now);
-  const window = rateWindowForRental(rental.id);
-  const estimatedTokens = tpmLimit ? estimateInputTokens(request) : 0;
-  const windowCheck = evaluateProxyRateLimitWindow({
-    window,
-    now,
-    windowMs: RATE_WINDOW_MS,
+  return consumeOpenAiProxyRateLimit({
+    rentalId: rental.id,
     rpmLimit,
     tpmLimit,
     estimatedTokens
   });
-  if (!windowCheck.ok) {
-    return failure(429, windowCheck.code, windowCheck.message);
-  }
-
-  return {
-    ok: true as const,
-    rpmLimit,
-    rpmUsed: windowCheck.rpmUsed,
-    tpmLimit,
-    tpmUsed: windowCheck.tpmUsed,
-    estimatedTokens,
-    record: windowCheck.commit
-  };
-}
-
-function noop() {
-  // No-op reservation for metadata requests or rentals without local RPM/TPM limits.
-}
-
-function rateWindowForRental(rentalId: string) {
-  const existing = proxyRateWindows.get(rentalId);
-  if (existing) return existing;
-  const created: ProxyRateLimitWindow = { requests: [], tokens: [] };
-  proxyRateWindows.set(rentalId, created);
-  return created;
-}
-
-function cleanupInactiveProxyRateWindows(now: number, force = false) {
-  if (!force && now - lastProxyRateWindowCleanupAt < RATE_WINDOW_CLEANUP_INTERVAL_MS) return;
-  lastProxyRateWindowCleanupAt = now;
-
-  for (const [rentalId, window] of proxyRateWindows) {
-    pruneProxyRateLimitWindow(window, now, RATE_WINDOW_MS);
-    if (isProxyRateLimitWindowEmpty(window)) {
-      proxyRateWindows.delete(rentalId);
-    }
-  }
 }
 
 function estimateInputTokens(request: FastifyRequest) {
   return estimateProxyInputTokens(request.method, request.body);
+}
+
+function estimateRateLimitTokens(rental: ActiveApiKeyRecord["rental"], request: FastifyRequest) {
+  if (!rental || isMetadataRequest(request) || !rental.limits?.tpmLimit) return 0;
+  return estimateInputTokens(request);
 }
 
 function requestBodyText(request: FastifyRequest) {
@@ -546,9 +476,20 @@ function requestUserAgent(request: FastifyRequest) {
   return Array.isArray(value) ? value.join(", ") : value;
 }
 
-function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => void) {
-  reply.raw.once("finish", release);
-  reply.raw.once("close", release);
+function releaseLeaseOnReplyEnd(reply: FastifyReply, release: () => Promise<void>) {
+  const releaseOnce = () => {
+    void releaseConcurrencyLease(release);
+  };
+  reply.raw.once("finish", releaseOnce);
+  reply.raw.once("close", releaseOnce);
+}
+
+async function releaseConcurrencyLease(release: () => Promise<void>) {
+  try {
+    await release();
+  } catch {
+    // Lease TTLs keep Redis-backed counters from sticking if the final release fails.
+  }
 }
 
 function trackForwardedUpstreamStream(

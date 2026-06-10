@@ -137,6 +137,7 @@ test("maps local proxy errors to OpenAI-compatible error types", () => {
   assert.equal(openAiProxyErrorType(429, "rpm_limit_exceeded"), "rate_limit_error");
   assert.equal(openAiProxyErrorType(429, "concurrency_limit_exceeded"), "rate_limit_error");
   assert.equal(openAiProxyErrorType(502, "upstream_unavailable"), "api_error");
+  assert.equal(openAiProxyErrorType(503, "proxy_limiter_unavailable"), "api_error");
   assert.equal(openAiProxyErrorType(504, "upstream_timeout"), "api_error");
 });
 
@@ -186,7 +187,10 @@ test("reports invalid OpenAI proxy contract endpoints", () => {
 test("flags production OpenAI proxy runtime when limiter state is process-local", () => {
   const result = inspectOpenAiProxyRuntime({
     nodeEnv: "production",
+    storeMode: "memory",
     limiterScope: "process",
+    shared: false,
+    redisReachable: null,
     rateWindowMs: 60_000,
     rateWindowCleanupIntervalMs: 60_000,
     activeConcurrencyRentals: 2,

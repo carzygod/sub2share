@@ -13,12 +13,12 @@
 
 ## 已实现范围
 
-- 将速率窗口逻辑拆成“检查”和“提交”两个阶段。
-- `checkRentalRateLimits()` 只判断当前请求是否会超过 RPM/TPM，并返回本次请求预计占用量。
-- 只有 `acquireProxyConcurrency()` 成功取得并发租约后，才调用 `rateLimitCheck.record()` 写入 RPM/TPM 窗口。
+- 将限流状态抽到 `limiter-store.ts`，支持 memory 与 Redis 两种存储。
+- 当前请求会先取得租赁级并发租约，再通过 `consumeOpenAiProxyRateLimit()` 原子消费 RPM/TPM。
+- RPM/TPM 失败时会立即释放刚取得的并发租约。
 - 并发失败时仍写入 `ProxyRequestLog(errorCode=concurrency_limit_exceeded)`，但不消耗 RPM/TPM。
-- 新增 `evaluateProxyRateLimitWindow()` helper，用于可测试地评估窗口、清理过期事件和延迟提交。
-- 新增自动化测试覆盖：速率检查不会立即修改窗口，调用 `commit()` 后才计入 RPM/TPM。
+- memory 模式继续复用 `evaluateProxyRateLimitWindow()` helper。
+- Redis 模式通过 Lua 脚本在共享存储中裁剪窗口、判断限额并写入事件，避免多实例竞态。
 
 ## 执行顺序
 
@@ -26,9 +26,9 @@
 
 1. 校验本地 API Key、用户、租赁、余额、资源类型和剩余额度。
 2. 校验本地请求量台账。
-3. 评估 RPM/TPM 是否允许本次请求，但暂不提交窗口。
-4. 申请租赁级并发租约。
-5. 并发租约成功后提交 RPM/TPM 速率窗口。
+3. 申请租赁级并发租约。
+4. 原子消费 RPM/TPM 速率窗口。
+5. 若 RPM/TPM 失败，立即释放并发租约并返回 OpenAI 风格 `429`。
 6. 转发到 Sub2API，并写入成功或失败的反代请求日志。
 
 ## 管理员价值
@@ -39,4 +39,4 @@
 
 ## 边界
 
-当前 RPM/TPM 和并发租约仍是单 API 进程内状态，适合现有单实例部署。若后续 API 多实例扩容，仍需要迁移到 Redis、Sub2API 网关或其他共享限流器中，保证跨实例的一致性。
+生产环境默认使用 Redis 共享限流器，适合 API 多实例部署。若显式配置 `OPENAI_PROXY_LIMITER_STORE=memory`，RPM/TPM 和并发租约仍只在单 API 进程内生效，适合本地开发、测试或明确的单实例部署。

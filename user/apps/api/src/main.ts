@@ -16,6 +16,7 @@ import { registerSupplierRoutes } from "./modules/suppliers/routes.js";
 import { registerBillingRoutes } from "./modules/billing/routes.js";
 import { registerAdminRoutes } from "./modules/admin/routes.js";
 import { registerOpenAiProxyRoutes } from "./modules/openai-proxy/routes.js";
+import { closeOpenAiProxyLimiterStore, inspectOpenAiProxyLimiterReadiness } from "./modules/openai-proxy/limiter-store.js";
 import { startSub2UsageSyncScheduler } from "./jobs/sub2-usage-scheduler.js";
 
 const readinessTimeoutMs = 5_000;
@@ -46,12 +47,13 @@ export async function buildServer() {
 
   app.get("/ready", async (_request, reply) => {
     const checkedAt = new Date().toISOString();
-    const [database, sub2api, oauthStateStore] = await Promise.all([
+    const [database, sub2api, oauthStateStore, openAiProxyLimiter] = await Promise.all([
       checkDatabase(),
       checkSub2Api(),
-      checkOAuthStateStore()
+      checkOAuthStateStore(),
+      checkOpenAiProxyLimiter()
     ]);
-    const ready = database.ok && sub2api.ok && oauthStateStore.ok;
+    const ready = database.ok && sub2api.ok && oauthStateStore.ok && openAiProxyLimiter.ok;
     return reply.status(ready ? 200 : 503).send({
       ok: ready,
       data: {
@@ -61,7 +63,8 @@ export async function buildServer() {
         dependencies: {
           database,
           sub2api,
-          oauthStateStore
+          oauthStateStore,
+          openAiProxyLimiter
         }
       }
     });
@@ -126,6 +129,16 @@ async function checkOAuthStateStore() {
   };
 }
 
+async function checkOpenAiProxyLimiter() {
+  const readiness = await inspectOpenAiProxyLimiterReadiness();
+  return {
+    ok: readiness.ok,
+    status: readiness.ok ? "ok" : "error",
+    ...readiness.summary,
+    issues: readiness.issues
+  };
+}
+
 function readinessError(error: unknown) {
   if (error instanceof Error && error.name === "AbortError") return "timeout";
   return error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
@@ -137,6 +150,7 @@ if (process.env.NODE_ENV !== "test") {
   app.addHook("onClose", async () => {
     stopSub2UsageSyncScheduler();
     await closeOAuthStateStore();
+    await closeOpenAiProxyLimiterStore();
   });
   await app.listen({ host: "0.0.0.0", port: env.API_PORT });
 }

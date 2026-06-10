@@ -55,6 +55,7 @@ const envSchema = z.object({
   OPENAI_PROXY_UPSTREAM_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
   OPENAI_PROXY_STREAM_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60 * 1000),
   OPENAI_PROXY_MIN_WALLET_BALANCE: z.coerce.number().nonnegative().default(0),
+  OPENAI_PROXY_LIMITER_STORE: z.enum(["memory", "redis"]).optional(),
   PAYMENT_PROVIDER: z.enum(["mock", "disabled"]).default("mock"),
   OAUTH_STATE_STORE: z.enum(["memory", "redis"]).optional(),
   DEFAULT_DISCOUNT_RATE: z.coerce.number().default(0.2),

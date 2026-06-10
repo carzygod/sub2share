@@ -16,7 +16,10 @@ export interface ProxyRateLimitWindow {
 
 export interface OpenAiProxyRuntimeSummary {
   nodeEnv: string;
-  limiterScope: "process";
+  storeMode: "memory" | "redis";
+  limiterScope: "process" | "redis";
+  shared: boolean;
+  redisReachable: boolean | null;
   rateWindowMs: number;
   rateWindowCleanupIntervalMs: number;
   activeConcurrencyRentals: number;
@@ -155,7 +158,7 @@ export function inspectOpenAiProxyContract(endpoint: string) {
 export function inspectOpenAiProxyRuntime(summary: OpenAiProxyRuntimeSummary) {
   const issues: OpenAiProxyRuntimeIssue[] = [];
 
-  if (summary.nodeEnv === "production" && summary.limiterScope === "process") {
+  if (summary.nodeEnv === "production" && summary.storeMode === "memory") {
     issues.push({
       id: "openai-proxy-process-local-limiter",
       type: "process_local_limiter",

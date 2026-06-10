@@ -8,11 +8,13 @@
 
 ## 已实现范围
 
-- `/v1/*` 反代入口新增进程内并发租约。
+- `/v1/*` 反代入口新增租赁级并发租约。
+- 新增 `OPENAI_PROXY_LIMITER_STORE` 后，生产环境默认使用 Redis 共享并发租约，非生产环境默认使用进程内存。
 - 并发上限来自 `RentalLimit.maxConcurrency`，缺省按 `1` 处理。
 - 每个通过校验的请求会占用一个租赁级并发租约。
 - 响应完成或客户端连接关闭时自动释放租约。
-- `GET /api/admin/system-health` 的 `openAiProxyRuntime` 检查会暴露当前进程活跃并发租赁数和并发租约数。
+- Redis 并发租约带 TTL 与周期续租，API 进程异常退出后会自动收敛。
+- `GET /api/admin/system-health` 的 `openAiProxyRuntime` 检查会暴露当前 limiter store、共享状态、活跃并发租赁数和并发租约数。
 - 超过并发上限时返回 OpenAI 风格错误：
 
 ```json
@@ -29,7 +31,7 @@
 
 ## 边界
 
-当前闸门是单 API 进程内的实时保护，适合当前单实例部署。若后续 API 多实例横向扩容，需要把并发计数迁移到 Redis、Sub2API 网关或其他共享限流器中，避免不同实例各自计数。
+生产环境默认 Redis 共享并发计数，适合 API 多实例部署。显式配置 `OPENAI_PROXY_LIMITER_STORE=memory` 时，闸门仍是单 API 进程内实时保护，只适合本地开发、测试或明确的单实例部署。
 
 ## 验收记录
 
