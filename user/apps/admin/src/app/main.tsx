@@ -182,6 +182,7 @@ interface SystemHealthIssueRow {
   productLookup?: string;
   settlementLookup?: string;
   withdrawalLookup?: string;
+  sub2Status?: boolean;
 }
 
 interface SystemHealthSampleRow {
@@ -1703,6 +1704,11 @@ function App() {
     await openFilteredListCandidate("proxyRequests", lookup, "已打开巡检关联反代请求");
   }
 
+  async function openSub2StatusCandidate() {
+    await refresh("sub2");
+    setMessage("Opened Sub2/OpenAI proxy status for the selected health issue");
+  }
+
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
     if (["paused", "abnormal", "disabled"].includes(status) && !confirmAdminAction("确认调整共享资源状态？", `资源 ID：${resourceId}\n目标状态：${status}`)) return;
     await api(`/api/admin/resources/${resourceId}/status`, {
@@ -2011,6 +2017,7 @@ function App() {
             onOpenProduct={openProductCandidate}
             onOpenSettlement={openSettlementCandidate}
             onOpenWithdrawal={openWithdrawalCandidate}
+            onOpenSub2Status={openSub2StatusCandidate}
           />
         )}
         {view === "systemHealthHistory" && (
@@ -2362,7 +2369,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2379,6 +2386,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenProduct: (lookup: string) => void;
   onOpenSettlement: (lookup: string) => void;
   onOpenWithdrawal: (lookup: string) => void;
+  onOpenSub2Status: () => void;
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
@@ -2446,6 +2454,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td>
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
+                {issue.sub2Status && <button className="secondary mini" onClick={onOpenSub2Status}>打开反代状态</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -4564,7 +4573,8 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       usageLookup: textValue(record.usageId),
       productLookup: textValue(record.productId) ?? textValue(record.priceId),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
-      withdrawalLookup: textValue(record.withdrawalId)
+      withdrawalLookup: textValue(record.withdrawalId),
+      sub2Status: check.id === "sub2" || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId))
     };
   });
 }
@@ -4586,7 +4596,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4613,6 +4623,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
     || issue.productLookup
     || issue.settlementLookup
     || issue.withdrawalLookup
+    || issue.sub2Status
   );
 }
 

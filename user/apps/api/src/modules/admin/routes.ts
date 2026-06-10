@@ -133,6 +133,22 @@ interface Sub2BindingIssue {
   message: string;
 }
 
+interface Sub2UpstreamIssue {
+  id: string;
+  type: string;
+  severity: "error";
+  sub2BlockingReason: string;
+  sub2GroupId?: number | null;
+  sub2GroupName?: string | null;
+  sub2GroupStatus?: string | null;
+  sub2AccountCount: number;
+  openAiAccountCount: number;
+  activeOpenAiAccountCount: number;
+  gatewayReachable: boolean;
+  error?: string | null;
+  message: string;
+}
+
 interface ApiKeyReadinessIssue {
   id: string;
   type: string;
@@ -3368,9 +3384,15 @@ async function buildSystemHealthReport() {
         gatewayReachable: sub2Status.gatewayReachable,
         ready: sub2Status.ready,
         defaultGroupId: sub2Status.defaultGroupId ?? null,
-        accounts: sub2Status.accountCount
+        accounts: sub2Status.accountCount,
+        openAiAccounts: sub2Status.openAiAccountCount,
+        activeOpenAiAccounts: sub2Status.activeOpenAiAccountCount
       },
-      sub2Status.error ? { error: sub2Status.error } : { blockingReasons: sub2Status.blockingReasons }
+      {
+        blockingReasons: sub2Status.blockingReasons,
+        error: sub2Status.error,
+        issues: sub2Status.issues
+      }
     ),
     systemHealthCheck(
       "openAiProxyContract",
@@ -4959,24 +4981,94 @@ async function deactivateInvalidProxyApiKeys(input: { limit: number }) {
 async function fetchSub2HealthStatus() {
   try {
     const status = await sub2Client.fetchGatewayStatus();
-    return {
+    const openAiAccounts = status.accounts.filter(
+      (account) => account.platform === "openai" && (!status.defaultGroupId || account.groupIds.includes(status.defaultGroupId))
+    );
+    const activeOpenAiAccounts = openAiAccounts.filter((account) => account.status === "active");
+    const base = {
       gatewayReachable: status.gatewayReachable,
       ready: status.ready,
       blockingReasons: status.blockingReasons,
       defaultGroupId: status.defaultGroupId ?? null,
+      openAiGroupName: status.openAiGroup?.name ?? null,
+      openAiGroupStatus: status.openAiGroup?.status ?? null,
       accountCount: status.accounts.length,
+      openAiAccountCount: openAiAccounts.length,
+      activeOpenAiAccountCount: activeOpenAiAccounts.length,
       error: null as string | null
     };
-  } catch (error) {
     return {
+      ...base,
+      issues: buildSub2UpstreamIssues(base)
+    };
+  } catch (error) {
+    const base = {
       gatewayReachable: false,
       ready: false,
       blockingReasons: ["sub2_status_query_failed"],
       defaultGroupId: null,
+      openAiGroupName: null,
+      openAiGroupStatus: null,
       accountCount: 0,
+      openAiAccountCount: 0,
+      activeOpenAiAccountCount: 0,
       error: redactSensitiveText(error instanceof Error ? error.message : String(error))
     };
+    return {
+      ...base,
+      issues: buildSub2UpstreamIssues(base)
+    };
   }
+}
+
+function buildSub2UpstreamIssues(input: {
+  gatewayReachable: boolean;
+  blockingReasons: string[];
+  defaultGroupId: number | null;
+  openAiGroupName?: string | null;
+  openAiGroupStatus?: string | null;
+  accountCount: number;
+  openAiAccountCount: number;
+  activeOpenAiAccountCount: number;
+  error?: string | null;
+}): Sub2UpstreamIssue[] {
+  return input.blockingReasons.map((reason) => ({
+    id: `sub2_upstream:${reason}`,
+    type: reason,
+    severity: "error",
+    sub2BlockingReason: reason,
+    sub2GroupId: input.defaultGroupId,
+    sub2GroupName: input.openAiGroupName ?? null,
+    sub2GroupStatus: input.openAiGroupStatus ?? null,
+    sub2AccountCount: input.accountCount,
+    openAiAccountCount: input.openAiAccountCount,
+    activeOpenAiAccountCount: input.activeOpenAiAccountCount,
+    gatewayReachable: input.gatewayReachable,
+    error: input.error ?? null,
+    message: sub2UpstreamIssueMessage(reason, input)
+  }));
+}
+
+function sub2UpstreamIssueMessage(
+  reason: string,
+  input: {
+    defaultGroupId: number | null;
+    openAiGroupName?: string | null;
+    openAiGroupStatus?: string | null;
+    accountCount: number;
+    openAiAccountCount: number;
+    activeOpenAiAccountCount: number;
+    error?: string | null;
+  }
+) {
+  const group = input.defaultGroupId ? `${input.openAiGroupName ?? "OpenAI group"} #${input.defaultGroupId}` : "default OpenAI group";
+  if (reason === "sub2api_health_unreachable") return "Sub2API gateway health endpoint is unreachable.";
+  if (reason === "openai_group_missing") return "Sub2API has no default OpenAI group for Codex proxy scheduling.";
+  if (reason === "openai_group_inactive") return `${group} is not active; current status is ${input.openAiGroupStatus ?? "unknown"}.`;
+  if (reason === "openai_group_has_no_accounts") return `${group} has no OpenAI accounts; ${input.accountCount} total Sub2 accounts were returned.`;
+  if (reason === "openai_group_has_no_active_accounts") return `${group} has ${input.openAiAccountCount} OpenAI account(s), but ${input.activeOpenAiAccountCount} active account(s).`;
+  if (reason === "sub2_status_query_failed") return `Sub2API status query failed: ${input.error ?? "unknown error"}.`;
+  return `Sub2/OpenAI upstream is blocked by ${reason}.`;
 }
 
 function billingSyncHealthCheck(
