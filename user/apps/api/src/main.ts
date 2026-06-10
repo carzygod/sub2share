@@ -7,6 +7,7 @@ import { sendError } from "./common/errors.js";
 import { ok } from "./common/response.js";
 import { prisma } from "./common/prisma.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
+import { closeOAuthStateStore } from "./modules/auth/oauth-state-store.js";
 import { registerWalletRoutes } from "./modules/wallet/routes.js";
 import { registerProductRoutes } from "./modules/products/routes.js";
 import { registerOrderRoutes } from "./modules/orders/routes.js";
@@ -123,6 +124,7 @@ if (process.env.NODE_ENV !== "test") {
   const stopSub2UsageSyncScheduler = startSub2UsageSyncScheduler(app.log);
   app.addHook("onClose", async () => {
     stopSub2UsageSyncScheduler();
+    await closeOAuthStateStore();
   });
   await app.listen({ host: "0.0.0.0", port: env.API_PORT });
 }

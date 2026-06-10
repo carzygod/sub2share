@@ -7,14 +7,7 @@ import { requireAuth } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
-
-type OAuthProvider = "google" | "x";
-
-interface OAuthState {
-  provider: OAuthProvider;
-  codeVerifier: string;
-  expiresAt: number;
-}
+import { consumeOAuthState, createOAuthState, type OAuthProvider, type OAuthState } from "./oauth-state-store.js";
 
 interface OAuthProfile {
   provider: OAuthProvider;
@@ -48,9 +41,6 @@ const oauthCallbackQuerySchema = z.object({
   state: z.string().min(1).optional(),
   error: z.string().optional()
 });
-
-const oauthStates = new Map<string, OAuthState>();
-const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 export async function registerAuthRoutes(app: FastifyInstance) {
   app.get("/api/auth/capabilities", async (_request, reply) => {
@@ -141,8 +131,8 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
   app.get("/api/auth/oauth/:provider/start", async (request, reply) => {
     const { provider } = oauthStartParamsSchema.parse(request.params);
-    const state = createState(provider);
-    const authorizationUrl = buildAuthorizationUrl(provider, state);
+    const { state, codeVerifier } = await createState(provider);
+    const authorizationUrl = buildAuthorizationUrl(provider, state, codeVerifier);
     return reply.redirect(authorizationUrl);
   });
 
@@ -169,7 +159,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
     let state: OAuthState;
     try {
-      state = consumeState(provider, query.state);
+      state = await consumeOAuthState(provider, query.state);
     } catch (error) {
       await writeAuthAuditLog(request, undefined, "auth.oauth.failure", undefined, {
         provider,
@@ -231,38 +221,15 @@ export async function registerAuthRoutes(app: FastifyInstance) {
   });
 }
 
-function createState(provider: OAuthProvider) {
-  pruneExpiredStates();
+async function createState(provider: OAuthProvider) {
   const state = randomToken(32);
-  oauthStates.set(state, {
-    provider,
-    codeVerifier: randomToken(48),
-    expiresAt: Date.now() + OAUTH_STATE_TTL_MS
-  });
-  return state;
+  const codeVerifier = randomToken(48);
+  await createOAuthState(provider, state, codeVerifier);
+  return { state, codeVerifier };
 }
 
-function consumeState(provider: OAuthProvider, state: string) {
-  pruneExpiredStates();
-  const value = oauthStates.get(state);
-  oauthStates.delete(state);
-  if (!value || value.provider !== provider || value.expiresAt < Date.now()) {
-    throw new AppError("invalid_oauth_state", "OAuth state is invalid or expired", 401);
-  }
-  return value;
-}
-
-function pruneExpiredStates() {
-  const now = Date.now();
-  for (const [state, value] of oauthStates.entries()) {
-    if (value.expiresAt < now) oauthStates.delete(state);
-  }
-}
-
-function buildAuthorizationUrl(provider: OAuthProvider, state: string) {
-  const oauthState = oauthStates.get(state);
-  if (!oauthState) throw new AppError("invalid_oauth_state", "OAuth state could not be created", 500);
-  const challenge = createCodeChallenge(oauthState.codeVerifier);
+function buildAuthorizationUrl(provider: OAuthProvider, state: string, codeVerifier: string) {
+  const challenge = createCodeChallenge(codeVerifier);
 
   if (provider === "google") {
     ensureGoogleConfigured();

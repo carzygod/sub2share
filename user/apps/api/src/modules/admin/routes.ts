@@ -14,6 +14,7 @@ import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { inspectOpenAiProxyContract, normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
+import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 
@@ -2667,7 +2668,8 @@ async function buildSystemHealthReport() {
     sub2Bindings,
     apiKeyReadiness,
     productCatalog,
-    salesDelivery
+    salesDelivery,
+    oauthStateStore
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -2698,7 +2700,8 @@ async function buildSystemHealthReport() {
     findSub2BindingIssues(),
     inspectOpenAiProxyApiKeys(checkedAt),
     inspectProductCatalogReadiness(),
-    inspectSalesDeliveryReadiness()
+    inspectSalesDeliveryReadiness(),
+    inspectOAuthStateStoreReadiness()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
@@ -2775,6 +2778,16 @@ async function buildSystemHealthReport() {
       negativeWallets > 0 ? "error" : "ok",
       negativeWallets > 0 ? `${negativeWallets} 个钱包出现负余额` : "余额账户未发现负数",
       { negativeWallets }
+    ),
+    systemHealthCheck(
+      "oauthStateStore",
+      "OAuth State",
+      oauthStateStore.ok ? "ok" : oauthStateStore.issues.some((issue) => issue.severity === "error") ? "error" : "warning",
+      oauthStateStore.summary.mode === "redis"
+        ? oauthStateStore.ok ? "OAuth state Redis store is ready" : "OAuth state Redis store is unavailable"
+        : "OAuth state is using process memory",
+      oauthStateStore.summary,
+      oauthStateStore.issues.length > 0 ? { issues: oauthStateStore.issues } : undefined
     ),
     paymentProviderHealthCheck(),
     systemHealthCheck(
