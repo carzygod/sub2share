@@ -167,6 +167,15 @@ interface PendingUsageBillingIssue {
   message: string;
 }
 
+interface ResourceCredentialReadinessIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  resourceId?: string;
+  refId?: string;
+  message: string;
+}
+
 const orderDetailInclude = {
   user: { include: { roles: true, wallet: true } },
   items: { include: { product: true } },
@@ -2866,6 +2875,7 @@ async function buildSystemHealthReport() {
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
   const openAiProxyRuntime = await inspectOpenAiProxyRuntimeState(checkedAt.getTime());
+  const resourceCredentialReadiness = await inspectResourceCredentialReadiness(sub2Status);
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
@@ -2961,7 +2971,7 @@ async function buildSystemHealthReport() {
         : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常",
       { ...resourcesByStatus, onlineCodexResources }
     ),
-    resourceCredentialConfigHealthCheck(),
+    resourceCredentialReadiness,
     systemHealthCheck(
       "sub2",
       "Sub2/OpenAI 上游",
@@ -4505,28 +4515,149 @@ function authTokenConfigHealthCheck() {
   );
 }
 
-function resourceCredentialConfigHealthCheck() {
+async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType<typeof fetchSub2HealthStatus>>) {
   const configured = Boolean(env.API_KEY_ENCRYPTION_SECRET);
-  const issues = configured ? [] : [
-    {
+  const openAiRefreshTokenWhere: Prisma.SupplierResourceCredentialWhereInput = {
+    credentialType: "openai_refresh_token",
+    supplierResource: { resourceType: "codex" }
+  };
+  const activeOpenAiRefreshTokenWhere: Prisma.SupplierResourceCredentialWhereInput = {
+    ...openAiRefreshTokenWhere,
+    status: "active"
+  };
+  const activeApplicableWhere: Prisma.SupplierResourceCredentialWhereInput = {
+    ...activeOpenAiRefreshTokenWhere,
+    supplierResource: {
+      resourceType: "codex",
+      sub2AccountId: { not: null }
+    }
+  };
+  const upstreamNoActiveAccounts = sub2Status.blockingReasons.includes("openai_group_has_no_active_accounts");
+  const [
+    totalCredentials,
+    activeOpenAiRefreshTokens,
+    activeApplicableCredentials,
+    activeMissingSub2Account,
+    inactiveOpenAiRefreshTokens,
+    samples
+  ] = await Promise.all([
+    prisma.supplierResourceCredential.count({
+      where: { supplierResource: { resourceType: "codex" } }
+    }),
+    prisma.supplierResourceCredential.count({ where: activeOpenAiRefreshTokenWhere }),
+    prisma.supplierResourceCredential.count({ where: activeApplicableWhere }),
+    prisma.supplierResourceCredential.count({
+      where: {
+        ...activeOpenAiRefreshTokenWhere,
+        supplierResource: {
+          resourceType: "codex",
+          sub2AccountId: null
+        }
+      }
+    }),
+    prisma.supplierResourceCredential.count({
+      where: {
+        ...openAiRefreshTokenWhere,
+        status: { not: "active" }
+      }
+    }),
+    prisma.supplierResourceCredential.findMany({
+      where: activeApplicableWhere,
+      select: {
+        ...resourceCredentialSummarySelect,
+        supplierResource: {
+          select: {
+            id: true,
+            status: true,
+            sub2AccountId: true,
+            supplier: {
+              select: {
+                user: { select: { email: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { lastRotatedAt: "desc" },
+      take: 10
+    })
+  ]);
+
+  const issues: ResourceCredentialReadinessIssue[] = [];
+  if (!configured) {
+    issues.push({
       id: "resource-credential-encryption-secret-missing",
       type: "api_key_encryption_secret_missing",
-      severity: env.NODE_ENV === "production" ? "error" as const : "warning" as const,
+      severity: env.NODE_ENV === "production" ? "error" : "warning",
       refId: "API_KEY_ENCRYPTION_SECRET",
-      message: "API_KEY_ENCRYPTION_SECRET must be configured before storing supplier resource credentials"
-    }
-  ];
+      message: "API_KEY_ENCRYPTION_SECRET must be configured before storing or applying supplier resource credentials"
+    });
+  }
+  if (activeMissingSub2Account > 0) {
+    issues.push({
+      id: "openai-refresh-token-sub2-account-missing",
+      type: "openai_refresh_token_sub2_account_missing",
+      severity: upstreamNoActiveAccounts ? "error" : "warning",
+      message: `${activeMissingSub2Account} active OpenAI refresh token credential(s) are missing a Sub2 account id`
+    });
+  }
+  if (upstreamNoActiveAccounts && activeApplicableCredentials === 0) {
+    issues.push({
+      id: "openai-refresh-token-candidate-missing",
+      type: "openai_refresh_token_candidate_missing",
+      severity: "error",
+      message: "Sub2 reports no active OpenAI upstream accounts and no active resource credential can be applied"
+    });
+  } else if (upstreamNoActiveAccounts && activeApplicableCredentials > 0) {
+    issues.push({
+      id: "openai-refresh-token-apply-needed",
+      type: "openai_refresh_token_apply_needed",
+      severity: "warning",
+      message: `${activeApplicableCredentials} active OpenAI refresh token credential candidate(s) can be applied to Sub2`
+    });
+  }
+
+  const status = issues.some((issue) => issue.severity === "error")
+    ? "error"
+    : issues.length > 0 ? "warning" : "ok";
+  const summary = !configured
+    ? "共享资源凭据加密密钥未配置"
+    : upstreamNoActiveAccounts
+      ? activeApplicableCredentials > 0
+        ? `Sub2 上游无 active 账号，可尝试应用 ${activeApplicableCredentials} 个资源凭据`
+        : "Sub2 上游无 active 账号，且没有可应用的资源凭据"
+      : activeApplicableCredentials > 0
+        ? `资源凭据配置正常，${activeApplicableCredentials} 个可应用候选`
+        : "资源凭据配置正常，暂无可应用 OpenAI refresh token";
 
   return systemHealthCheck(
     "resourceCredentials",
     "资源凭据",
-    issues.some((issue) => issue.severity === "error") ? "error" : issues.length > 0 ? "warning" : "ok",
-    configured ? "共享资源凭据加密配置正常" : "共享资源凭据加密密钥未配置",
+    status,
+    summary,
     {
       encryptionSecretConfigured: configured,
-      encryptionVersion: "aes-256-gcm:v1"
+      encryptionVersion: "aes-256-gcm:v1",
+      totalCredentials,
+      activeOpenAiRefreshTokens,
+      activeApplicableCredentials,
+      activeMissingSub2Account,
+      inactiveOpenAiRefreshTokens
     },
-    issues.length > 0 ? { issues } : undefined
+    {
+      issues,
+      samples: samples.map((credential) => ({
+        id: credential.id,
+        credentialType: credential.credentialType,
+        keyFingerprint: credential.keyFingerprint,
+        status: credential.status,
+        lastRotatedAt: credential.lastRotatedAt.toISOString(),
+        resourceId: credential.supplierResource.id,
+        resourceStatus: credential.supplierResource.status,
+        sub2AccountId: credential.supplierResource.sub2AccountId,
+        supplierEmail: credential.supplierResource.supplier.user.email
+      }))
+    }
   );
 }
 

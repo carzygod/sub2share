@@ -28,6 +28,7 @@
 - 审计动作：`admin.resource.credential_apply_sub2`。
 - 审计日志不记录 refresh token、密文或 Sub2 OAuth credentials。
 - Admin 共享资源详情页新增“应用到 Sub2”入口，可填写可选 `client_id` 和 `proxy_id`。
+- `GET /api/admin/system-health` 的 `resourceCredentials` 巡检会展示可应用凭据数量、缺少 Sub2 账号绑定的凭据数量和候选样本。
 
 ## 管理员使用路径
 
@@ -36,6 +37,8 @@
 3. 在“接入凭据”区域保存 `openai_refresh_token` 类型凭据。
 4. 点击“应用到 Sub2”。
 5. 切换到“Sub2”页面运行账号测试或端到端自检，确认 `/v1/responses` 是否恢复真实生成。
+
+也可以先打开“可用性巡检”，查看 `资源凭据` 检查项。如果 Sub2 上游无 active 账号但本地存在可应用凭据，巡检会给出 warning；如果没有可应用凭据，则会给出 error，提示必须先登记凭据或绑定 Sub2 账号。
 
 ## 安全边界
 
