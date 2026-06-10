@@ -2824,6 +2824,7 @@ async function buildSystemHealthReport() {
       { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors }
     ),
     billingSyncHealthCheck(billingSync, checkedAt),
+    billingSyncSchedulerHealthCheck(),
     systemHealthCheck(
       "pendingUsageBilling",
       "Pending 用量账务",
@@ -4275,6 +4276,64 @@ function billingSyncHealthCheck(
       lastFinishedAt: state.lastFinishedAt?.toISOString() ?? null,
       runs: sync.runs.length
     }
+  );
+}
+
+function billingSyncSchedulerHealthCheck() {
+  const intervalMs = env.SUB2_USAGE_SYNC_INTERVAL_MS;
+  const enabled = intervalMs > 0;
+  const issues: Array<{ id: string; type: string; severity: "warning" | "error"; message: string }> = [];
+  let status: SystemHealthStatus = "ok";
+  let summary = "Sub2 usage 定时同步已启用";
+
+  if (!enabled) {
+    status = env.NODE_ENV === "production" ? "error" : "warning";
+    summary = env.NODE_ENV === "production"
+      ? "生产环境未启用 Sub2 usage 定时同步"
+      : "Sub2 usage 定时同步当前关闭";
+    issues.push({
+      id: "sub2_usage_scheduler_disabled",
+      type: "sub2_usage_scheduler_disabled",
+      severity: env.NODE_ENV === "production" ? "error" : "warning",
+      message: "SUB2_USAGE_SYNC_INTERVAL_MS=0, usage billing depends on manual admin sync."
+    });
+  } else if (intervalMs > systemHealthBillingSyncStaleMs) {
+    status = "warning";
+    summary = "Sub2 usage 定时同步间隔超过 24 小时";
+    issues.push({
+      id: "sub2_usage_scheduler_interval_too_long",
+      type: "sub2_usage_scheduler_interval_too_long",
+      severity: "warning",
+      message: "SUB2_USAGE_SYNC_INTERVAL_MS is longer than the billing stale threshold."
+    });
+  }
+
+  if (enabled && !env.SUB2_USAGE_SYNC_ON_START && env.NODE_ENV === "production") {
+    if (status === "ok") {
+      status = "warning";
+      summary = "生产环境启动后不会立即同步 Sub2 usage";
+    }
+    issues.push({
+      id: "sub2_usage_scheduler_no_startup_run",
+      type: "sub2_usage_scheduler_no_startup_run",
+      severity: "warning",
+      message: "SUB2_USAGE_SYNC_ON_START=false, usage billing waits until the first interval after service start."
+    });
+  }
+
+  return systemHealthCheck(
+    "billingSyncScheduler",
+    "用量同步调度",
+    status,
+    summary,
+    {
+      enabled,
+      intervalMs,
+      onStart: env.SUB2_USAGE_SYNC_ON_START,
+      nodeEnv: env.NODE_ENV,
+      staleThresholdMs: systemHealthBillingSyncStaleMs
+    },
+    issues.length > 0 ? { issues } : undefined
   );
 }
 

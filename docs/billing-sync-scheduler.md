@@ -39,4 +39,6 @@ user/apps/api/src/jobs/sub2-usage-scheduler.ts
 
 自动同步会持续推进 `BillingSyncState.cursor`，并在 `BillingSyncRun` 中留下每次同步批次。管理员仍可通过后台手动触发同步、查看最近状态和失败原因。
 
+系统可用性巡检已新增 `billingSyncScheduler` 检查项，用于提示自动同步是否禁用、间隔是否过长，以及生产环境是否配置启动后立即同步。详见 `docs/billing-sync-scheduler-health.md`。
+
 该能力补齐了 `BILLING-003`：生产环境不再只能依赖手动同步，usage 入账、余额扣费和售出结算可以在服务内自动推进。
