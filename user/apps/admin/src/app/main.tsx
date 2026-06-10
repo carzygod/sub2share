@@ -426,6 +426,16 @@ interface OrderDetailRow extends OrderRow {
   deliverySummary?: DeliverySummary;
 }
 
+interface OrderRetryProvisionResult {
+  order: OrderDetailRow;
+  rental: RentalRow;
+  apiKey: string;
+  apiKeyAvailable: boolean;
+  sub2KeyId: string;
+  walletDebited: boolean;
+  debitTransactionId?: string | null;
+}
+
 interface OrderStatusHistoryRow {
   id: string;
   orderId: string;
@@ -1662,6 +1672,19 @@ function App() {
     if (selectedOrder?.id === orderId) await openOrderDetail(orderId);
   }
 
+  async function retryProvisionOrder(orderId: string) {
+    const note = promptAdminNote("Retry failed order provisioning?", "admin retry provisioning");
+    if (note === null) return;
+    const result = await api<OrderRetryProvisionResult>(`/api/admin/orders/${orderId}/retry-provision`, {
+      method: "POST",
+      body: JSON.stringify({ note })
+    });
+    setMessage(`Order provisioned. API key: ${result.apiKey}${result.walletDebited ? " (wallet debited)" : ""}`);
+    await refresh(view === "sales" ? "sales" : "orders");
+    if (selectedOrder?.id === orderId) await openOrderDetail(orderId);
+    if (selectedRental?.id === result.rental.id) await openRentalDetail(result.rental.id);
+  }
+
   async function openResourceDetail(resourceId: string) {
     try {
       setSelectedResource(await api<ResourceDetailRow>(`/api/admin/resources/${resourceId}`));
@@ -2064,6 +2087,7 @@ function App() {
             onDetail={openOrderDetail}
             onCancel={cancelOrder}
             onRefund={refundOrder}
+            onRetryProvision={retryProvisionOrder}
             onCloseDetail={() => setSelectedOrder(null)}
             onDraft={(patch) => updateListDraft("sales", patch)}
             onFilter={(event) => submitListFilters("sales", event)}
@@ -2114,6 +2138,7 @@ function App() {
             onDetail={openOrderDetail}
             onCancel={cancelOrder}
             onRefund={refundOrder}
+            onRetryProvision={retryProvisionOrder}
             onCloseDetail={() => setSelectedOrder(null)}
             onDraft={(patch) => updateListDraft("orders", patch)}
             onFilter={(event) => submitListFilters("orders", event)}
@@ -2942,12 +2967,13 @@ function ReconciliationView({ reconciliation, onRefresh }: {
   );
 }
 
-function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
   onCancel: (orderId: string) => void;
   onRefund: (orderId: string) => void;
+  onRetryProvision: (orderId: string) => void;
   onCloseDetail: () => void;
 } & ManagedListProps) {
   const orders = sales?.orders ?? [];
@@ -3045,6 +3071,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         onDetail={onDetail}
         onCancel={onCancel}
         onRefund={onRefund}
+        onRetryProvision={onRetryProvision}
         onCloseDetail={onCloseDetail}
       />
     </section>
@@ -3271,13 +3298,14 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
   );
 }
 
-function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   orders: OrderRow[];
   title?: string;
   selectedOrder?: OrderDetailRow | null;
   onDetail?: (orderId: string) => void;
   onCancel?: (orderId: string) => void;
   onRefund?: (orderId: string) => void;
+  onRetryProvision?: (orderId: string) => void;
   onCloseDetail?: () => void;
 } & Partial<ManagedListProps>) {
   return (
@@ -3306,6 +3334,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
             <td>
               <div className="row-actions">
                 {onDetail && <button className="secondary mini" onClick={() => onDetail(order.id)}>详情</button>}
+                {onRetryProvision && order.status === "failed" && <button className="secondary mini" onClick={() => onRetryProvision(order.id)}>Retry</button>}
                 {onCancel && <button className="secondary mini" onClick={() => onCancel(order.id)}>取消</button>}
                 {onRefund && <button className="danger mini" onClick={() => onRefund(order.id)}>退款</button>}
               </div>
@@ -3313,12 +3342,12 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
           </tr>
         ))}
       </TablePanel>
-      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onCancel={onCancel} onRefund={onRefund} onClose={onCloseDetail} />}
+      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onCancel={onCancel} onRefund={onRefund} onRetryProvision={onRetryProvision} onClose={onCloseDetail} />}
     </>
   );
 }
 
-function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onClose: () => void }) {
+function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onRetryProvision?: (orderId: string) => void; onClose: () => void }) {
   const walletTransactions = order.walletTransactions ?? [];
   const proxyRequests = order.proxyRequests ?? [];
   const deliverySummary = order.deliverySummary;
@@ -3331,6 +3360,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
         </div>
         <div className="row-actions">
           <StatusPill status={order.status} />
+          {onRetryProvision && order.status === "failed" && <button className="secondary mini" onClick={() => onRetryProvision(order.id)}>Retry</button>}
           {onCancel && <button className="secondary mini" onClick={() => onCancel(order.id)}>取消</button>}
           {onRefund && <button className="danger mini" onClick={() => onRefund(order.id)}>退款</button>}
           <button className="secondary mini" onClick={onClose}>关闭</button>

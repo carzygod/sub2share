@@ -1115,6 +1115,281 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
   });
 
+  app.post("/api/admin/orders/:id/retry-provision", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = orderActionSchema.parse(request.body ?? {});
+    const before = await prisma.order.findUnique({
+      where: { id },
+      include: {
+        user: { include: { wallet: true } },
+        items: { include: { product: true } },
+        rentals: { include: { product: true, limits: true, apiKeys: true } }
+      }
+    });
+    if (!before) throw new AppError("order_not_found", "Order not found", 404);
+    if (before.status !== "failed") {
+      throw new AppError("order_retry_requires_failed", `Order cannot be retried from ${before.status}`, 400);
+    }
+    if (before.rentals.length !== 1) {
+      throw new AppError("order_retry_requires_single_rental", "Order retry requires exactly one rental", 400);
+    }
+
+    const rental = before.rentals[0];
+    const item = before.items[0];
+    if (!item?.product) {
+      throw new AppError("order_retry_missing_product", "Order retry requires an order item with a product", 400);
+    }
+    if (!rental.limits) {
+      throw new AppError("order_retry_missing_limits", "Order retry requires rental limits", 400);
+    }
+    if (rental.sub2KeyId || rental.sub2UserId || rental.sub2KeyHash || rental.endpointUrl) {
+      throw new AppError("order_retry_has_sub2_key", "Order already has Sub2 delivery fields and must be reconciled manually", 409);
+    }
+    const activeApiKeys = rental.apiKeys.filter((apiKey) => apiKey.status === "active");
+    if (activeApiKeys.length > 0) {
+      throw new AppError("order_retry_has_active_api_key", "Order already has an active API key and must be reconciled manually", 409);
+    }
+
+    const existingRefund = before.paidAmount.gt(0)
+      ? await prisma.walletTransaction.findFirst({
+        where: { type: "refund", refType: "order", refId: id },
+        select: { id: true, amount: true }
+      })
+      : null;
+    if (before.paidAmount.gt(0) && !existingRefund) {
+      throw new AppError("order_retry_refund_missing", "Paid failed orders must have the original failed provisioning refund before retry", 409);
+    }
+
+    let walletDebited = false;
+    let debitTransactionId: string | null = null;
+    await prisma.$transaction(async (tx) => {
+      const claim = await tx.order.updateMany({
+        where: { id, status: "failed" },
+        data: { status: "provisioning" }
+      });
+      if (claim.count !== 1) {
+        throw new AppError("order_retry_in_progress", "Order retry is already in progress", 409);
+      }
+      await recordOrderStatusHistory(tx, {
+        orderId: id,
+        fromStatus: before.status,
+        toStatus: "provisioning",
+        actorUserId: actor.id,
+        reason: "admin.order.retry_provision.start",
+        meta: {
+          note: input.note,
+          previousRefundId: existingRefund?.id ?? null,
+          previousRefundAmount: existingRefund ? String(existingRefund.amount) : null
+        }
+      });
+      await tx.rental.update({
+        where: { id: rental.id },
+        data: { status: "active" }
+      });
+
+      if (before.paidAmount.gt(0)) {
+        const debit = await tx.walletAccount.updateMany({
+          where: {
+            userId: before.userId,
+            availableBalance: { gte: before.paidAmount }
+          },
+          data: {
+            availableBalance: { decrement: before.paidAmount },
+            totalSpent: { increment: before.paidAmount }
+          }
+        });
+        if (debit.count !== 1) {
+          throw new AppError("insufficient_balance", "Insufficient wallet balance for order retry", 402);
+        }
+        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: before.userId } });
+        const transaction = await tx.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "consume",
+            amount: before.paidAmount,
+            balanceAfter: wallet.availableBalance,
+            currency: before.currency,
+            refType: "order",
+            refId: id,
+            note: input.note ?? "admin retry provisioning"
+          }
+        });
+        walletDebited = true;
+        debitTransactionId = transaction.id;
+      } else {
+        await tx.walletAccount.upsert({
+          where: { userId: before.userId },
+          update: {},
+          create: { userId: before.userId, currency: before.currency }
+        });
+      }
+    });
+
+    let sub2Key: Sub2KeyResult | undefined;
+    try {
+      sub2Key = await sub2Client.createKey({
+        buyerId: before.userId,
+        rentalId: rental.id,
+        name: `${item.product.name} - ${before.user.email}`,
+        resourceType: rental.resourceType,
+        maxConcurrency: rental.limits.maxConcurrency,
+        requestLimit: rental.limits.requestLimit,
+        spendLimit: rental.limits.spendLimit === null ? null : String(rental.limits.spendLimit)
+      });
+      const createdSub2Key = sub2Key;
+
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.order.update({ where: { id }, data: { status: "active" } });
+        await recordOrderStatusHistory(tx, {
+          orderId: id,
+          fromStatus: "provisioning",
+          toStatus: "active",
+          actorUserId: actor.id,
+          reason: "admin.order.retry_provision.complete",
+          meta: {
+            note: input.note,
+            sub2UserId: createdSub2Key.sub2UserId,
+            sub2KeyId: createdSub2Key.sub2KeyId,
+            walletDebited,
+            debitTransactionId
+          }
+        });
+        const updatedRental = await tx.rental.update({
+          where: { id: rental.id },
+          data: {
+            status: "active",
+            sub2UserId: createdSub2Key.sub2UserId,
+            sub2KeyId: createdSub2Key.sub2KeyId,
+            endpointUrl: createdSub2Key.endpointUrl,
+            sub2KeyHash: hashSecret(createdSub2Key.apiKey)
+          }
+        });
+        const apiKey = await tx.apiKey.create({
+          data: {
+            userId: before.userId,
+            rentalId: rental.id,
+            name: item.product.name,
+            keyPrefix: createdSub2Key.apiKey.slice(0, 12),
+            keyHash: hashSecret(createdSub2Key.apiKey)
+          }
+        });
+        await tx.sub2Binding.createMany({
+          data: [
+            { objectType: "rental", objectId: rental.id, sub2Type: "user", sub2Id: createdSub2Key.sub2UserId },
+            { objectType: "rental", objectId: rental.id, sub2Type: "api_key", sub2Id: createdSub2Key.sub2KeyId }
+          ],
+          skipDuplicates: true
+        });
+        return {
+          order: await tx.order.findUniqueOrThrow({ where: { id }, include: orderDetailInclude }),
+          rental: updatedRental,
+          apiKeyId: apiKey.id,
+          keyPrefix: apiKey.keyPrefix
+        };
+      });
+
+      await writeAuditLog(request, actor.id, "admin.order.retry_provision", "order", id, {
+        status: before.status,
+        paidAmount: String(before.paidAmount),
+        rental: {
+          id: rental.id,
+          status: rental.status,
+          sub2KeyId: rental.sub2KeyId,
+          activeApiKeys: activeApiKeys.length
+        },
+        previousRefundId: existingRefund?.id ?? null
+      }, {
+        status: result.order.status,
+        rentalId: result.rental.id,
+        sub2UserId: createdSub2Key.sub2UserId,
+        sub2KeyId: createdSub2Key.sub2KeyId,
+        apiKeyId: result.apiKeyId,
+        keyPrefix: result.keyPrefix,
+        walletDebited,
+        debitTransactionId,
+        note: input.note
+      });
+
+      return adminOk(reply, {
+        order: result.order,
+        rental: result.rental,
+        apiKey: createdSub2Key.apiKey,
+        apiKeyAvailable: true,
+        sub2KeyId: createdSub2Key.sub2KeyId,
+        walletDebited,
+        debitTransactionId
+      });
+    } catch (error) {
+      const sub2Cleanup = sub2Key
+        ? await syncSub2KeyForRental(before.userId, sub2Key.sub2KeyId, false)
+        : { action: "none", ok: true };
+      await prisma.$transaction(async (tx) => {
+        await tx.order.update({ where: { id }, data: { status: "failed" } });
+        await recordOrderStatusHistory(tx, {
+          orderId: id,
+          fromStatus: "provisioning",
+          toStatus: "failed",
+          actorUserId: actor.id,
+          reason: "admin.order.retry_provision_failed",
+          meta: {
+            note: input.note,
+            error: redactError(error),
+            sub2KeyId: sub2Key?.sub2KeyId ?? null,
+            sub2Cleanup
+          }
+        });
+        await tx.rental.update({
+          where: { id: rental.id },
+          data: { status: "closed" }
+        });
+
+        if (walletDebited && before.paidAmount.gt(0)) {
+          const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: before.userId } });
+          const nextBalance = wallet.availableBalance.plus(before.paidAmount);
+          const nextSpent = wallet.totalSpent.lessThan(before.paidAmount) ? 0 : wallet.totalSpent.minus(before.paidAmount);
+          await tx.walletAccount.update({
+            where: { id: wallet.id },
+            data: {
+              availableBalance: nextBalance,
+              totalSpent: nextSpent
+            }
+          });
+          await tx.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              type: "refund",
+              amount: before.paidAmount,
+              balanceAfter: nextBalance,
+              currency: before.currency,
+              refType: "order",
+              refId: id,
+              note: input.note ?? "admin retry provisioning failed"
+            }
+          });
+        }
+      });
+      await writeAuditLog(request, actor.id, "admin.order.retry_provision", "order", id, {
+        status: before.status,
+        paidAmount: String(before.paidAmount),
+        rental: {
+          id: rental.id,
+          status: rental.status,
+          sub2KeyId: rental.sub2KeyId,
+          activeApiKeys: activeApiKeys.length
+        }
+      }, {
+        status: "failed",
+        error: redactError(error),
+        walletDebited,
+        sub2KeyId: sub2Key?.sub2KeyId ?? null,
+        sub2Cleanup,
+        note: input.note
+      });
+      throw error;
+    }
+  });
+
   app.get("/api/admin/rentals", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
@@ -5560,6 +5835,11 @@ function redactSensitiveText(value: string) {
     .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/g, "Bearer [REDACTED]")
     .replace(/(zyz_[A-Za-z0-9]{8})[A-Za-z0-9]+/g, "$1[REDACTED]")
     .replace(/(sk-[A-Za-z0-9_-]{8})[A-Za-z0-9_-]+/g, "$1[REDACTED]");
+}
+
+function redactError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return redactSensitiveText(message).slice(0, 500);
 }
 
 function resourceConfigAuditPayload(resource: {
