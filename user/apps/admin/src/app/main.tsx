@@ -594,6 +594,7 @@ interface ProxyRequestLogRow {
   apiKeyPrefix?: string | null;
   method: string;
   path: string;
+  model?: string | null;
   statusCode?: number | null;
   upstreamStatusCode?: number | null;
   errorCode?: string | null;
@@ -3426,7 +3427,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                   <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
                   {log.errorCode && <small>{log.errorCode}</small>}
                 </td>
-                <td><strong>{log.method}</strong><small>{log.path}</small></td>
+                <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
                 <td><strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong><small>{log.apiKeyPrefix ?? log.apiKey?.keyPrefix ?? "-"}</small></td>
                 <td>{log.durationMs}ms</td>
                 <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
@@ -3775,7 +3776,7 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
                   <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
                   {log.errorCode && <small>{log.errorCode}</small>}
                 </td>
-                <td><strong>{log.method}</strong><small>{log.path}</small></td>
+                <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
                 <td><strong>{log.apiKey?.name ?? log.apiKeyPrefix ?? "-"}</strong><small>{log.apiKey?.keyPrefix ?? log.apiKeyPrefix ?? "-"}</small></td>
                 <td>{log.durationMs}ms</td>
                 <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
@@ -3943,7 +3944,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
       <ListControls
         query={query}
         meta={meta}
-        searchPlaceholder="x-proxy-request-id / user / rental / key / path"
+        searchPlaceholder="x-proxy-request-id / user / rental / key / model / path"
         statusOptions={proxyStatusOptions}
         actionPlaceholder="error code contains"
         onDraft={onDraft}
@@ -3964,7 +3965,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
               <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
               <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
             </td>
-            <td><strong>{log.method}</strong><small>{log.path}</small></td>
+            <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
             <td>
               <StatusPill status={proxyStatusTone(log.statusCode)} />
               <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
@@ -4939,7 +4940,7 @@ function exportAuditLogsCsv(rows: AuditLogRow[], scope = "current-page") {
 }
 
 function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-page") {
-  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.requestId,
     log.user?.email,
@@ -4947,6 +4948,7 @@ function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-pag
     log.apiKey?.keyPrefix ?? log.apiKeyPrefix,
     log.method,
     log.path,
+    log.model,
     log.statusCode,
     log.upstreamStatusCode,
     log.errorCode,

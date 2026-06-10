@@ -15,6 +15,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - `requestId`：Fastify 请求 ID，便于和服务日志关联。
 - `userId` / `rentalId` / `apiKeyId` / `apiKeyPrefix`：本地用户、租赁和 Key 追踪信息。
 - `method` / `path`：OpenAI 兼容路径。
+- `model`：客户端请求体顶层 `model` 字段；无效 JSON、缺失字段或非 JSON 请求为空。
 - `statusCode`：最终返回给客户端的状态码。
 - `upstreamStatusCode`：Sub2API 上游状态码，本地拦截时为空。
 - `errorCode`：本地拦截、上游不可用或流式响应异常的错误码。
@@ -29,6 +30,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 不保存响应体。
 - 不保存 API Key 明文。
 - 仅保存本地已经存在的 `keyPrefix`。
+- 仅从请求体中提取顶层 `model` 字符串，不保存 prompt、messages、input 或工具参数。
 
 ## 后端能力
 
@@ -45,6 +47,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 新增管理员接口：`GET /api/admin/proxy-requests`
 - 权限要求：`operator` 或 `admin`
 - 支持分页、状态码过滤、错误码过滤和关键词搜索。
+- 关键词搜索支持模型名。
 - 关键词搜索支持直接粘贴 `x-proxy-request-id: <requestId>` 或 `x-request-id=<requestId>` 形式的响应头。
 
 ## 管理员入口
@@ -58,12 +61,15 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 租赁或商品信息。
 - API Key 名称或前缀。
 - HTTP 方法与路径。
+- 模型名。
 - 客户端状态码与上游状态码。
 - 错误码。
 - 耗时、请求字节数、估算输入 token。
 - IP、User-Agent、创建时间。
 
 页面支持按当前筛选条件导出全部 CSV，便于线上排障时交叉比对服务日志、Sub2API 状态和用户反馈。
+
+CSV 导出包含 `model` 列，便于管理员按模型聚合上游错误、限流和请求体积。
 
 管理员拿到用户反馈的 `x-proxy-request-id` 后，可以直接粘贴完整响应头行到搜索框定位日志。
 

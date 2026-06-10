@@ -356,6 +356,7 @@ model ProxyRequestLog {
   apiKeyPrefix         String?
   method               String
   path                 String
+  model                String?
   statusCode           Int?
   upstreamStatusCode   Int?
   errorCode            String?
@@ -374,6 +375,7 @@ model ProxyRequestLog {
   @@index([userId, createdAt])
   @@index([rentalId, createdAt])
   @@index([apiKeyId, createdAt])
+  @@index([model, createdAt])
   @@index([statusCode, createdAt])
   @@index([errorCode, createdAt])
 }

@@ -12,6 +12,7 @@ import {
   openAiProxyErrorPayload,
   proxyBodyByteLength,
   proxyBodyText,
+  proxyRequestModel,
   upstreamHttpProxyErrorCode
 } from "./helpers.js";
 import { acquireOpenAiProxyConcurrency, consumeOpenAiProxyRateLimit } from "./limiter-store.js";
@@ -41,6 +42,7 @@ interface ProxyRequestLogEntry {
   upstreamStatusCode?: number | null;
   errorCode?: string | null;
   estimatedInputTokens?: number;
+  model?: string | null;
 }
 
 interface ForwardedUpstream {
@@ -310,6 +312,7 @@ async function writeProxyRequestLog(
         apiKeyPrefix: entry.apiKeyPrefix ?? null,
         method: request.method.toUpperCase(),
         path: proxyRequestPath(request).slice(0, 2048),
+        model: entry.model ?? proxyRequestModel(request.body),
         statusCode: entry.statusCode,
         upstreamStatusCode: entry.upstreamStatusCode ?? null,
         errorCode: entry.errorCode ?? null,

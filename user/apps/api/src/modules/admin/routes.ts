@@ -2841,6 +2841,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { apiKeyPrefix: containsText(proxyRequestLookup) },
           { method: containsText(proxyRequestLookup) },
           { path: containsText(proxyRequestLookup) },
+          { model: containsText(proxyRequestLookup) },
           { errorCode: containsText(proxyRequestLookup) },
           { ipAddress: containsText(proxyRequestLookup) },
           { userAgent: containsText(proxyRequestLookup) },

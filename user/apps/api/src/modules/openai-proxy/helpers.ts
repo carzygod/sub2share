@@ -212,6 +212,30 @@ export function proxyBodyByteLength(body: unknown) {
   return Buffer.byteLength(JSON.stringify(body));
 }
 
+export function proxyRequestModel(body: unknown) {
+  const record = proxyBodyRecord(body);
+  const model = record && typeof record.model === "string" ? record.model.trim() : "";
+  return model ? model.slice(0, 160) : null;
+}
+
+function proxyBodyRecord(body: unknown): Record<string, unknown> | null {
+  if (body === undefined || body === null) return null;
+  if (typeof body === "object" && !Buffer.isBuffer(body) && !(body instanceof Uint8Array) && !Array.isArray(body)) {
+    return body as Record<string, unknown>;
+  }
+
+  const text = proxyBodyText(body).trim();
+  if (!text.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function evaluateProxyRateLimitWindow(options: {
   window: ProxyRateLimitWindow;
   now: number;

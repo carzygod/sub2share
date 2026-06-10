@@ -15,6 +15,7 @@ import {
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText,
+  proxyRequestModel,
   pruneProxyRateLimitWindow,
   upstreamHttpProxyErrorCode,
   type ProxyRateLimitWindow
@@ -105,6 +106,15 @@ test("measures proxy body text and bytes for buffers and json objects", () => {
   assert.equal(proxyBodyByteLength(bufferBody), 5);
   assert.equal(proxyBodyText(objectBody), JSON.stringify(objectBody));
   assert.equal(proxyBodyByteLength(objectBody), Buffer.byteLength(JSON.stringify(objectBody)));
+});
+
+test("extracts a top-level proxy model without retaining request bodies", () => {
+  assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "gpt-5.3-codex", input: "ping" }))), "gpt-5.3-codex");
+  assert.equal(proxyRequestModel({ model: " o4-mini ", input: "ping" }), "o4-mini");
+  assert.equal(proxyRequestModel(Buffer.from("{not-json")), null);
+  assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ input: "ping" }))), null);
+  assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "" }))), null);
+  assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "m".repeat(200) }))), "m".repeat(160));
 });
 
 test("attaches a stable proxy request id header for local and upstream responses", () => {
