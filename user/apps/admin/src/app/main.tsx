@@ -173,6 +173,14 @@ interface SystemHealthIssueRow {
   message: string;
 }
 
+interface SystemHealthSampleRow {
+  id: string;
+  checkId: string;
+  checkLabel: string;
+  ref: string;
+  summary: string;
+}
+
 interface DeliverySummary {
   status: "ok" | "warning" | "error";
   summary: {
@@ -2245,6 +2253,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
+  const sampleRows = checks.flatMap(systemHealthSampleRows);
   return (
     <section className="stack">
       <div className="panel glass-panel export-strip">
@@ -2314,6 +2323,17 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
           <tr><td colSpan={5}><small>点击重新巡检开始读取问题样本。</small></td></tr>
         )}
       </TablePanel>
+      {sampleRows.length > 0 && (
+        <TablePanel title="巡检候选样本" count={sampleRows.length} headers={["检查项", "对象", "摘要"]}>
+          {sampleRows.map((sample) => (
+            <tr key={`${sample.checkId}-${sample.id}`}>
+              <td><strong>{sample.checkLabel}</strong><small>{sample.checkId}</small></td>
+              <td><small>{sample.ref}</small></td>
+              <td><small>{sample.summary}</small></td>
+            </tr>
+          ))}
+        </TablePanel>
+      )}
       <TablePanel title="巡检历史" count={snapshots.length} headers={["状态", "来源", "摘要", "操作者", "时间"]}>
         {snapshots.map((snapshot) => (
           <tr key={snapshot.id}>
@@ -4378,12 +4398,35 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
   });
 }
 
+function systemHealthSampleRows(check: SystemHealthCheckRow) {
+  if (!isPlainRecord(check.detail) || !Array.isArray(check.detail.samples)) return [];
+
+  return check.detail.samples.slice(0, 100).map((sample, index): SystemHealthSampleRow => {
+    const record = isPlainRecord(sample) ? sample : {};
+    return {
+      id: textValue(record.id) ?? String(index),
+      checkId: check.id,
+      checkLabel: check.label,
+      ref: systemHealthIssueRef(record),
+      summary: systemHealthSampleSummary(record, sample)
+    };
+  });
+}
+
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["productId", "priceId", "orderId", "rentalId", "apiKeyId", "userId", "bindingId", "refId", "expected", "actual"];
+  const fields = ["resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "userId", "bindingId", "sub2AccountId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
   return parts.join(" / ") || textValue(issue.id) || "-";
+}
+
+function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
+  const fields = ["supplierEmail", "credentialType", "status", "resourceStatus", "keyFingerprint", "lastRotatedAt", "message"];
+  const parts = fields
+    .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
+    .filter(Boolean);
+  return parts.join(" / ") || compactJson(raw);
 }
 
 function healthIssueTone(severity: string) {
