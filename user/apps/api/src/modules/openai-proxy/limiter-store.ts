@@ -66,45 +66,30 @@ export async function inspectOpenAiProxyRuntimeState(now = Date.now()) {
   try {
     return await inspectRedisRuntimeState(now);
   } catch (error) {
-    const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
-    return {
-      ok: false,
-      summary: {
-        nodeEnv: env.NODE_ENV,
-        storeMode: openAiProxyLimiterStoreMode,
-        limiterScope: "redis" as const,
-        shared: true,
-        redisReachable: false,
-        rateWindowMs: RATE_WINDOW_MS,
-        rateWindowCleanupIntervalMs: RATE_WINDOW_CLEANUP_INTERVAL_MS,
-        activeConcurrencyRentals: 0,
-        activeConcurrencyLeases: 0,
-        activeRateWindowRentals: 0,
-        activeRateWindowRequests: 0,
-        activeRateWindowTokenEvents: 0,
-        activeRateWindowEstimatedTokens: 0,
-        lastRateWindowCleanupAt: null
-      },
-      issues: [
-        {
-          id: "openai-proxy-limiter-redis-unreachable",
-          type: "redis_unreachable",
-          severity: "error" as const,
-          refId: "openai-proxy-runtime",
-          message
-        }
-      ]
-    };
+    return redisLimiterUnavailable(error);
   }
 }
 
 export async function inspectOpenAiProxyLimiterReadiness() {
-  const runtime = await inspectOpenAiProxyRuntimeState();
-  return {
-    ok: runtime.ok,
-    summary: runtime.summary,
-    issues: runtime.issues
-  };
+  if (openAiProxyLimiterStoreMode !== "redis") {
+    const runtime = inspectMemoryRuntimeState(Date.now());
+    return {
+      ok: runtime.ok,
+      summary: runtime.summary,
+      issues: runtime.issues
+    };
+  }
+
+  try {
+    await getRedisClient().ping();
+    return {
+      ok: true,
+      summary: redisRuntimeSummary({ redisReachable: true }),
+      issues: []
+    };
+  } catch (error) {
+    return redisLimiterUnavailable(error);
+  }
 }
 
 export async function closeOpenAiProxyLimiterStore() {
@@ -147,11 +132,16 @@ async function acquireRedisConcurrency(rentalId: string, limit: number) {
   const normalizedLimit = Math.max(1, limit);
   const key = redisConcurrencyKey(rentalId);
   const ttlMs = redisConcurrencyLeaseTtlMs();
+  const now = Date.now();
+  const leaseId = randomUUID();
   const result = await redisEvalArray(
     redisAcquireConcurrencyScript,
     1,
     key,
+    String(now),
+    String(now + ttlMs),
     String(normalizedLimit),
+    leaseId,
     String(ttlMs)
   );
   const allowed = numberAt(result, 0) === 1;
@@ -163,7 +153,14 @@ async function acquireRedisConcurrency(rentalId: string, limit: number) {
   let released = false;
   const renewEveryMs = Math.max(1_000, Math.floor(ttlMs / 2));
   const renewTimer = setInterval(() => {
-    void getRedisClient().pexpire(key, ttlMs).catch(() => undefined);
+    void redisEvalArray(
+      redisRenewConcurrencyScript,
+      1,
+      key,
+      leaseId,
+      String(Date.now() + ttlMs),
+      String(ttlMs)
+    ).catch(() => undefined);
   }, renewEveryMs);
   renewTimer.unref?.();
 
@@ -175,7 +172,7 @@ async function acquireRedisConcurrency(rentalId: string, limit: number) {
       if (released) return;
       released = true;
       clearInterval(renewTimer);
-      await redisEvalArray(redisReleaseConcurrencyScript, 1, key);
+      await redisEvalArray(redisReleaseConcurrencyScript, 1, key, leaseId);
     }
   };
 }
@@ -290,14 +287,21 @@ function inspectMemoryRuntimeState(now: number) {
 async function inspectRedisRuntimeState(now: number) {
   const client = getRedisClient();
   const [concurrencyKeys, requestKeys, tokenKeys] = await Promise.all([
-    scanRedisKeys(`${redisKeyPrefix}concurrency:*`),
+    scanRedisKeys(`${redisKeyPrefix}concurrency:v2:*`),
     scanRedisKeys(`${redisKeyPrefix}rate:requests:*`),
     scanRedisKeys(`${redisKeyPrefix}rate:tokens:*`)
   ]);
   let activeConcurrencyLeases = 0;
+  let activeConcurrencyRentals = 0;
   for (const key of concurrencyKeys) {
-    const count = Number(await client.get(key));
-    if (Number.isFinite(count) && count > 0) activeConcurrencyLeases += count;
+    await client.zremrangebyscore(key, "-inf", String(now));
+    const count = await client.zcard(key);
+    if (count > 0) {
+      activeConcurrencyRentals += 1;
+      activeConcurrencyLeases += count;
+    } else {
+      await client.del(key);
+    }
   }
 
   let activeRateWindowRequests = 0;
@@ -324,21 +328,50 @@ async function inspectRedisRuntimeState(now: number) {
   }
 
   return inspectOpenAiProxyRuntime({
-    nodeEnv: env.NODE_ENV,
-    storeMode: openAiProxyLimiterStoreMode,
-    limiterScope: "redis",
-    shared: true,
-    redisReachable: true,
-    rateWindowMs: RATE_WINDOW_MS,
-    rateWindowCleanupIntervalMs: RATE_WINDOW_CLEANUP_INTERVAL_MS,
-    activeConcurrencyRentals: concurrencyKeys.length,
+    ...redisRuntimeSummary({ redisReachable: true }),
+    activeConcurrencyRentals,
     activeConcurrencyLeases,
     activeRateWindowRentals: activeRateWindowRentalIds.size,
     activeRateWindowRequests,
     activeRateWindowTokenEvents,
-    activeRateWindowEstimatedTokens,
-    lastRateWindowCleanupAt: null
+    activeRateWindowEstimatedTokens
   });
+}
+
+function redisLimiterUnavailable(error: unknown) {
+  const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
+  return {
+    ok: false,
+    summary: redisRuntimeSummary({ redisReachable: false }),
+    issues: [
+      {
+        id: "openai-proxy-limiter-redis-unreachable",
+        type: "redis_unreachable",
+        severity: "error" as const,
+        refId: "openai-proxy-runtime",
+        message
+      }
+    ]
+  };
+}
+
+function redisRuntimeSummary(input: { redisReachable: boolean }) {
+  return {
+    nodeEnv: env.NODE_ENV,
+    storeMode: openAiProxyLimiterStoreMode,
+    limiterScope: "redis" as const,
+    shared: true,
+    redisReachable: input.redisReachable,
+    rateWindowMs: RATE_WINDOW_MS,
+    rateWindowCleanupIntervalMs: RATE_WINDOW_CLEANUP_INTERVAL_MS,
+    activeConcurrencyRentals: 0,
+    activeConcurrencyLeases: 0,
+    activeRateWindowRentals: 0,
+    activeRateWindowRequests: 0,
+    activeRateWindowTokenEvents: 0,
+    activeRateWindowEstimatedTokens: 0,
+    lastRateWindowCleanupAt: null
+  };
 }
 
 function rateWindowForRental(rentalId: string) {
@@ -366,7 +399,7 @@ function redisConcurrencyLeaseTtlMs() {
 }
 
 function redisConcurrencyKey(rentalId: string) {
-  return `${redisKeyPrefix}concurrency:${rentalId}`;
+  return `${redisKeyPrefix}concurrency:v2:${rentalId}`;
 }
 
 function redisRateRequestsKey(rentalId: string) {
@@ -438,33 +471,44 @@ function failure(statusCode: number, code: string, message: string) {
 
 const redisAcquireConcurrencyScript = `
 local key = KEYS[1]
-local limit = tonumber(ARGV[1])
-local ttl = tonumber(ARGV[2])
-local current = tonumber(redis.call("GET", key) or "0")
+local now = tonumber(ARGV[1])
+local expiresAt = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local leaseId = ARGV[4]
+local ttl = tonumber(ARGV[5])
+redis.call("ZREMRANGEBYSCORE", key, "-inf", now)
+local current = redis.call("ZCARD", key)
 if current >= limit then
   return {0, current, limit}
 end
-current = redis.call("INCR", key)
+redis.call("ZADD", key, expiresAt, leaseId)
 redis.call("PEXPIRE", key, ttl)
-if current > limit then
-  local after = redis.call("DECR", key)
-  if after <= 0 then
-    redis.call("DEL", key)
-  end
-  return {0, after, limit}
-end
-return {1, current, limit}
+return {1, current + 1, limit}
 `;
 
 const redisReleaseConcurrencyScript = `
 local key = KEYS[1]
-local current = tonumber(redis.call("GET", key) or "0")
-if current <= 1 then
+local leaseId = ARGV[1]
+redis.call("ZREM", key, leaseId)
+local current = redis.call("ZCARD", key)
+if current <= 0 then
   redis.call("DEL", key)
   return {1, 0}
 end
-local after = redis.call("DECR", key)
-return {1, after}
+return {1, current}
+`;
+
+const redisRenewConcurrencyScript = `
+local key = KEYS[1]
+local leaseId = ARGV[1]
+local expiresAt = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+if redis.call("ZSCORE", key, leaseId) then
+  redis.call("ZADD", key, expiresAt, leaseId)
+  redis.call("PEXPIRE", key, ttl)
+  return {1}
+end
+return {0}
 `;
 
 const redisConsumeRateLimitScript = `

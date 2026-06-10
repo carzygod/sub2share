@@ -41,7 +41,7 @@
 - PostgreSQL 数据库：执行 `SELECT 1`。
 - Sub2API 网关：请求 `${SUB2_BASE_URL}/health`，超时时间 5 秒。
 - OAuth state store：检查当前 `OAUTH_STATE_STORE` 模式；Redis 模式会执行 Redis `PING`。
-- OpenAI proxy limiter：检查当前 `OPENAI_PROXY_LIMITER_STORE` 模式；Redis 模式会读取共享限流状态，Redis 不可达时返回异常。
+- OpenAI proxy limiter：检查当前 `OPENAI_PROXY_LIMITER_STORE` 模式；Redis 模式执行轻量 `PING`，Redis 不可达时返回异常。
 
 状态规则：
 

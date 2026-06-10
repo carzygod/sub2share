@@ -17,7 +17,7 @@
   - `consumeOpenAiProxyRateLimit()`：租赁级 RPM/TPM 原子消费。
   - `inspectOpenAiProxyRuntimeState()`：管理员巡检运行态快照。
   - `inspectOpenAiProxyLimiterReadiness()`：部署 readiness 依赖检查。
-- Redis 并发租约使用原子 Lua 脚本递增和释放，并带 TTL 与周期续租；API 进程异常退出时，租约会在 TTL 后自动收敛。
+- Redis 并发租约使用租赁级 sorted set 保存每个请求的独立 lease，获取、续租和释放都通过 Lua 脚本执行；API 进程异常退出时，未续租的 lease 会按过期分数自动被后续 acquire 或巡检裁剪。
 - Redis RPM/TPM 使用原子 Lua 脚本裁剪 60 秒窗口、判断限额并写入事件，避免多实例下“先检查后提交”的竞态。
 - `/v1/*` 反代准入顺序调整为：
   1. 请求量台账检查。
@@ -26,14 +26,14 @@
   4. RPM/TPM 失败时立即释放并发租约。
   5. 成功后转发到 Sub2API。
 - Redis 不可达时，本地反代返回 OpenAI 风格 `503 proxy_limiter_unavailable`，并写入 `ProxyRequestLog`。
-- `GET /ready` 新增 `openAiProxyLimiter` 依赖；Redis 模式不可达时返回 HTTP 503。
+- `GET /ready` 新增 `openAiProxyLimiter` 依赖；Redis 模式只执行轻量 `PING`，Redis 不可达时返回 HTTP 503。
 - `GET /api/admin/system-health` 的 `openAiProxyRuntime` 会展示当前 limiter store、作用域、Redis 可达性、活跃并发和速率窗口指标。
 - `.env.example` 新增 `OPENAI_PROXY_LIMITER_STORE=redis`。
 - 新增自动化测试覆盖 limiter store 默认模式。
 
 ## 管理员价值
 
-- 生产多实例部署可以通过 Redis 共享并发和 RPM/TPM 状态，不再依赖单 API 进程内计数。
+- 生产多实例部署可以通过 Redis 共享并发和 RPM/TPM 状态，不再依赖单 API 进程内计数；单个请求异常退出不会长期占住整个租赁的并发计数。
 - 管理员可以在 `可用性巡检` 中直接确认当前反代限流器是否为 Redis 共享作用域。
 - 部署平台可以通过 `/ready` 在 Redis 不可达时摘除实例，避免售出的 OpenAI/Codex 入口进入不可控状态。
 

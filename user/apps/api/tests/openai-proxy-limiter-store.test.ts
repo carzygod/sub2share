@@ -12,6 +12,7 @@ const {
   acquireOpenAiProxyConcurrency,
   closeOpenAiProxyLimiterStore,
   consumeOpenAiProxyRateLimit,
+  inspectOpenAiProxyLimiterReadiness,
   inspectOpenAiProxyRuntimeState,
   resolveOpenAiProxyLimiterStoreMode
 } = await import("../src/modules/openai-proxy/limiter-store.js");
@@ -69,6 +70,14 @@ test("memory OpenAI proxy runtime exposes process-local state", async () => {
   assert.equal(result.summary.storeMode, "memory");
   assert.equal(result.summary.limiterScope, "process");
   assert.equal(result.summary.shared, false);
+  assert.equal(result.summary.redisReachable, null);
+});
+
+test("memory OpenAI proxy limiter readiness does not require Redis", async () => {
+  const result = await inspectOpenAiProxyLimiterReadiness();
+
+  assert.equal(result.ok, true);
+  assert.equal(result.summary.storeMode, "memory");
   assert.equal(result.summary.redisReachable, null);
 });
 
