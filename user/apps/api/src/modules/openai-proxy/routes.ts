@@ -9,6 +9,7 @@ import {
   attachProxyRequestIdHeader,
   evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
+  inspectOpenAiProxyRuntime,
   isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
@@ -54,6 +55,33 @@ interface ForwardedUpstream {
   response: Response;
   cleanup: () => void;
   abort: () => void;
+}
+
+export function inspectOpenAiProxyRuntimeState(now = Date.now()) {
+  cleanupInactiveProxyRateWindows(now, true);
+
+  let activeRateWindowRequests = 0;
+  let activeRateWindowTokenEvents = 0;
+  let activeRateWindowEstimatedTokens = 0;
+  for (const window of proxyRateWindows.values()) {
+    activeRateWindowRequests += window.requests.length;
+    activeRateWindowTokenEvents += window.tokens.length;
+    activeRateWindowEstimatedTokens += window.tokens.reduce((total, event) => total + event.tokens, 0);
+  }
+
+  return inspectOpenAiProxyRuntime({
+    nodeEnv: env.NODE_ENV,
+    limiterScope: "process",
+    rateWindowMs: RATE_WINDOW_MS,
+    rateWindowCleanupIntervalMs: RATE_WINDOW_CLEANUP_INTERVAL_MS,
+    activeConcurrencyRentals: activeProxyRequests.size,
+    activeConcurrencyLeases: [...activeProxyRequests.values()].reduce((total, count) => total + count, 0),
+    activeRateWindowRentals: proxyRateWindows.size,
+    activeRateWindowRequests,
+    activeRateWindowTokenEvents,
+    activeRateWindowEstimatedTokens,
+    lastRateWindowCleanupAt: lastProxyRateWindowCleanupAt ? new Date(lastProxyRateWindowCleanupAt).toISOString() : null
+  });
 }
 
 export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
@@ -485,8 +513,8 @@ function rateWindowForRental(rentalId: string) {
   return created;
 }
 
-function cleanupInactiveProxyRateWindows(now: number) {
-  if (now - lastProxyRateWindowCleanupAt < RATE_WINDOW_CLEANUP_INTERVAL_MS) return;
+function cleanupInactiveProxyRateWindows(now: number, force = false) {
+  if (!force && now - lastProxyRateWindowCleanupAt < RATE_WINDOW_CLEANUP_INTERVAL_MS) return;
   lastProxyRateWindowCleanupAt = now;
 
   for (const [rentalId, window] of proxyRateWindows) {

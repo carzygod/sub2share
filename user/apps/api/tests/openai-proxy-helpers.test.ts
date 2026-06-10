@@ -5,6 +5,7 @@ import {
   evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
   inspectOpenAiProxyContract,
+  inspectOpenAiProxyRuntime,
   isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
@@ -180,4 +181,25 @@ test("reports invalid OpenAI proxy contract endpoints", () => {
   const invalidProtocol = inspectOpenAiProxyContract("ftp://api.example.com/v1");
   assert.equal(invalidProtocol.ok, false);
   assert.equal(invalidProtocol.issues.some((issue) => issue.type === "invalid_endpoint_protocol"), true);
+});
+
+test("flags production OpenAI proxy runtime when limiter state is process-local", () => {
+  const result = inspectOpenAiProxyRuntime({
+    nodeEnv: "production",
+    limiterScope: "process",
+    rateWindowMs: 60_000,
+    rateWindowCleanupIntervalMs: 60_000,
+    activeConcurrencyRentals: 2,
+    activeConcurrencyLeases: 3,
+    activeRateWindowRentals: 4,
+    activeRateWindowRequests: 5,
+    activeRateWindowTokenEvents: 6,
+    activeRateWindowEstimatedTokens: 7,
+    lastRateWindowCleanupAt: "2026-06-10T00:00:00.000Z"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.summary.activeConcurrencyLeases, 3);
+  assert.equal(result.summary.activeRateWindowEstimatedTokens, 7);
+  assert.equal(result.issues.some((issue) => issue.type === "process_local_limiter" && issue.severity === "warning"), true);
 });

@@ -35,6 +35,7 @@
 - 共享资源：检查异常资源和 online Codex 资源数量。
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况。
 - OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露 `x-proxy-request-id`、本地错误类型是否符合 OpenAI 风格分类。
+- OpenAI 反代运行态：统计当前 API 进程内活跃并发租约、RPM/TPM 速率窗口和限流器作用域；生产环境下进程内限流器标记 warning。
 - 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地错误码、客户端中途断开、上游流异常和上游流空闲超时。
 - 用量同步：检查 Sub2 usage 同步状态，超过 24 小时未成功同步会标记 warning，失败会标记 error。
 - 用量同步调度：检查 `SUB2_USAGE_SYNC_INTERVAL_MS` 与 `SUB2_USAGE_SYNC_ON_START`，生产环境禁用定时同步会标记 error。
@@ -66,6 +67,7 @@
 - API Key 可用性巡检只聚焦 OpenAI/Codex 本地 `/v1/*` 反代准入，不把其他资源类型的 active Key 视为错误。
 - API Key 可用性巡检默认扫描最近 500 条 active OpenAI/Codex Key，并在 `detail.issues` 中返回最多 50 条样本，避免巡检响应过大。
 - OpenAI 反代契约巡检是静态契约检查，不会发起真实上游请求；真实 Sub2API 调度仍由 `Sub2/OpenAI 上游` 和反代 smoke test 覆盖。
+- OpenAI 反代运行态巡检只读取当前 API 进程内限流状态，不会改变请求拦截行为；多实例一致限流仍需要 Redis 或网关级共享限流器。
 - 管理后台问题样本表默认只展示后端返回的 issue 样本，前端最多聚合 100 条，避免巡检页因大量问题产生过重渲染。
 - 用量同步调度巡检只读环境配置，不会启动或停止后台同步任务。
 - Pending 用量账务巡检只读，不自动扣费；真正的恢复扣费仍由 Sub2 usage 同步任务执行。

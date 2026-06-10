@@ -14,6 +14,7 @@ import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { inspectOpenAiProxyContract, normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
+import { inspectOpenAiProxyRuntimeState } from "../openai-proxy/routes.js";
 import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
 import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
@@ -2706,6 +2707,7 @@ async function buildSystemHealthReport() {
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
+  const openAiProxyRuntime = inspectOpenAiProxyRuntimeState(checkedAt.getTime());
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
@@ -2821,6 +2823,18 @@ async function buildSystemHealthReport() {
       openAiProxyContract.ok ? "OpenAI/Codex 本地反代契约正常" : `${openAiProxyContract.issues.length} 个本地反代契约问题`,
       openAiProxyContract.summary,
       { issues: openAiProxyContract.issues }
+    ),
+    systemHealthCheck(
+      "openAiProxyRuntime",
+      "OpenAI 反代运行态",
+      openAiProxyRuntime.issues.some((issue) => issue.severity === "error")
+        ? "error"
+        : openAiProxyRuntime.issues.length > 0 ? "warning" : "ok",
+      openAiProxyRuntime.issues.length > 0
+        ? "OpenAI/Codex 本地限流器仍是进程内运行态"
+        : `当前进程 ${openAiProxyRuntime.summary.activeConcurrencyLeases} 个并发租约，${openAiProxyRuntime.summary.activeRateWindowRentals} 个速率窗口`,
+      { ...openAiProxyRuntime.summary },
+      openAiProxyRuntime.issues.length > 0 ? { issues: openAiProxyRuntime.issues } : undefined
     ),
     systemHealthCheck(
       "sub2Bindings",

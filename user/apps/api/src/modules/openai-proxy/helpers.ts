@@ -14,6 +14,28 @@ export interface ProxyRateLimitWindow {
   tokens: Array<{ at: number; tokens: number }>;
 }
 
+export interface OpenAiProxyRuntimeSummary {
+  nodeEnv: string;
+  limiterScope: "process";
+  rateWindowMs: number;
+  rateWindowCleanupIntervalMs: number;
+  activeConcurrencyRentals: number;
+  activeConcurrencyLeases: number;
+  activeRateWindowRentals: number;
+  activeRateWindowRequests: number;
+  activeRateWindowTokenEvents: number;
+  activeRateWindowEstimatedTokens: number;
+  lastRateWindowCleanupAt: string | null;
+}
+
+export interface OpenAiProxyRuntimeIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  refId: string;
+  message: string;
+}
+
 export function attachProxyRequestIdHeader(reply: { header: (name: string, value: string) => unknown }, requestId: string) {
   reply.header(proxyRequestIdHeaderName, requestId);
 }
@@ -126,6 +148,26 @@ export function inspectOpenAiProxyContract(endpoint: string) {
       apiErrorType: errorTypes.apiError
     },
     errorTypes,
+    issues
+  };
+}
+
+export function inspectOpenAiProxyRuntime(summary: OpenAiProxyRuntimeSummary) {
+  const issues: OpenAiProxyRuntimeIssue[] = [];
+
+  if (summary.nodeEnv === "production" && summary.limiterScope === "process") {
+    issues.push({
+      id: "openai-proxy-process-local-limiter",
+      type: "process_local_limiter",
+      severity: "warning",
+      refId: "openai-proxy-runtime",
+      message: "OpenAI proxy concurrency and RPM/TPM windows are process-local; keep a single API instance or migrate the limiter to Redis/gateway scope before horizontal scaling"
+    });
+  }
+
+  return {
+    ok: issues.every((issue) => issue.severity !== "error"),
+    summary,
     issues
   };
 }

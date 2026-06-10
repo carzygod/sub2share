@@ -12,6 +12,7 @@
 - 并发上限来自 `RentalLimit.maxConcurrency`，缺省按 `1` 处理。
 - 每个通过校验的请求会占用一个租赁级并发租约。
 - 响应完成或客户端连接关闭时自动释放租约。
+- `GET /api/admin/system-health` 的 `openAiProxyRuntime` 检查会暴露当前进程活跃并发租赁数和并发租约数。
 - 超过并发上限时返回 OpenAI 风格错误：
 
 ```json
