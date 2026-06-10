@@ -30,6 +30,7 @@
 - API Key 可用性：检查 OpenAI/Codex 本地反代 active Key 是否能通过用户、钱包、租赁、到期时间和 Key hash 准入条件。
 - 余额账户：检查钱包可用余额或冻结余额是否出现负数。
 - OAuth State：检查 OAuth state 存储是否适合当前环境；生产环境内存存储或 Redis 不可达会标记 error。
+- Auth Tokens：检查 access/refresh token 有效期配置，以及生产环境是否使用独立的 `JWT_REFRESH_SECRET`。
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error。
 - 共享资源：检查异常资源和 online Codex 资源数量。
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况。
@@ -69,6 +70,7 @@
 - 用量同步调度巡检只读环境配置，不会启动或停止后台同步任务。
 - Pending 用量账务巡检只读，不自动扣费；真正的恢复扣费仍由 Sub2 usage 同步任务执行。
 - OAuth State 巡检只判断 state 存储模式和 Redis 连通性，不会发起真实第三方 OAuth 登录。
+- Auth Tokens 巡检只检查环境配置，不解码真实用户 token，也不会撤销既有 token。
 - 支付充值巡检只判断当前后端充值模式是否可用或存在明显风险，不等同于真实支付渠道的全链路验收。
 - 巡检结果用于帮助管理员定位方向，具体修复仍通过订单、租赁、余额、资源、反代状态、反代请求、账务对账、结算和提现等页面执行。
 - 客户端中途断开通常标记为 warning，用于提示长流式请求或客户端取消较多；上游流错误、异常关闭或空闲超时会标记为 error，提示 Sub2API 或上游连接链路需要复查。

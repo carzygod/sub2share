@@ -15,6 +15,7 @@ import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
 import { inspectOpenAiProxyContract, normalizeProxyRequestLookup } from "../openai-proxy/helpers.js";
 import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
+import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 
@@ -2789,6 +2790,7 @@ async function buildSystemHealthReport() {
       oauthStateStore.summary,
       oauthStateStore.issues.length > 0 ? { issues: oauthStateStore.issues } : undefined
     ),
+    authTokenConfigHealthCheck(),
     paymentProviderHealthCheck(),
     systemHealthCheck(
       "resources",
@@ -4289,6 +4291,25 @@ function billingSyncHealthCheck(
       lastFinishedAt: state.lastFinishedAt?.toISOString() ?? null,
       runs: sync.runs.length
     }
+  );
+}
+
+function authTokenConfigHealthCheck() {
+  const result = inspectAuthTokenConfig({
+    nodeEnv: env.NODE_ENV,
+    accessSecret: env.JWT_ACCESS_SECRET,
+    refreshSecret: env.JWT_REFRESH_SECRET,
+    accessExpiresIn: env.JWT_ACCESS_EXPIRES_IN,
+    refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN
+  });
+
+  return systemHealthCheck(
+    "authTokens",
+    "Auth Tokens",
+    result.ok ? "ok" : result.issues.some((issue) => issue.severity === "error") ? "error" : "warning",
+    result.ok ? "Authentication token configuration is production-ready" : `${result.issues.length} authentication token configuration issue(s)`,
+    result.summary,
+    result.issues.length > 0 ? { issues: result.issues } : undefined
   );
 }
 

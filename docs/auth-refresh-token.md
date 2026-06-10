@@ -12,6 +12,7 @@
   - `JWT_REFRESH_SECRET`：refresh token 签名密钥，未配置时回退到 `JWT_ACCESS_SECRET`。
   - `JWT_ACCESS_EXPIRES_IN`：访问 token 有效期，默认 `15m`。
   - `JWT_REFRESH_EXPIRES_IN`：refresh token 有效期，默认 `30d`。
+- `GET /api/admin/system-health` 新增 `authTokens` 检查项，生产环境缺少独立 `JWT_REFRESH_SECRET` 时标记 error。
 - 登录、注册和 OAuth 回调继续返回兼容字段 `token`，并新增：
   - `refreshToken`
   - `expiresIn`
