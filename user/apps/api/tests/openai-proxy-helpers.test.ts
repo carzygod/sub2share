@@ -5,6 +5,7 @@ import {
   evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
   inspectOpenAiProxyContract,
+  isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
   openAiProxyErrorPayload,
@@ -13,6 +14,7 @@ import {
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText,
+  pruneProxyRateLimitWindow,
   type ProxyRateLimitWindow
 } from "../src/modules/openai-proxy/helpers.js";
 
@@ -71,6 +73,26 @@ test("defers proxy RPM and TPM accounting until a rate check is committed", () =
   assert.equal(rpmExceeded.ok, false);
   if (rpmExceeded.ok) assert.fail("expected RPM limit to fail after commit");
   assert.equal(rpmExceeded.code, "rpm_limit_exceeded");
+});
+
+test("prunes expired proxy RPM and TPM events from a rolling window", () => {
+  const window: ProxyRateLimitWindow = {
+    requests: [1_000, 61_000],
+    tokens: [
+      { at: 1_000, tokens: 3 },
+      { at: 61_000, tokens: 4 }
+    ]
+  };
+
+  pruneProxyRateLimitWindow(window, 62_000, 60_000);
+  assert.deepEqual(window.requests, [61_000]);
+  assert.deepEqual(window.tokens, [{ at: 61_000, tokens: 4 }]);
+  assert.equal(isProxyRateLimitWindowEmpty(window), false);
+
+  pruneProxyRateLimitWindow(window, 122_000, 60_000);
+  assert.deepEqual(window.requests, []);
+  assert.deepEqual(window.tokens, []);
+  assert.equal(isProxyRateLimitWindowEmpty(window), true);
 });
 
 test("measures proxy body text and bytes for buffers and json objects", () => {

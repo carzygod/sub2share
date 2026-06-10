@@ -9,10 +9,12 @@ import {
   attachProxyRequestIdHeader,
   evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
+  isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   proxyBodyByteLength,
   proxyBodyText,
+  pruneProxyRateLimitWindow,
   type ProxyRateLimitWindow
 } from "./helpers.js";
 
@@ -20,6 +22,8 @@ const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
 const proxyRateWindows = new Map<string, ProxyRateLimitWindow>();
 const RATE_WINDOW_MS = 60_000;
+const RATE_WINDOW_CLEANUP_INTERVAL_MS = RATE_WINDOW_MS;
+let lastProxyRateWindowCleanupAt = 0;
 const hopByHopHeaders = new Set([
   "connection",
   "content-encoding",
@@ -443,6 +447,7 @@ function checkRentalRateLimits(
   }
 
   const now = Date.now();
+  cleanupInactiveProxyRateWindows(now);
   const window = rateWindowForRental(rental.id);
   const estimatedTokens = tpmLimit ? estimateInputTokens(request) : 0;
   const windowCheck = evaluateProxyRateLimitWindow({
@@ -478,6 +483,18 @@ function rateWindowForRental(rentalId: string) {
   const created: ProxyRateLimitWindow = { requests: [], tokens: [] };
   proxyRateWindows.set(rentalId, created);
   return created;
+}
+
+function cleanupInactiveProxyRateWindows(now: number) {
+  if (now - lastProxyRateWindowCleanupAt < RATE_WINDOW_CLEANUP_INTERVAL_MS) return;
+  lastProxyRateWindowCleanupAt = now;
+
+  for (const [rentalId, window] of proxyRateWindows) {
+    pruneProxyRateLimitWindow(window, now, RATE_WINDOW_MS);
+    if (isProxyRateLimitWindowEmpty(window)) {
+      proxyRateWindows.delete(rentalId);
+    }
+  }
 }
 
 function estimateInputTokens(request: FastifyRequest) {

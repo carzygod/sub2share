@@ -171,9 +171,7 @@ export function evaluateProxyRateLimitWindow(options: {
   estimatedTokens: number;
 }) {
   const { window, now, windowMs, rpmLimit, tpmLimit, estimatedTokens } = options;
-  const cutoff = now - windowMs;
-  window.requests = window.requests.filter((timestamp) => timestamp > cutoff);
-  window.tokens = window.tokens.filter((event) => event.at > cutoff);
+  pruneProxyRateLimitWindow(window, now, windowMs);
 
   if (rpmLimit && window.requests.length >= rpmLimit) {
     return {
@@ -203,4 +201,14 @@ export function evaluateProxyRateLimitWindow(options: {
       }
     }
   };
+}
+
+export function pruneProxyRateLimitWindow(window: ProxyRateLimitWindow, now: number, windowMs: number) {
+  const cutoff = now - windowMs;
+  window.requests = window.requests.filter((timestamp) => timestamp > cutoff);
+  window.tokens = window.tokens.filter((event) => event.at > cutoff);
+}
+
+export function isProxyRateLimitWindowEmpty(window: ProxyRateLimitWindow) {
+  return window.requests.length === 0 && window.tokens.length === 0;
 }

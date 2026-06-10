@@ -16,6 +16,7 @@
 - `GET /v1/models`、`HEAD /v1/models` 和模型详情元数据请求不计入 RPM/TPM，便于用户排查可用模型。
 - 代理日志新增 `proxyRpmLimit`、`proxyRpmUsed`、`proxyTpmLimit`、`proxyTpmUsed` 和 `proxyEstimatedInputTokens`。
 - RPM/TPM 检查会先评估是否允许本次请求，只有租赁级并发租约成功后才正式写入速率窗口。
+- 进程内速率窗口会按 60 秒滚动窗口裁剪；长期无有效事件的租赁窗口会被节流清理，避免运行期 Map 无限制增长。
 
 ## 记账顺序
 
@@ -38,6 +39,8 @@ estimatedTokens = ceil(requestBody.length / 4)
 ## 边界
 
 当前 RPM/TPM 闸门是单 API 进程内计数，适合当前单实例部署。若后续 API 多实例扩容，需要迁移到 Redis、Sub2API 网关或其他共享限流器中。
+
+运行期窗口清理说明见 `docs/openai-proxy-rate-window-cleanup.md`。
 
 ## 验收记录
 
