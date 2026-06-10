@@ -9,7 +9,7 @@ import { localProxySmokeBuyerId, localProxySmokeProductName, localProxySmokeUser
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
-import { sub2Client, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
+import { sub2Client, type Sub2GatewayAccountTestResult, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
@@ -2153,7 +2153,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       where: { id },
       select: {
         id: true,
+        status: true,
         sub2AccountId: true,
+        lastCheckedAt: true,
         credential: { select: resourceCredentialPrivateSelect }
       }
     });
@@ -2184,9 +2186,32 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       clientId: input.clientId,
       proxyId: input.proxyId
     });
+    let testResult: Sub2GatewayAccountTestResult | null = null;
+    let updatedResource: Prisma.SupplierResourceGetPayload<{
+      include: {
+        supplier: { include: { user: true } };
+        credential: { select: typeof resourceCredentialSummarySelect };
+      };
+    }> | null = null;
+    if (result.ok) {
+      testResult = await testSub2AccountForResourceApply(accountId);
+      updatedResource = await prisma.supplierResource.update({
+        where: { id },
+        data: {
+          status: statusAfterResourceTest(resource.status, testResult.ok),
+          lastCheckedAt: new Date()
+        },
+        include: {
+          supplier: { include: { user: true } },
+          credential: { select: resourceCredentialSummarySelect }
+        }
+      });
+    }
     const credentialSummary = resourceCredentialAuditPayload(resource.credential);
     await writeAuditLog(request, actor.id, "admin.resource.credential_apply_sub2", "supplier_resource", id, {
       sub2AccountId: resource.sub2AccountId,
+      status: resource.status,
+      lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
       credential: credentialSummary
     }, {
       sub2AccountId: resource.sub2AccountId,
@@ -2195,9 +2220,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       ok: result.ok,
       refreshed: result.refreshed,
       applied: result.applied,
-      error: result.error
+      error: result.error,
+      test: testResult ? {
+        ok: testResult.ok,
+        statusCode: testResult.statusCode,
+        events: testResult.events.map((event) => event.type ?? event.message ?? "event")
+      } : null,
+      resource: updatedResource ? {
+        status: updatedResource.status,
+        lastCheckedAt: updatedResource.lastCheckedAt?.toISOString() ?? null
+      } : null
     });
-    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result });
+    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource });
   });
 
   app.post("/api/admin/resources/:id/test", async (request, reply) => {
@@ -5481,6 +5515,21 @@ function resourceConfigAuditPayload(resource: {
     sub2AccountId: resource.sub2AccountId,
     lastCheckedAt: resource.lastCheckedAt instanceof Date ? resource.lastCheckedAt.toISOString() : resource.lastCheckedAt ?? null
   };
+}
+
+async function testSub2AccountForResourceApply(accountId: number): Promise<Sub2GatewayAccountTestResult> {
+  try {
+    return await sub2Client.testAccount(accountId);
+  } catch (error) {
+    const message = redactSensitiveText(error instanceof Error ? error.message : String(error));
+    return {
+      ok: false,
+      statusCode: 0,
+      testedAt: new Date().toISOString(),
+      events: [{ type: "error", message }],
+      raw: message.slice(0, 3000)
+    };
+  }
 }
 
 function parseResourceSub2AccountId(value: string | null | undefined) {

@@ -790,6 +790,8 @@ interface Sub2CredentialApplyResult {
     applied: boolean;
     error?: string | null;
   };
+  test?: Sub2AccountTestResult | null;
+  resource?: ResourceRow | null;
 }
 
 interface Sub2BindingIssueRow {
@@ -1724,7 +1726,10 @@ function App() {
       })
     });
     event.currentTarget.reset();
-    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}`);
+    const testMessage = result.test
+      ? `，测试${result.test.ok ? "通过" : "失败"} / HTTP ${result.test.statusCode} / ${testSummary(result.test)}`
+      : "";
+    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}${testMessage}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}`);
     await refresh("resources");
     await openResourceDetail(resourceId);
     await refresh("sub2");

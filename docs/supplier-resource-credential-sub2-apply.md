@@ -24,7 +24,10 @@
 - 后端只在请求处理中临时解密 refresh token，然后调用既有 `sub2Client.applyOpenAiRefreshToken()`：
   1. 调用 Sub2API `/api/v1/admin/openai/refresh-token` 换取 OAuth credentials。
   2. 调用 Sub2API `/api/v1/admin/accounts/:id/apply-oauth-credentials` 写入指定账号。
-- 返回结果只包含资源 ID、Sub2 账号 ID、凭据摘要和应用结果摘要。
+- 凭据应用成功后，后端会立即调用 Sub2 账号测试接口，并把测试结果沉淀到共享资源：
+  - 更新 `lastCheckedAt`。
+  - 根据测试结果把 pending/testing/abnormal/online 等状态收敛到更合适的状态。
+- 返回结果只包含资源 ID、Sub2 账号 ID、凭据摘要、应用结果摘要、测试结果和更新后的资源摘要。
 - 审计动作：`admin.resource.credential_apply_sub2`。
 - 审计日志不记录 refresh token、密文或 Sub2 OAuth credentials。
 - Admin 共享资源详情页新增“应用到 Sub2”入口，可填写可选 `client_id` 和 `proxy_id`。
@@ -36,7 +39,8 @@
 2. 填写该资源绑定的 `Sub2 账号 ID`。
 3. 在“接入凭据”区域保存 `openai_refresh_token` 类型凭据。
 4. 点击“应用到 Sub2”。
-5. 切换到“Sub2”页面运行账号测试或端到端自检，确认 `/v1/responses` 是否恢复真实生成。
+5. 查看提交后的提示，确认应用结果和应用后账号测试结果。
+6. 切换到“Sub2”页面运行端到端自检，确认 `/v1/responses` 是否恢复真实生成。
 
 也可以先打开“可用性巡检”，查看 `资源凭据` 检查项。如果 Sub2 上游无 active 账号但本地存在可应用凭据，巡检会给出 warning；如果没有可应用凭据，则会给出 error，提示必须先登记凭据或绑定 Sub2 账号。
 
@@ -45,7 +49,7 @@
 - 后台响应、CSV 导出和审计日志都不回显 refresh token 明文。
 - 该动作只支持 `openai_refresh_token`，不会误把 API Key 或 custom 凭据当成 OAuth refresh token 应用。
 - 如果本地加密密钥丢失或更换导致无法解密，接口会返回 `resource_credential_decrypt_failed`，不会输出密文内容。
-- 成功应用凭据不等于真实生成已恢复；仍需通过账号测试和端到端自检验证 Sub2API 上游账号状态。
+- 成功应用凭据会触发一次账号测试，但仍不等于真实生成已恢复；最终仍需通过端到端自检验证 Sub2API 上游账号是否能完成 `/v1/responses`。
 
 ## 验收方式
 
