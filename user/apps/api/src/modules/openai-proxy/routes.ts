@@ -7,16 +7,18 @@ import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 import {
   attachProxyRequestIdHeader,
+  evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   proxyBodyByteLength,
-  proxyBodyText
+  proxyBodyText,
+  type ProxyRateLimitWindow
 } from "./helpers.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
 const activeProxyRequests = new Map<string, number>();
-const proxyRateWindows = new Map<string, ProxyRateWindow>();
+const proxyRateWindows = new Map<string, ProxyRateLimitWindow>();
 const RATE_WINDOW_MS = 60_000;
 const hopByHopHeaders = new Set([
   "connection",
@@ -32,11 +34,6 @@ const hopByHopHeaders = new Set([
 ]);
 
 type ActiveApiKeyRecord = Extract<Awaited<ReturnType<typeof findActiveLocalKey>>, { ok: true }>["apiKey"];
-
-interface ProxyRateWindow {
-  requests: number[];
-  tokens: Array<{ at: number; tokens: number }>;
-}
 
 interface ProxyRequestLogEntry {
   userId?: string | null;
@@ -100,7 +97,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
         }
 
-        const rateLimitCheck = checkAndRecordRentalRateLimits(keyRecord.apiKey.rental, request);
+        const rateLimitCheck = checkRentalRateLimits(keyRecord.apiKey.rental, request);
         if (!rateLimitCheck.ok) {
           await writeProxyRequestLog(request, startedAt, {
             ...logContext,
@@ -120,6 +117,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           });
           return openAiError(reply, concurrencyLease.statusCode, concurrencyLease.code, concurrencyLease.message);
         }
+        rateLimitCheck.record();
         releaseLeaseOnReplyEnd(reply, concurrencyLease.release);
 
         await prisma.apiKey.update({
@@ -419,7 +417,7 @@ function acquireProxyConcurrency(rental: ActiveApiKeyRecord["rental"]) {
   };
 }
 
-function checkAndRecordRentalRateLimits(
+function checkRentalRateLimits(
   rental: ActiveApiKeyRecord["rental"],
   request: FastifyRequest
 ) {
@@ -433,57 +431,53 @@ function checkAndRecordRentalRateLimits(
       rpmUsed: null,
       tpmLimit: rental.limits?.tpmLimit ?? null,
       tpmUsed: null,
-      estimatedTokens: 0
+      estimatedTokens: 0,
+      record: noop
     };
   }
 
   const rpmLimit = rental.limits?.rpmLimit ?? null;
   const tpmLimit = rental.limits?.tpmLimit ?? null;
   if (!rpmLimit && !tpmLimit) {
-    return { ok: true as const, rpmLimit, rpmUsed: null, tpmLimit, tpmUsed: null, estimatedTokens: 0 };
+    return { ok: true as const, rpmLimit, rpmUsed: null, tpmLimit, tpmUsed: null, estimatedTokens: 0, record: noop };
   }
 
   const now = Date.now();
   const window = rateWindowForRental(rental.id);
-  pruneRateWindow(window, now);
-
-  if (rpmLimit && window.requests.length >= rpmLimit) {
-    return failure(429, "rpm_limit_exceeded", "Rental RPM limit has been reached");
-  }
-
   const estimatedTokens = tpmLimit ? estimateInputTokens(request) : 0;
-  const currentTokens = window.tokens.reduce((total, event) => total + event.tokens, 0);
-  if (tpmLimit && currentTokens + estimatedTokens > tpmLimit) {
-    return failure(429, "tpm_limit_exceeded", "Rental TPM limit has been reached");
-  }
-
-  window.requests.push(now);
-  if (estimatedTokens > 0) {
-    window.tokens.push({ at: now, tokens: estimatedTokens });
+  const windowCheck = evaluateProxyRateLimitWindow({
+    window,
+    now,
+    windowMs: RATE_WINDOW_MS,
+    rpmLimit,
+    tpmLimit,
+    estimatedTokens
+  });
+  if (!windowCheck.ok) {
+    return failure(429, windowCheck.code, windowCheck.message);
   }
 
   return {
     ok: true as const,
     rpmLimit,
-    rpmUsed: rpmLimit ? window.requests.length : null,
+    rpmUsed: windowCheck.rpmUsed,
     tpmLimit,
-    tpmUsed: tpmLimit ? currentTokens + estimatedTokens : null,
-    estimatedTokens
+    tpmUsed: windowCheck.tpmUsed,
+    estimatedTokens,
+    record: windowCheck.commit
   };
+}
+
+function noop() {
+  // No-op reservation for metadata requests or rentals without local RPM/TPM limits.
 }
 
 function rateWindowForRental(rentalId: string) {
   const existing = proxyRateWindows.get(rentalId);
   if (existing) return existing;
-  const created: ProxyRateWindow = { requests: [], tokens: [] };
+  const created: ProxyRateLimitWindow = { requests: [], tokens: [] };
   proxyRateWindows.set(rentalId, created);
   return created;
-}
-
-function pruneRateWindow(window: ProxyRateWindow, now: number) {
-  const cutoff = now - RATE_WINDOW_MS;
-  window.requests = window.requests.filter((timestamp) => timestamp > cutoff);
-  window.tokens = window.tokens.filter((event) => event.at > cutoff);
 }
 
 function estimateInputTokens(request: FastifyRequest) {

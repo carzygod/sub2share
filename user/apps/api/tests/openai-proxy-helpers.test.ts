@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   attachProxyRequestIdHeader,
+  evaluateProxyRateLimitWindow,
   estimateProxyInputTokens,
   inspectOpenAiProxyContract,
   isMetadataProxyRequest,
@@ -11,7 +12,8 @@ import {
   openAiProxyCorsExposedHeaders,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
-  proxyBodyText
+  proxyBodyText,
+  type ProxyRateLimitWindow
 } from "../src/modules/openai-proxy/helpers.js";
 
 test("classifies model metadata requests without charging request limits", () => {
@@ -33,6 +35,42 @@ test("estimates proxy input tokens from raw request bodies", () => {
   assert.equal(estimateProxyInputTokens("POST", ""), 1);
   assert.equal(estimateProxyInputTokens("POST", Buffer.from("123456789")), 3);
   assert.equal(estimateProxyInputTokens("POST", { input: "hello" }), 5);
+});
+
+test("defers proxy RPM and TPM accounting until a rate check is committed", () => {
+  const window: ProxyRateLimitWindow = { requests: [], tokens: [] };
+
+  const check = evaluateProxyRateLimitWindow({
+    window,
+    now: 1_000,
+    windowMs: 60_000,
+    rpmLimit: 1,
+    tpmLimit: 10,
+    estimatedTokens: 4
+  });
+
+  assert.equal(check.ok, true);
+  if (!check.ok) assert.fail("expected rate limit check to pass");
+  assert.equal(check.rpmUsed, 1);
+  assert.equal(check.tpmUsed, 4);
+  assert.deepEqual(window.requests, []);
+  assert.deepEqual(window.tokens, []);
+
+  check.commit();
+  assert.deepEqual(window.requests, [1_000]);
+  assert.deepEqual(window.tokens, [{ at: 1_000, tokens: 4 }]);
+
+  const rpmExceeded = evaluateProxyRateLimitWindow({
+    window,
+    now: 1_001,
+    windowMs: 60_000,
+    rpmLimit: 1,
+    tpmLimit: 10,
+    estimatedTokens: 1
+  });
+  assert.equal(rpmExceeded.ok, false);
+  if (rpmExceeded.ok) assert.fail("expected RPM limit to fail after commit");
+  assert.equal(rpmExceeded.code, "rpm_limit_exceeded");
 });
 
 test("measures proxy body text and bytes for buffers and json objects", () => {

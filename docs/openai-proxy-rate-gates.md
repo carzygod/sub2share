@@ -15,6 +15,15 @@
 - 超过 TPM 时返回 OpenAI 风格 `429 tpm_limit_exceeded`。
 - `GET /v1/models`、`HEAD /v1/models` 和模型详情元数据请求不计入 RPM/TPM，便于用户排查可用模型。
 - 代理日志新增 `proxyRpmLimit`、`proxyRpmUsed`、`proxyTpmLimit`、`proxyTpmUsed` 和 `proxyEstimatedInputTokens`。
+- RPM/TPM 检查会先评估是否允许本次请求，只有租赁级并发租约成功后才正式写入速率窗口。
+
+## 记账顺序
+
+反代入口会先执行本地请求量检查，再评估 RPM/TPM，随后申请并发租约。若并发租约失败，请求会返回 `429 concurrency_limit_exceeded` 并写入反代请求日志，但不会占用 RPM/TPM。
+
+若并发租约成功，系统才提交本次请求的 RPM/TPM 占用，然后继续转发到 Sub2API。这样可以避免“没有进入上游的并发失败请求”污染用户套餐速率额度。
+
+详细说明见 `docs/openai-proxy-rate-accounting-order.md`。
 
 ## TPM 估算
 

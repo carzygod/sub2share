@@ -9,6 +9,11 @@ export interface OpenAiProxyContractIssue {
   message: string;
 }
 
+export interface ProxyRateLimitWindow {
+  requests: number[];
+  tokens: Array<{ at: number; tokens: number }>;
+}
+
 export function attachProxyRequestIdHeader(reply: { header: (name: string, value: string) => unknown }, requestId: string) {
   reply.header(proxyRequestIdHeaderName, requestId);
 }
@@ -155,4 +160,47 @@ export function proxyBodyByteLength(body: unknown) {
   if (typeof body === "string") return Buffer.byteLength(body);
   if (Buffer.isBuffer(body) || body instanceof Uint8Array) return body.byteLength;
   return Buffer.byteLength(JSON.stringify(body));
+}
+
+export function evaluateProxyRateLimitWindow(options: {
+  window: ProxyRateLimitWindow;
+  now: number;
+  windowMs: number;
+  rpmLimit: number | null;
+  tpmLimit: number | null;
+  estimatedTokens: number;
+}) {
+  const { window, now, windowMs, rpmLimit, tpmLimit, estimatedTokens } = options;
+  const cutoff = now - windowMs;
+  window.requests = window.requests.filter((timestamp) => timestamp > cutoff);
+  window.tokens = window.tokens.filter((event) => event.at > cutoff);
+
+  if (rpmLimit && window.requests.length >= rpmLimit) {
+    return {
+      ok: false as const,
+      code: "rpm_limit_exceeded",
+      message: "Rental RPM limit has been reached"
+    };
+  }
+
+  const currentTokens = window.tokens.reduce((total, event) => total + event.tokens, 0);
+  if (tpmLimit && currentTokens + estimatedTokens > tpmLimit) {
+    return {
+      ok: false as const,
+      code: "tpm_limit_exceeded",
+      message: "Rental TPM limit has been reached"
+    };
+  }
+
+  return {
+    ok: true as const,
+    rpmUsed: rpmLimit ? window.requests.length + 1 : null,
+    tpmUsed: tpmLimit ? currentTokens + estimatedTokens : null,
+    commit: () => {
+      window.requests.push(now);
+      if (estimatedTokens > 0) {
+        window.tokens.push({ at: now, tokens: estimatedTokens });
+      }
+    }
+  };
 }
