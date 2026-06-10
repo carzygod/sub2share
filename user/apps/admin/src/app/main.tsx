@@ -179,6 +179,7 @@ interface SystemHealthSampleRow {
   checkLabel: string;
   ref: string;
   summary: string;
+  resourceId?: string;
 }
 
 interface DeliverySummary {
@@ -1608,6 +1609,14 @@ function App() {
     }
   }
 
+  async function openResourceCandidate(resourceId: string) {
+    const query = { ...defaultListQuery, q: resourceId };
+    setListQueries((current) => ({ ...current, resources: query }));
+    await refresh("resources", query);
+    await openResourceDetail(resourceId);
+    setMessage("已打开巡检候选资源");
+  }
+
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
     if (["paused", "abnormal", "disabled"].includes(status) && !confirmAdminAction("确认调整共享资源状态？", `资源 ID：${resourceId}\n目标状态：${status}`)) return;
     await api(`/api/admin/resources/${resourceId}/status`, {
@@ -1895,6 +1904,7 @@ function App() {
             snapshots={systemHealthSnapshots}
             onRefresh={() => refresh("systemHealth")}
             onRunMaintenance={runSystemMaintenance}
+            onOpenResource={openResourceCandidate}
           />
         )}
         {view === "systemHealthHistory" && (
@@ -2244,12 +2254,13 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
+  onOpenResource: (resourceId: string) => void;
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
@@ -2324,12 +2335,17 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
         )}
       </TablePanel>
       {sampleRows.length > 0 && (
-        <TablePanel title="巡检候选样本" count={sampleRows.length} headers={["检查项", "对象", "摘要"]}>
+        <TablePanel title="巡检候选样本" count={sampleRows.length} headers={["检查项", "对象", "摘要", "操作"]}>
           {sampleRows.map((sample) => (
             <tr key={`${sample.checkId}-${sample.id}`}>
               <td><strong>{sample.checkLabel}</strong><small>{sample.checkId}</small></td>
               <td><small>{sample.ref}</small></td>
               <td><small>{sample.summary}</small></td>
+              <td>
+                {sample.resourceId
+                  ? <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>
+                  : <small>-</small>}
+              </td>
             </tr>
           ))}
         </TablePanel>
@@ -4408,7 +4424,8 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       checkId: check.id,
       checkLabel: check.label,
       ref: systemHealthIssueRef(record),
-      summary: systemHealthSampleSummary(record, sample)
+      summary: systemHealthSampleSummary(record, sample),
+      resourceId: textValue(record.resourceId)
     };
   });
 }
