@@ -772,6 +772,17 @@ interface Sub2ProxySmokeTestResult {
   };
 }
 
+interface Sub2CredentialApplyResult {
+  resourceId?: string;
+  accountId: number;
+  result: {
+    ok: boolean;
+    refreshed: boolean;
+    applied: boolean;
+    error?: string | null;
+  };
+}
+
 interface Sub2BindingIssueRow {
   id: string;
   type: string;
@@ -1682,6 +1693,26 @@ function App() {
     await openResourceDetail(resourceId);
   }
 
+  async function applyResourceCredentialToSub2(event: FormEvent<HTMLFormElement>, resourceId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const clientId = String(form.get("clientId") || "").trim();
+    const proxyIdText = String(form.get("proxyId") || "").trim();
+    if (!confirmAdminAction("确认应用共享资源凭据到 Sub2？", `资源 ID：${resourceId}\nClient ID：${clientId || "-"}\nProxy ID：${proxyIdText || "-"}`)) return;
+    const result = await api<Sub2CredentialApplyResult>(`/api/admin/resources/${resourceId}/apply-credential-to-sub2`, {
+      method: "POST",
+      body: JSON.stringify({
+        clientId: clientId || undefined,
+        proxyId: proxyIdText ? Number(proxyIdText) : undefined
+      })
+    });
+    event.currentTarget.reset();
+    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}`);
+    await refresh("resources");
+    await openResourceDetail(resourceId);
+    await refresh("sub2");
+  }
+
   async function updateSupplierConfig(event: FormEvent<HTMLFormElement>, supplierId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -2075,6 +2106,7 @@ function App() {
             onUpdate={updateResourceConfig}
             onCredential={upsertResourceCredential}
             onDeleteCredential={deleteResourceCredential}
+            onApplyCredentialToSub2={applyResourceCredentialToSub2}
             onStatus={setResourceStatus}
             onTest={testResource}
             onDetail={openResourceDetail}
@@ -3825,13 +3857,14 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, on
   );
 }
 
-function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onDeleteCredential: (resourceId: string) => void;
+  onApplyCredentialToSub2: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onStatus: (resourceId: string, status: ResourceStatus) => void;
   onTest: (resourceId: string) => void;
   onDetail: (resourceId: string) => void;
@@ -3892,16 +3925,17 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
           </tr>
         ))}
       </TablePanel>
-      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onCredential={onCredential} onDeleteCredential={onDeleteCredential} onClose={onCloseDetail} />}
+      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onCredential={onCredential} onDeleteCredential={onDeleteCredential} onApplyCredentialToSub2={onApplyCredentialToSub2} onClose={onCloseDetail} />}
     </>
   );
 }
 
-function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredential, onClose }: {
+function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onClose }: {
   resource: ResourceDetailRow;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onDeleteCredential: (resourceId: string) => void;
+  onApplyCredentialToSub2: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onClose: () => void;
 }) {
   const usages = resource.usages ?? [];
@@ -3981,6 +4015,13 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
             <input name="secret" type="password" minLength={8} placeholder="新凭据" autoComplete="off" required />
             <button>保存凭据</button>
           </form>
+          {resource.credential?.credentialType === "openai_refresh_token" && (
+            <form className="resource-config-form" onSubmit={(event) => onApplyCredentialToSub2(event, resource.id)}>
+              <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
+              <input name="proxyId" type="number" min={1} placeholder="proxy_id，可选" />
+              <button disabled={!resource.sub2AccountId || resource.credential.status !== "active"}>应用到 Sub2</button>
+            </form>
+          )}
           {resource.credential && (
             <button className="danger mini" type="button" onClick={() => onDeleteCredential(resource.id)}>删除凭据</button>
           )}

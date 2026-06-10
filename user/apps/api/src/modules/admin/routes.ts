@@ -19,7 +19,7 @@ import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
 import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
-import { encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
+import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash", "encryptedValue"]);
 const userRoles = ["buyer", "supplier", "operator", "admin"] as const;
@@ -75,6 +75,13 @@ const resourceCredentialSummarySelect = {
   createdAt: true,
   updatedAt: true
 } satisfies Prisma.SupplierResourceCredentialSelect;
+
+const resourceCredentialPrivateSelect = {
+  ...resourceCredentialSummarySelect,
+  encryptedValue: true
+} satisfies Prisma.SupplierResourceCredentialSelect;
+type ResourceCredentialSummary = Prisma.SupplierResourceCredentialGetPayload<{ select: typeof resourceCredentialSummarySelect }>;
+type ResourceCredentialPrivate = Prisma.SupplierResourceCredentialGetPayload<{ select: typeof resourceCredentialPrivateSelect }>;
 
 interface BillingReconciliationIssue {
   id: string;
@@ -329,6 +336,11 @@ const upsertResourceCredentialSchema = z.object({
   credentialType: z.enum(resourceCredentialTypes),
   status: z.enum(resourceCredentialStatuses).default("active"),
   secret: z.string().trim().min(8).max(20_000)
+});
+
+const applyResourceCredentialToSub2Schema = z.object({
+  clientId: z.string().trim().min(1).max(240).optional(),
+  proxyId: z.coerce.number().int().positive().optional()
 });
 
 const updateSupplierSchema = z.object({
@@ -2124,6 +2136,61 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return adminOk(reply, { deleted: deleted.count, credential: null });
   });
 
+  app.post("/api/admin/resources/:id/apply-credential-to-sub2", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = applyResourceCredentialToSub2Schema.parse(request.body ?? {});
+    const resource = await prisma.supplierResource.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        sub2AccountId: true,
+        credential: { select: resourceCredentialPrivateSelect }
+      }
+    });
+    if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    const accountId = parseResourceSub2AccountId(resource.sub2AccountId);
+    if (!resource.credential) {
+      throw new AppError("resource_credential_missing", "Supplier resource does not have a stored credential", 400);
+    }
+    if (resource.credential.status !== "active") {
+      throw new AppError("resource_credential_not_active", "Supplier resource credential is not active", 400);
+    }
+    if (resource.credential.credentialType !== "openai_refresh_token") {
+      throw new AppError("resource_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
+    }
+    if (!env.API_KEY_ENCRYPTION_SECRET) {
+      throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before reading resource credentials", 500);
+    }
+
+    let refreshToken: string;
+    try {
+      refreshToken = decryptSupplierResourceCredential(resource.credential.encryptedValue, env.API_KEY_ENCRYPTION_SECRET);
+    } catch {
+      throw new AppError("resource_credential_decrypt_failed", "Supplier resource credential could not be decrypted", 500);
+    }
+
+    const result = await sub2Client.applyOpenAiRefreshToken(accountId, {
+      refreshToken,
+      clientId: input.clientId,
+      proxyId: input.proxyId
+    });
+    const credentialSummary = resourceCredentialAuditPayload(resource.credential);
+    await writeAuditLog(request, actor.id, "admin.resource.credential_apply_sub2", "supplier_resource", id, {
+      sub2AccountId: resource.sub2AccountId,
+      credential: credentialSummary
+    }, {
+      sub2AccountId: resource.sub2AccountId,
+      accountId,
+      credential: credentialSummary,
+      ok: result.ok,
+      refreshed: result.refreshed,
+      applied: result.applied,
+      error: result.error
+    });
+    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result });
+  });
+
   app.post("/api/admin/resources/:id/test", async (request, reply) => {
     const actor = await requireRole(request, ["operator", "admin"]);
     const { id } = request.params as { id: string };
@@ -2132,15 +2199,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       select: { id: true, status: true, sub2AccountId: true, lastCheckedAt: true }
     });
     if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
-    if (!before.sub2AccountId) {
-      throw new AppError("resource_sub2_account_missing", "Supplier resource does not have a Sub2 account id", 400);
-    }
-
-    const accountId = Number.parseInt(before.sub2AccountId, 10);
-    if (!Number.isFinite(accountId) || String(accountId) !== before.sub2AccountId.trim()) {
-      throw new AppError("resource_sub2_account_invalid", "Supplier resource Sub2 account id must be numeric", 400);
-    }
-
+    const accountId = parseResourceSub2AccountId(before.sub2AccountId);
     const result = await sub2Client.testAccount(accountId);
     const nextStatus = statusAfterResourceTest(before.status, result.ok);
     const resource = await prisma.supplierResource.update({
@@ -5290,6 +5349,33 @@ function resourceConfigAuditPayload(resource: {
     dailyCap: resource.dailyCap === null ? null : String(resource.dailyCap),
     sub2AccountId: resource.sub2AccountId,
     lastCheckedAt: resource.lastCheckedAt instanceof Date ? resource.lastCheckedAt.toISOString() : resource.lastCheckedAt ?? null
+  };
+}
+
+function parseResourceSub2AccountId(value: string | null | undefined) {
+  if (!value) {
+    throw new AppError("resource_sub2_account_missing", "Supplier resource does not have a Sub2 account id", 400);
+  }
+
+  const normalized = value.trim();
+  const accountId = Number.parseInt(normalized, 10);
+  if (!Number.isFinite(accountId) || String(accountId) !== normalized) {
+    throw new AppError("resource_sub2_account_invalid", "Supplier resource Sub2 account id must be numeric", 400);
+  }
+
+  return accountId;
+}
+
+function resourceCredentialAuditPayload(credential: ResourceCredentialSummary | ResourceCredentialPrivate) {
+  return {
+    id: credential.id,
+    credentialType: credential.credentialType,
+    encryptionVersion: credential.encryptionVersion,
+    keyFingerprint: credential.keyFingerprint,
+    status: credential.status,
+    lastRotatedAt: credential.lastRotatedAt instanceof Date ? credential.lastRotatedAt.toISOString() : credential.lastRotatedAt,
+    createdAt: credential.createdAt instanceof Date ? credential.createdAt.toISOString() : credential.createdAt,
+    updatedAt: credential.updatedAt instanceof Date ? credential.updatedAt.toISOString() : credential.updatedAt
   };
 }
 

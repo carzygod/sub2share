@@ -19,6 +19,7 @@
 - 管理员接口：
   - `PUT /api/admin/resources/:id/credential`
   - `DELETE /api/admin/resources/:id/credential`
+  - `POST /api/admin/resources/:id/apply-credential-to-sub2`
 - 后台资源列表、资源详情和 CSV 导出只展示凭据摘要：
   - 类型
   - 状态
@@ -33,9 +34,14 @@
 - 管理员可以在共享资源详情中登记、轮换或删除资源接入凭据。
 - 后台可以判断某个共享资源是否已经登记凭据，而不会泄露凭据明文。
 - 凭据变更会进入审计日志，便于追踪资源接入方式的维护记录。
+- 对 `openai_refresh_token` 类型凭据，管理员可以直接从资源详情应用到绑定的 Sub2 OpenAI 上游账号。
 
 ## 边界
 
-- 当前能力负责安全保存和管理凭据，不会自动把凭据应用到 Sub2API 上游账号。
+- 当前能力默认只负责安全保存和管理凭据；需要管理员显式点击“应用到 Sub2”才会把 `openai_refresh_token` 转发给 Sub2API。
 - 已保存凭据不会通过任何后台响应回显明文。
-- 若需要读取密文用于自动上游开通或刷新，应在专门任务中解密，并确保日志、错误和响应继续脱敏。
+- 凭据应用到 Sub2 时只在请求处理中临时解密，日志、错误和响应继续脱敏。
+
+## 关联文档
+
+- `docs/supplier-resource-credential-sub2-apply.md`
