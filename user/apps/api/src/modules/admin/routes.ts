@@ -19,8 +19,9 @@ import { inspectOAuthStateStoreReadiness } from "../auth/oauth-state-store.js";
 import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
+import { encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
 
-const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash"]);
+const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash", "encryptedValue"]);
 const userRoles = ["buyer", "supplier", "operator", "admin"] as const;
 const userStatuses = ["active", "disabled", "banned"] as const;
 const orderStatuses = ["pending", "paid", "provisioning", "active", "failed", "refunding", "refunded", "expired", "cancelled", "closed"] as const;
@@ -33,6 +34,8 @@ const apiKeyStatuses = ["active", "inactive"] as const;
 const supplierStatuses = ["pending", "active", "paused", "disabled"] as const;
 const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"] as const;
 const resourceLevels = ["L0", "L1", "L2", "L3", "L4"] as const;
+const resourceCredentialTypes = ["openai_refresh_token", "openai_api_key", "custom"] as const;
+const resourceCredentialStatuses = ["active", "rotated", "disabled"] as const;
 type ResourceStatus = (typeof resourceStatuses)[number];
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
@@ -61,6 +64,17 @@ const listQuerySchema = z.object({
 });
 
 type ListQuery = z.infer<typeof listQuerySchema>;
+
+const resourceCredentialSummarySelect = {
+  id: true,
+  credentialType: true,
+  encryptionVersion: true,
+  keyFingerprint: true,
+  status: true,
+  lastRotatedAt: true,
+  createdAt: true,
+  updatedAt: true
+} satisfies Prisma.SupplierResourceCredentialSelect;
 
 interface BillingReconciliationIssue {
   id: string;
@@ -309,6 +323,12 @@ const createResourceSchema = z.object({
   reserveRatio: z.coerce.number().min(0).max(1).default(0.2),
   dailyCap: z.coerce.number().positive().optional(),
   sub2AccountId: z.string().trim().min(1).optional()
+});
+
+const upsertResourceCredentialSchema = z.object({
+  credentialType: z.enum(resourceCredentialTypes),
+  status: z.enum(resourceCredentialStatuses).default("active"),
+  secret: z.string().trim().min(8).max(20_000)
 });
 
 const updateSupplierSchema = z.object({
@@ -1906,7 +1926,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const [resources, total] = await Promise.all([
       prisma.supplierResource.findMany({
         where,
-        include: { supplier: { include: { user: true } } },
+        include: {
+          supplier: { include: { user: true } },
+          credential: { select: resourceCredentialSummarySelect }
+        },
         orderBy: { createdAt: "desc" },
         ...pageArgs(query)
       }),
@@ -1944,7 +1967,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           dailyCap: input.dailyCap === undefined ? undefined : new Prisma.Decimal(input.dailyCap),
           sub2AccountId: input.sub2AccountId
         },
-        include: { supplier: { include: { user: true } } }
+        include: {
+          supplier: { include: { user: true } },
+          credential: { select: resourceCredentialSummarySelect }
+        }
       });
     });
     await writeAuditLog(request, actor.id, "admin.resource.create", "supplier_resource", resource.id, null, {
@@ -1965,6 +1991,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       where: { id },
       include: {
         supplier: { include: { user: { include: { roles: true } } } },
+        credential: { select: resourceCredentialSummarySelect },
         usages: {
           include: { rental: { include: { user: true, product: true } } },
           orderBy: { occurredAt: "desc" },
@@ -2026,10 +2053,75 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const resource = await prisma.supplierResource.update({
       where: { id },
       data,
-      include: { supplier: { include: { user: true } } }
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     await writeAuditLog(request, actor.id, "admin.resource.update", "supplier_resource", id, resourceConfigAuditPayload(before), resourceConfigAuditPayload(resource));
     return adminOk(reply, resource);
+  });
+
+  app.put("/api/admin/resources/:id/credential", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = upsertResourceCredentialSchema.parse(request.body);
+    const resource = await prisma.supplierResource.findUnique({
+      where: { id },
+      select: { id: true }
+    });
+    if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    if (!env.API_KEY_ENCRYPTION_SECRET) {
+      throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
+    }
+
+    const before = await prisma.supplierResourceCredential.findUnique({
+      where: { supplierResourceId: id },
+      select: resourceCredentialSummarySelect
+    });
+    const encrypted = encryptSupplierResourceCredential(input.secret, env.API_KEY_ENCRYPTION_SECRET);
+    const credential = await prisma.supplierResourceCredential.upsert({
+      where: { supplierResourceId: id },
+      update: {
+        credentialType: input.credentialType,
+        encryptedValue: encrypted.encryptedValue,
+        encryptionVersion: encrypted.encryptionVersion,
+        keyFingerprint: encrypted.keyFingerprint,
+        status: input.status,
+        lastRotatedAt: new Date()
+      },
+      create: {
+        supplierResourceId: id,
+        credentialType: input.credentialType,
+        encryptedValue: encrypted.encryptedValue,
+        encryptionVersion: encrypted.encryptionVersion,
+        keyFingerprint: encrypted.keyFingerprint,
+        status: input.status
+      },
+      select: resourceCredentialSummarySelect
+    });
+    await writeAuditLog(request, actor.id, "admin.resource.credential_upsert", "supplier_resource", id, before, credential);
+    return adminOk(reply, { credential });
+  });
+
+  app.delete("/api/admin/resources/:id/credential", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const resource = await prisma.supplierResource.findUnique({
+      where: { id },
+      select: { id: true }
+    });
+    if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+
+    const before = await prisma.supplierResourceCredential.findUnique({
+      where: { supplierResourceId: id },
+      select: resourceCredentialSummarySelect
+    });
+    const deleted = await prisma.supplierResourceCredential.deleteMany({
+      where: { supplierResourceId: id }
+    });
+    await writeAuditLog(request, actor.id, "admin.resource.credential_delete", "supplier_resource", id, before, null);
+    return adminOk(reply, { deleted: deleted.count, credential: null });
   });
 
   app.post("/api/admin/resources/:id/test", async (request, reply) => {
@@ -2057,7 +2149,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         status: nextStatus,
         lastCheckedAt: new Date()
       },
-      include: { supplier: { include: { user: true } } }
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     await writeAuditLog(request, actor.id, "admin.resource.test", "supplier_resource", id, before, {
       status: resource.status,
@@ -2087,7 +2182,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const resource = await prisma.supplierResource.update({
       where: { id },
       data,
-      include: { supplier: { include: { user: true } } }
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     await writeAuditLog(request, actor.id, "admin.resource.status", "supplier_resource", id, before, {
       status: resource.status,
@@ -2804,6 +2902,7 @@ async function buildSystemHealthReport() {
         : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常",
       { ...resourcesByStatus, onlineCodexResources }
     ),
+    resourceCredentialConfigHealthCheck(),
     systemHealthCheck(
       "sub2",
       "Sub2/OpenAI 上游",
@@ -2832,7 +2931,7 @@ async function buildSystemHealthReport() {
         ? "error"
         : openAiProxyRuntime.issues.length > 0 ? "warning" : "ok",
       openAiProxyRuntime.issues.length > 0
-        ? "OpenAI/Codex 本地限流器仍是进程内运行态"
+        ? `${openAiProxyRuntime.issues.length} 个 OpenAI/Codex 反代运行态问题`
         : `当前进程 ${openAiProxyRuntime.summary.activeConcurrencyLeases} 个并发租约，${openAiProxyRuntime.summary.activeRateWindowRentals} 个速率窗口`,
       { ...openAiProxyRuntime.summary },
       openAiProxyRuntime.issues.length > 0 ? { issues: openAiProxyRuntime.issues } : undefined
@@ -4344,6 +4443,31 @@ function authTokenConfigHealthCheck() {
     result.ok ? "Authentication token configuration is production-ready" : `${result.issues.length} authentication token configuration issue(s)`,
     result.summary,
     result.issues.length > 0 ? { issues: result.issues } : undefined
+  );
+}
+
+function resourceCredentialConfigHealthCheck() {
+  const configured = Boolean(env.API_KEY_ENCRYPTION_SECRET);
+  const issues = configured ? [] : [
+    {
+      id: "resource-credential-encryption-secret-missing",
+      type: "api_key_encryption_secret_missing",
+      severity: env.NODE_ENV === "production" ? "error" as const : "warning" as const,
+      refId: "API_KEY_ENCRYPTION_SECRET",
+      message: "API_KEY_ENCRYPTION_SECRET must be configured before storing supplier resource credentials"
+    }
+  ];
+
+  return systemHealthCheck(
+    "resourceCredentials",
+    "资源凭据",
+    issues.some((issue) => issue.severity === "error") ? "error" : issues.length > 0 ? "warning" : "ok",
+    configured ? "共享资源凭据加密配置正常" : "共享资源凭据加密密钥未配置",
+    {
+      encryptionSecretConfigured: configured,
+      encryptionVersion: "aes-256-gcm:v1"
+    },
+    issues.length > 0 ? { issues } : undefined
   );
 }
 

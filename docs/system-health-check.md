@@ -33,6 +33,7 @@
 - Auth Tokens：检查 access/refresh token 有效期配置，以及生产环境是否使用独立的 `JWT_REFRESH_SECRET`。
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error。
 - 共享资源：检查异常资源和 online Codex 资源数量。
+- 资源凭据：检查 `API_KEY_ENCRYPTION_SECRET` 是否已配置；生产环境缺失会标记 error。
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况。
 - OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露 `x-proxy-request-id`、本地错误类型是否符合 OpenAI 风格分类。
 - OpenAI 反代运行态：统计当前 limiter store、共享作用域、Redis 可达性、活跃并发租约和 RPM/TPM 速率窗口；生产环境显式使用 memory 限流器标记 warning，Redis 不可达标记 error。
@@ -73,6 +74,7 @@
 - Pending 用量账务巡检只读，不自动扣费；真正的恢复扣费仍由 Sub2 usage 同步任务执行。
 - OAuth State 巡检只判断 state 存储模式和 Redis 连通性，不会发起真实第三方 OAuth 登录。
 - Auth Tokens 巡检只检查环境配置，不解码真实用户 token，也不会撤销既有 token。
+- 资源凭据巡检只检查加密密钥配置，不解密或读取真实共享资源凭据。
 - 支付充值巡检只判断当前后端充值模式是否可用或存在明显风险，不等同于真实支付渠道的全链路验收。
 - 巡检结果用于帮助管理员定位方向，具体修复仍通过订单、租赁、余额、资源、反代状态、反代请求、账务对账、结算和提现等页面执行。
 - 客户端中途断开通常标记为 warning，用于提示长流式请求或客户端取消较多；上游流错误、异常关闭或空闲超时会标记为 error，提示 Sub2API 或上游连接链路需要复查。

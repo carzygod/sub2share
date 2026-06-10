@@ -466,6 +466,7 @@ interface ResourceRow {
   lastCheckedAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  credential?: ResourceCredentialRow | null;
   supplier?: {
     id: string;
     displayName?: string | null;
@@ -473,6 +474,17 @@ interface ResourceRow {
     defaultShareRate?: string;
     user?: UserRow;
   };
+}
+
+interface ResourceCredentialRow {
+  id: string;
+  credentialType: string;
+  encryptionVersion?: string;
+  keyFingerprint: string;
+  status: string;
+  lastRotatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface WithdrawalRow {
@@ -834,6 +846,8 @@ const withdrawalStatusOptions = ["pending", "approved", "rejected", "paid", "can
 const walletTransactionTypeOptions = ["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"];
 const proxyStatusOptions = ["200", "400", "401", "402", "403", "404", "408", "429", "500", "502", "503", "504"];
 const resourceTypeOptions = ["codex", "claude_code", "gemini", "antigravity"];
+const resourceCredentialTypeOptions = ["openai_refresh_token", "openai_api_key", "custom"];
+const resourceCredentialStatusOptions = ["active", "rotated", "disabled"];
 
 function App() {
   const [view, setView] = useState<View>("dashboard");
@@ -1640,6 +1654,34 @@ function App() {
     await openResourceDetail(resource.id);
   }
 
+  async function upsertResourceCredential(event: FormEvent<HTMLFormElement>, resourceId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    if (!confirmAdminAction("确认保存共享资源凭据？", `资源 ID：${resourceId}\n类型：${form.get("credentialType")}\n状态：${form.get("status")}`)) return;
+    await api(`/api/admin/resources/${resourceId}/credential`, {
+      method: "PUT",
+      body: JSON.stringify({
+        credentialType: form.get("credentialType"),
+        status: form.get("status"),
+        secret: form.get("secret")
+      })
+    });
+    event.currentTarget.reset();
+    setMessage("共享资源凭据已加密保存");
+    await refresh("resources");
+    await openResourceDetail(resourceId);
+  }
+
+  async function deleteResourceCredential(resourceId: string) {
+    if (!confirmAdminAction("确认删除共享资源凭据？", `资源 ID：${resourceId}\n删除后后台不会保留该凭据密文。`)) return;
+    await api(`/api/admin/resources/${resourceId}/credential`, {
+      method: "DELETE"
+    });
+    setMessage("共享资源凭据已删除");
+    await refresh("resources");
+    await openResourceDetail(resourceId);
+  }
+
   async function updateSupplierConfig(event: FormEvent<HTMLFormElement>, supplierId: string) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -2031,6 +2073,8 @@ function App() {
             meta={listMeta.resources}
             onCreate={createResource}
             onUpdate={updateResourceConfig}
+            onCredential={upsertResourceCredential}
+            onDeleteCredential={deleteResourceCredential}
             onStatus={setResourceStatus}
             onTest={testResource}
             onDetail={openResourceDetail}
@@ -3781,11 +3825,13 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, on
   );
 }
 
-function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
+  onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
+  onDeleteCredential: (resourceId: string) => void;
   onStatus: (resourceId: string, status: ResourceStatus) => void;
   onTest: (resourceId: string) => void;
   onDetail: (resourceId: string) => void;
@@ -3825,7 +3871,7 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "分成 / 日限额", "Sub2 账号", "操作"]}>
+      <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "分成 / 日限额", "Sub2 / 凭据", "操作"]}>
         {resources.map((resource) => (
           <tr key={resource.id}>
             <td><strong>{resource.supplier?.user?.email ?? "-"}</strong><small>{resource.id}</small></td>
@@ -3833,7 +3879,7 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
             <td><StatusPill status={resource.status} /></td>
             <td>{resource.level}</td>
             <td><strong>{resource.shareRate ?? "-"}</strong><small>{resource.reserveRatio ?? "-"} / {money(resource.dailyCap)}</small></td>
-            <td>{resource.sub2AccountId ?? "-"}</td>
+            <td><strong>{resource.sub2AccountId ?? "-"}</strong><small>{resource.credential ? `${resource.credential.credentialType} / ${resource.credential.status}` : "无凭据"}</small></td>
             <td>
               <div className="row-actions">
                 <button className="secondary mini" onClick={() => onDetail(resource.id)}>详情</button>
@@ -3846,14 +3892,16 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
           </tr>
         ))}
       </TablePanel>
-      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onClose={onCloseDetail} />}
+      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onCredential={onCredential} onDeleteCredential={onDeleteCredential} onClose={onCloseDetail} />}
     </>
   );
 }
 
-function ResourceDetailPanel({ resource, onUpdate, onClose }: {
+function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredential, onClose }: {
   resource: ResourceDetailRow;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
+  onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
+  onDeleteCredential: (resourceId: string) => void;
   onClose: () => void;
 }) {
   const usages = resource.usages ?? [];
@@ -3878,6 +3926,7 @@ function ResourceDetailPanel({ resource, onUpdate, onClose }: {
         <div><span>供给方</span><strong>{resource.supplier?.user?.email ?? "-"}</strong></div>
         <div><span>等级 / 并发</span><strong>{resource.level} / {resource.maxConcurrency}</strong></div>
         <div><span>Sub2 账号</span><strong>{resource.sub2AccountId ?? "-"}</strong></div>
+        <div><span>接入凭据</span><strong>{resource.credential ? resource.credential.status : "未登记"}</strong></div>
         <div><span>分成 / 保留</span><strong>{resource.shareRate ?? "-"} / {resource.reserveRatio ?? "-"}</strong></div>
         <div><span>用量记录</span><strong>{usageCount}</strong></div>
         <div><span>买家计费</span><strong>{money(resource.usageSummary?._sum?.buyerCharge)}</strong></div>
@@ -3912,6 +3961,29 @@ function ResourceDetailPanel({ resource, onUpdate, onClose }: {
             <input name="sub2AccountId" defaultValue={resource.sub2AccountId ?? ""} placeholder="Sub2 账号 ID，留空清除" />
             <button>保存配置</button>
           </form>
+        </DetailBlock>
+
+        <DetailBlock title="接入凭据">
+          <MiniTable headers={["字段", "值"]}>
+            <tr><td>类型</td><td>{resource.credential?.credentialType ?? "-"}</td></tr>
+            <tr><td>状态</td><td>{resource.credential?.status ?? "-"}</td></tr>
+            <tr><td>指纹</td><td>{resource.credential?.keyFingerprint ?? "-"}</td></tr>
+            <tr><td>加密</td><td>{resource.credential?.encryptionVersion ?? "-"}</td></tr>
+            <tr><td>轮换时间</td><td>{dateTime(resource.credential?.lastRotatedAt)}</td></tr>
+          </MiniTable>
+          <form className="resource-config-form" onSubmit={(event) => onCredential(event, resource.id)}>
+            <select name="credentialType" defaultValue={resource.credential?.credentialType ?? "openai_refresh_token"} required>
+              {resourceCredentialTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
+            </select>
+            <select name="status" defaultValue={resource.credential?.status ?? "active"} required>
+              {resourceCredentialStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+            </select>
+            <input name="secret" type="password" minLength={8} placeholder="新凭据" autoComplete="off" required />
+            <button>保存凭据</button>
+          </form>
+          {resource.credential && (
+            <button className="danger mini" type="button" onClick={() => onDeleteCredential(resource.id)}>删除凭据</button>
+          )}
         </DetailBlock>
 
         <DetailBlock title="供给方">
@@ -4515,7 +4587,7 @@ function exportApiKeysCsv(rows: ApiKeyRow[], scope = "current-page") {
 }
 
 function exportResourcesCsv(rows: ResourceRow[], scope = "current-page") {
-  downloadCsv(`resources-${scope}`, ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "shareRate", "reserveRatio", "dailyCap", "sub2AccountId", "lastCheckedAt", "updatedAt"], rows.map((resource) => [
+  downloadCsv(`resources-${scope}`, ["id", "supplierEmail", "resourceType", "status", "level", "maxConcurrency", "shareRate", "reserveRatio", "dailyCap", "sub2AccountId", "credentialType", "credentialStatus", "credentialFingerprint", "lastCheckedAt", "updatedAt"], rows.map((resource) => [
     resource.id,
     resource.supplier?.user?.email,
     resource.resourceType,
@@ -4526,6 +4598,9 @@ function exportResourcesCsv(rows: ResourceRow[], scope = "current-page") {
     resource.reserveRatio,
     resource.dailyCap,
     resource.sub2AccountId,
+    resource.credential?.credentialType,
+    resource.credential?.status,
+    resource.credential?.keyFingerprint,
     resource.lastCheckedAt,
     resource.updatedAt
   ]));

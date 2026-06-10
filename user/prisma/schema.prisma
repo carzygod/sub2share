@@ -410,6 +410,22 @@ model SupplierResource {
   supplier    Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
   usages      UsageRecord[]
   settlements SettlementRecord[]
+  credential  SupplierResourceCredential?
+}
+
+model SupplierResourceCredential {
+  id                 String   @id @default(uuid())
+  supplierResourceId String   @unique
+  credentialType     String
+  encryptedValue     String
+  encryptionVersion  String   @default("aes-256-gcm:v1")
+  keyFingerprint     String
+  status             String   @default("active")
+  lastRotatedAt      DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  supplierResource SupplierResource @relation(fields: [supplierResourceId], references: [id], onDelete: Cascade)
 }
 
 model UsageRecord {
