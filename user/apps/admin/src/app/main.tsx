@@ -173,6 +173,15 @@ interface SystemHealthIssueRow {
   message: string;
   resourceId?: string;
   proxyRequestLookup?: string;
+  userId?: string;
+  orderId?: string;
+  rentalId?: string;
+  walletLookup?: string;
+  apiKeyLookup?: string;
+  usageLookup?: string;
+  productLookup?: string;
+  settlementLookup?: string;
+  withdrawalLookup?: string;
 }
 
 interface SystemHealthSampleRow {
@@ -1583,6 +1592,52 @@ function App() {
     }
   }
 
+  async function openFilteredListCandidate(listView: ManagedListView, lookup: string, message: string) {
+    const query = { ...defaultListQuery, q: lookup };
+    setListQueries((current) => ({ ...current, [listView]: query }));
+    await refresh(listView, query);
+    setMessage(message);
+  }
+
+  async function openUserCandidate(userId: string) {
+    await openFilteredListCandidate("users", userId, "已打开巡检关联用户");
+    await openUserDetail(userId);
+  }
+
+  async function openWalletCandidate(lookup: string) {
+    await openFilteredListCandidate("wallets", lookup, "已打开巡检关联余额账户");
+  }
+
+  async function openOrderCandidate(orderId: string) {
+    await openFilteredListCandidate("orders", orderId, "已打开巡检关联订单");
+    await openOrderDetail(orderId);
+  }
+
+  async function openRentalCandidate(rentalId: string) {
+    await openFilteredListCandidate("rentals", rentalId, "已打开巡检关联租赁");
+    await openRentalDetail(rentalId);
+  }
+
+  async function openApiKeyCandidate(lookup: string) {
+    await openFilteredListCandidate("apiKeys", lookup, "已打开巡检关联 API Key");
+  }
+
+  async function openUsageCandidate(lookup: string) {
+    await openFilteredListCandidate("usages", lookup, "已打开巡检关联用量");
+  }
+
+  async function openProductCandidate(lookup: string) {
+    await openFilteredListCandidate("products", lookup, "已打开巡检关联商品");
+  }
+
+  async function openSettlementCandidate(lookup: string) {
+    await openFilteredListCandidate("settlements", lookup, "已打开巡检关联结算");
+  }
+
+  async function openWithdrawalCandidate(lookup: string) {
+    await openFilteredListCandidate("withdrawals", lookup, "已打开巡检关联提现");
+  }
+
   async function cancelOrder(orderId: string) {
     const note = promptAdminNote("确认取消订单？", "admin cancelled order");
     if (note === null) return;
@@ -1616,18 +1671,12 @@ function App() {
   }
 
   async function openResourceCandidate(resourceId: string) {
-    const query = { ...defaultListQuery, q: resourceId };
-    setListQueries((current) => ({ ...current, resources: query }));
-    await refresh("resources", query);
+    await openFilteredListCandidate("resources", resourceId, "已打开巡检候选资源");
     await openResourceDetail(resourceId);
-    setMessage("已打开巡检候选资源");
   }
 
   async function openProxyRequestCandidate(lookup: string) {
-    const query = { ...defaultListQuery, q: lookup };
-    setListQueries((current) => ({ ...current, proxyRequests: query }));
-    await refresh("proxyRequests", query);
-    setMessage("已打开巡检关联反代请求");
+    await openFilteredListCandidate("proxyRequests", lookup, "已打开巡检关联反代请求");
   }
 
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
@@ -1929,6 +1978,15 @@ function App() {
             onRunMaintenance={runSystemMaintenance}
             onOpenResource={openResourceCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenUser={openUserCandidate}
+            onOpenWallet={openWalletCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenSettlement={openSettlementCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
           />
         )}
         {view === "systemHealthHistory" && (
@@ -2278,7 +2336,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2286,6 +2344,15 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onRunMaintenance: () => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenWallet: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
@@ -2351,11 +2418,20 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td><small>{issue.ref}</small></td>
             <td><small>{issue.message}</small></td>
             <td>
-              {issue.proxyRequestLookup
-                ? <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>
-                : issue.resourceId
-                ? <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>
-                : <small>-</small>}
+              <div className="row-actions">
+                {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
+                {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
+                {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
+                {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
+                {issue.userId && <button className="secondary mini" onClick={() => onOpenUser(issue.userId!)}>打开用户</button>}
+                {issue.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(issue.walletLookup!)}>打开余额</button>}
+                {issue.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(issue.apiKeyLookup!)}>打开 Key</button>}
+                {issue.usageLookup && <button className="secondary mini" onClick={() => onOpenUsage(issue.usageLookup!)}>打开用量</button>}
+                {issue.productLookup && <button className="secondary mini" onClick={() => onOpenProduct(issue.productLookup!)}>打开商品</button>}
+                {issue.settlementLookup && <button className="secondary mini" onClick={() => onOpenSettlement(issue.settlementLookup!)}>打开结算</button>}
+                {issue.withdrawalLookup && <button className="secondary mini" onClick={() => onOpenWithdrawal(issue.withdrawalLookup!)}>打开提现</button>}
+                {!systemHealthIssueHasAction(issue) && <small>-</small>}
+              </div>
             </td>
           </tr>
         ))}
@@ -4448,7 +4524,16 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       ref: systemHealthIssueRef(record),
       message: textValue(record.message) ?? compactJson(issue),
       resourceId: textValue(record.resourceId),
-      proxyRequestLookup: proxyRequestIssueLookup(record, check.id)
+      proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
+      userId: textValue(record.userId),
+      orderId: textValue(record.orderId),
+      rentalId: textValue(record.rentalId),
+      walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
+      apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
+      usageLookup: textValue(record.usageId),
+      productLookup: textValue(record.productId) ?? textValue(record.priceId),
+      settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
+      withdrawalLookup: textValue(record.withdrawalId)
     };
   });
 }
@@ -4470,7 +4555,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "userId", "bindingId", "sub2AccountId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4482,6 +4567,22 @@ function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string
   if (directLookup) return directLookup;
   if (checkId !== "proxy") return undefined;
   return textValue(issue.rentalId) ?? textValue(issue.apiKeyId) ?? textValue(issue.apiKeyPrefix);
+}
+
+function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
+  return Boolean(
+    issue.proxyRequestLookup
+    || issue.resourceId
+    || issue.orderId
+    || issue.rentalId
+    || issue.userId
+    || issue.walletLookup
+    || issue.apiKeyLookup
+    || issue.usageLookup
+    || issue.productLookup
+    || issue.settlementLookup
+    || issue.withdrawalLookup
+  );
 }
 
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {

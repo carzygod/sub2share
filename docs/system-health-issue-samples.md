@@ -17,9 +17,9 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`userId`、`bindingId`、`sub2AccountId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON。
-  - 操作：如果样本包含 `resourceId`，可直接打开共享资源详情；如果样本来自反代请求巡检并包含 `requestId`、日志 id、租赁 ID、Key ID 或 Key 前缀，可直接打开 `反代请求` 页面并带入筛选条件。
+  - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持资源、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
   - 检查项：检查项名称和 ID。
   - 对象：复用问题样本的定位字段拼接规则。
@@ -36,7 +36,7 @@
 - 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
-- 管理员可以从反代问题样本一键进入反代请求列表，减少在可用性巡检和日志页之间手动复制 request id 的时间。
+- 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。
 
 ## 验收方式
 
