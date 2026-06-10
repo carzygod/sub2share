@@ -352,6 +352,7 @@ const systemMaintenanceSchema = z.object({
   deactivateInvalidProxyApiKeysLimit: z.coerce.number().int().min(1).max(1000).default(500),
   releaseAvailableSettlements: z.boolean().default(true),
   releaseAvailableSettlementsLimit: z.coerce.number().int().min(1).max(1000).default(500),
+  syncSub2Usage: z.boolean().default(true),
   repairSub2Bindings: z.boolean().default(true),
   cleanupSmokeData: z.boolean().default(true),
   cleanupSmokeDataAgeMinutes: z.coerce.number().int().min(5).max(1440).default(30),
@@ -2931,6 +2932,10 @@ async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchem
     });
   }
 
+  if (input.syncSub2Usage) {
+    actions.syncSub2Usage = await runMaintenanceUsageSync();
+  }
+
   if (input.repairSub2Bindings) {
     actions.repairSub2Bindings = await repairSub2Bindings();
   }
@@ -2949,6 +2954,21 @@ async function runSystemMaintenance(input: z.infer<typeof systemMaintenanceSchem
     actions,
     health
   };
+}
+
+async function runMaintenanceUsageSync() {
+  try {
+    const result = await syncSub2UsageOnce(undefined, { persistCursor: true });
+    return {
+      ok: true,
+      ...result
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error)).slice(0, 500)
+    };
+  }
 }
 
 async function findBillingReconciliationIssues() {

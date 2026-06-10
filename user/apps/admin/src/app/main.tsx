@@ -228,6 +228,17 @@ interface SystemMaintenanceResult {
       released: number;
       amountMatched: string;
     };
+    syncSub2Usage?: {
+      ok: boolean;
+      imported?: number;
+      recovered?: number;
+      skipped?: number;
+      unmatched?: number;
+      nextCursor?: string;
+      cursorOut?: string;
+      runId?: string;
+      error?: string;
+    };
     repairSub2Bindings?: {
       rentalsScanned: number;
       userBindingsUpserted: number;
@@ -1423,7 +1434,7 @@ function App() {
   }
 
   async function runSystemMaintenance() {
-    if (!confirmAdminAction("确认运行系统维护？", "系统会批量处理过期租赁、停用确定不可用的反代 Key、释放结算、修复绑定并清理过期自检数据。")) return;
+    if (!confirmAdminAction("确认运行系统维护？", "系统会批量处理过期租赁、停用确定不可用的反代 Key、释放结算、同步 Sub2 用量、修复绑定并清理过期自检数据。")) return;
     const result = await api<SystemMaintenanceResult>("/api/admin/system-maintenance/run", {
       method: "POST",
       body: JSON.stringify({})
@@ -1438,7 +1449,9 @@ function App() {
     const repaired = (result.actions.repairSub2Bindings?.userBindingsUpserted ?? 0)
       + (result.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0);
     const smokeCleaned = result.actions.cleanupSmokeData?.rentalsClosed ?? 0;
-    setMessage(`Maintenance done: expired ${expired}, deactivated keys ${deactivatedKeys}, released ${released}, repaired bindings ${repaired}, cleaned smoke ${smokeCleaned}`);
+    const usageSync = result.actions.syncSub2Usage;
+    const usageText = usageSync ? usageSync.ok ? `usage imported ${usageSync.imported ?? 0}, recovered ${usageSync.recovered ?? 0}` : "usage sync failed" : "usage sync skipped";
+    setMessage(`Maintenance done: expired ${expired}, deactivated keys ${deactivatedKeys}, released ${released}, ${usageText}, repaired bindings ${repaired}, cleaned smoke ${smokeCleaned}`);
   }
 
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
@@ -2179,6 +2192,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <div><span>过期租赁</span><strong>{maintenance.actions.expireOverdueRentals?.expired ?? 0}</strong></div>
             <div><span>异常 Key</span><strong>{maintenance.actions.deactivateInvalidProxyApiKeys?.deactivated ?? 0}</strong></div>
             <div><span>释放结算</span><strong>{maintenance.actions.releaseAvailableSettlements?.released ?? 0}</strong></div>
+            <div><span>用量同步</span><strong>{maintenance.actions.syncSub2Usage ? maintenance.actions.syncSub2Usage.ok ? `${maintenance.actions.syncSub2Usage.imported ?? 0}/${maintenance.actions.syncSub2Usage.recovered ?? 0}` : "失败" : "-"}</strong></div>
             <div><span>修复绑定</span><strong>{(maintenance.actions.repairSub2Bindings?.userBindingsUpserted ?? 0) + (maintenance.actions.repairSub2Bindings?.apiKeyBindingsUpserted ?? 0)}</strong></div>
             <div><span>清理自检</span><strong>{maintenance.actions.cleanupSmokeData?.rentalsClosed ?? 0}</strong></div>
             <div><span>自检 Key</span><strong>{maintenance.actions.cleanupSmokeData ? `${maintenance.actions.cleanupSmokeData.sub2KeysDisabled}/${maintenance.actions.cleanupSmokeData.sub2KeysDisableAttempted}` : "-"}</strong></div>
