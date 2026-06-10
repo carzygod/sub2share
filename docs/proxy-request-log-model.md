@@ -27,6 +27,7 @@ user/prisma/migrations/0014_proxy_request_log_model/migration.sql
 - 管理员 `GET /api/admin/proxy-requests` 搜索支持按模型名匹配。
 - Admin 订单详情、租赁详情和全局 `反代请求` 列表展示模型。
 - `反代请求` CSV 导出新增 `model` 列。
+- `可用性巡检` 的反代请求异常样本携带模型，并在对象摘要和说明中展示。
 - 新增自动化测试覆盖模型提取边界。
 
 ## 管理员价值

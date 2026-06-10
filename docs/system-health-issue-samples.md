@@ -17,7 +17,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON。
   - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持资源、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
@@ -33,7 +33,7 @@
 - OpenAI 反代契约巡检发现 endpoint、CORS 或错误类型问题时，管理员可以在同一页看到具体契约问题。
 - 用量同步调度巡检发现生产环境禁用自动同步、间隔过长或启动后不立即同步时，管理员可以直接看到配置风险。
 - Pending 用量账务巡检发现待恢复扣费 usage 时，管理员可以直接看到 usage、租赁、用户、待扣金额、待结算金额和积压时长。
-- 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、路径、耗时和关联租赁/Key。
+- 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、模型、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
 - 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。

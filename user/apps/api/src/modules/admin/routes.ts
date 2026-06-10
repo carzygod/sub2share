@@ -3236,6 +3236,7 @@ async function buildSystemHealthReport() {
         apiKeyPrefix: true,
         method: true,
         path: true,
+        model: true,
         statusCode: true,
         upstreamStatusCode: true,
         errorCode: true,
@@ -3419,8 +3420,9 @@ async function buildSystemHealthReport() {
           statusCode: log.statusCode,
           upstreamStatusCode: log.upstreamStatusCode,
           errorCode: log.errorCode,
+          model: log.model,
           path: log.path,
-          message: `${log.method} ${log.path} / HTTP ${log.statusCode ?? "-"} / upstream ${log.upstreamStatusCode ?? "-"} / ${log.errorCode ?? "-"} / ${log.durationMs}ms`,
+          message: `${log.method} ${log.path} / model ${log.model ?? "-"} / HTTP ${log.statusCode ?? "-"} / upstream ${log.upstreamStatusCode ?? "-"} / ${log.errorCode ?? "-"} / ${log.durationMs}ms`,
           createdAt: log.createdAt.toISOString()
         }))
       } : undefined
