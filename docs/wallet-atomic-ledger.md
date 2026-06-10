@@ -35,3 +35,9 @@ totalSpent increment amount
 ## 可用性结论
 
 该能力强化了 `WALLET-002` 和 `WALLET-003`：钱包扣费不再依赖旧读数覆盖写回，余额不可负和流水 `balanceAfter` 的可信度更高，订单、用量、余额和售出情况更容易对账。
+
+## Pending Usage 恢复
+
+当 Sub2 usage 因余额不足进入 `pending` 后，后续同步遇到同一 `sub2RequestId` 会重新尝试扣费，而不是直接跳过。扣费成功后会补齐 `consume` 钱包流水、更新 usage 为 `billed`，并按 usage 维度补齐供应商结算。
+
+数据库层新增 usage 扣费流水唯一索引，确保同一条 usage 不会因为重复同步或并发同步被重复扣款。详见 `docs/pending-usage-recovery.md`。

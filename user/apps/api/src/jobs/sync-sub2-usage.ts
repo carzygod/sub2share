@@ -18,6 +18,17 @@ interface BillingRule {
   tierMultiplier: Prisma.Decimal;
 }
 
+type UsageSyncRecordStatus = "imported" | "recovered" | "skipped" | "unmatched";
+
+interface BillableUsage {
+  id: string;
+  rentalId: string;
+  userId: string;
+  supplierResourceId: string | null;
+  buyerCharge: Prisma.Decimal;
+  supplierIncome: Prisma.Decimal;
+}
+
 export async function syncSub2UsageOnce(cursor?: string, options: SyncSub2UsageOptions = {}) {
   if (options.persistCursor) {
     return syncSub2UsageWithState(cursor);
@@ -122,18 +133,29 @@ async function syncSub2UsageWithState(cursor?: string) {
 async function syncSub2UsageFromCursor(cursor?: string) {
   const result = await sub2Client.fetchUsageSince(cursor);
   let imported = 0;
+  let recovered = 0;
   let skipped = 0;
   let unmatched = 0;
   for (const record of result.records) {
     const status = await upsertUsage(record);
     if (status === "imported") imported += 1;
+    if (status === "recovered") {
+      imported += 1;
+      recovered += 1;
+    }
     if (status === "skipped") skipped += 1;
     if (status === "unmatched") unmatched += 1;
   }
-  return { imported, skipped, unmatched, nextCursor: result.nextCursor };
+  return { imported, recovered, skipped, unmatched, nextCursor: result.nextCursor };
 }
 
-async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipped" | "unmatched"> {
+async function upsertUsage(record: Sub2UsageRecord): Promise<UsageSyncRecordStatus> {
+  const existingUsage = await prisma.usageRecord.findUnique({
+    where: { sub2RequestId: record.id },
+    select: { id: true }
+  });
+  if (existingUsage) return recoverExistingUsage(record.id);
+
   const rental = await findRentalForUsage(record.apiKeyId);
   if (!rental) return "unmatched";
 
@@ -152,9 +174,21 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
     return await prisma.$transaction(async (tx) => {
       const existing = await tx.usageRecord.findUnique({
         where: { sub2RequestId: record.id },
-        select: { id: true }
+        select: {
+          id: true,
+          rentalId: true,
+          userId: true,
+          supplierResourceId: true,
+          buyerCharge: true,
+          supplierIncome: true,
+          status: true
+        }
       });
-      if (existing) return "skipped";
+      if (existing) {
+        if (existing.status !== "pending" || existing.buyerCharge.lte(0)) return "skipped";
+        const billing = await billUsage(tx, existing, "sub2 usage billing pending recovery");
+        return billing === "billed" ? "recovered" : "skipped";
+      }
 
       const usage = await tx.usageRecord.create({
         data: {
@@ -179,51 +213,12 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
         : await updateRentalLimitsAfterUsage(tx, rental.id, buyerCharge);
 
       if (!isSmokeUsage && buyerCharge.gt(0)) {
-        const debit = await tx.walletAccount.updateMany({
-          where: {
-            userId: rental.userId,
-            availableBalance: { gte: buyerCharge }
-          },
-          data: {
-            availableBalance: { decrement: buyerCharge },
-            totalSpent: { increment: buyerCharge }
-          }
-        });
-        if (debit.count !== 1) {
-          await tx.rental.update({ where: { id: rental.id }, data: { status: "low_balance" } });
-          return "imported";
-        }
-
-        const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: rental.userId } });
-        await tx.walletTransaction.create({
-          data: {
-            walletId: wallet.id,
-            type: "consume",
-            amount: buyerCharge,
-            balanceAfter: wallet.availableBalance,
-            refType: "usage",
-            refId: usage.id,
-            note: billingNote(billingRule)
-          }
-        });
-        await tx.usageRecord.update({ where: { id: usage.id }, data: { status: "billed" } });
+        const billing = await billUsage(tx, usage, billingNote(billingRule));
+        if (billing !== "billed") return "imported";
       }
 
       if (!isSmokeUsage && limitStatus.exhausted) {
         await tx.rental.update({ where: { id: rental.id }, data: { status: "limited" } });
-      }
-
-      if (!isSmokeUsage && supplierResource && supplierIncome.gt(0)) {
-        await tx.settlementRecord.create({
-          data: {
-            supplierResourceId: supplierResource.id,
-            usageRecordId: usage.id,
-            amount: supplierIncome,
-            shareRate,
-            status: "pending",
-            availableAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
-          }
-        });
       }
 
       return "imported";
@@ -233,6 +228,127 @@ async function upsertUsage(record: Sub2UsageRecord): Promise<"imported" | "skipp
       return "skipped";
     }
     throw error;
+  }
+}
+
+async function recoverExistingUsage(sub2RequestId: string): Promise<UsageSyncRecordStatus> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.usageRecord.findUnique({
+        where: { sub2RequestId },
+        select: {
+          id: true,
+          rentalId: true,
+          userId: true,
+          supplierResourceId: true,
+          buyerCharge: true,
+          supplierIncome: true,
+          status: true
+        }
+      });
+      if (!existing || existing.status !== "pending" || existing.buyerCharge.lte(0)) return "skipped";
+
+      const billing = await billUsage(tx, existing, "sub2 usage billing pending recovery");
+      return billing === "billed" ? "recovered" : "skipped";
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return "skipped";
+    }
+    throw error;
+  }
+}
+
+async function billUsage(tx: Prisma.TransactionClient, usage: BillableUsage, note: string) {
+  const existingTransaction = await tx.walletTransaction.findFirst({
+    where: {
+      type: "consume",
+      refType: "usage",
+      refId: usage.id
+    },
+    select: { id: true }
+  });
+
+  if (!existingTransaction) {
+    const debit = await tx.walletAccount.updateMany({
+      where: {
+        userId: usage.userId,
+        availableBalance: { gte: usage.buyerCharge }
+      },
+      data: {
+        availableBalance: { decrement: usage.buyerCharge },
+        totalSpent: { increment: usage.buyerCharge }
+      }
+    });
+    if (debit.count !== 1) {
+      await tx.rental.update({ where: { id: usage.rentalId }, data: { status: "low_balance" } });
+      return "pending" as const;
+    }
+
+    const wallet = await tx.walletAccount.findUniqueOrThrow({ where: { userId: usage.userId } });
+    await tx.walletTransaction.create({
+      data: {
+        walletId: wallet.id,
+        type: "consume",
+        amount: usage.buyerCharge,
+        balanceAfter: wallet.availableBalance,
+        refType: "usage",
+        refId: usage.id,
+        note
+      }
+    });
+  }
+
+  await tx.usageRecord.update({ where: { id: usage.id }, data: { status: "billed" } });
+  await createUsageSettlement(tx, usage);
+  await updateRentalStatusAfterUsageBilling(tx, usage.rentalId);
+  return "billed" as const;
+}
+
+async function createUsageSettlement(tx: Prisma.TransactionClient, usage: BillableUsage) {
+  if (!usage.supplierResourceId || usage.supplierIncome.lte(0) || usage.buyerCharge.lte(0)) return;
+
+  const existingSettlement = await tx.settlementRecord.findFirst({
+    where: { usageRecordId: usage.id },
+    select: { id: true }
+  });
+  if (existingSettlement) return;
+
+  await tx.settlementRecord.create({
+    data: {
+      supplierResourceId: usage.supplierResourceId,
+      usageRecordId: usage.id,
+      amount: usage.supplierIncome,
+      shareRate: usage.supplierIncome.div(usage.buyerCharge),
+      status: "pending",
+      availableAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000)
+    }
+  });
+}
+
+async function updateRentalStatusAfterUsageBilling(tx: Prisma.TransactionClient, rentalId: string) {
+  const rental = await tx.rental.findUnique({
+    where: { id: rentalId },
+    select: { status: true }
+  });
+  if (!rental || rental.status !== "low_balance") return;
+
+  const pendingUsageCount = await tx.usageRecord.count({
+    where: {
+      rentalId,
+      status: "pending",
+      buyerCharge: { gt: 0 }
+    }
+  });
+  const exhausted = await isRentalLimitExhausted(tx, rentalId);
+
+  if (exhausted) {
+    await tx.rental.update({ where: { id: rentalId }, data: { status: "limited" } });
+    return;
+  }
+
+  if (pendingUsageCount === 0) {
+    await tx.rental.update({ where: { id: rentalId }, data: { status: "active" } });
   }
 }
 
@@ -374,4 +490,23 @@ async function updateRentalLimitsAfterUsage(
   }
 
   return { exhausted };
+}
+
+async function isRentalLimitExhausted(tx: Prisma.TransactionClient, rentalId: string) {
+  const limits = await tx.rentalLimit.findUnique({ where: { rentalId } });
+  if (!limits) return false;
+
+  if (limits.remainingSpend && limits.remainingSpend.lte(0)) return true;
+
+  if (limits.requestLimit) {
+    const usedRequests = await tx.usageRecord.count({
+      where: {
+        rentalId,
+        status: { in: ["pending", "billed", "disputed"] }
+      }
+    });
+    if (usedRequests >= limits.requestLimit) return true;
+  }
+
+  return false;
 }

@@ -1444,11 +1444,11 @@ function App() {
   async function syncSub2Usages(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const result = await api<{ imported: number; skipped: number; unmatched: number; nextCursor?: string; runId?: string; cursorOut?: string }>("/api/admin/usages/sync-sub2", {
+    const result = await api<{ imported: number; recovered?: number; skipped: number; unmatched: number; nextCursor?: string; runId?: string; cursorOut?: string }>("/api/admin/usages/sync-sub2", {
       method: "POST",
       body: JSON.stringify({ cursor: optionalFormString(form, "cursor") })
     });
-    setMessage(`Usage sync imported ${result.imported}, skipped ${result.skipped}, unmatched ${result.unmatched}${result.cursorOut ? ` / cursor ${result.cursorOut}` : ""}`);
+    setMessage(`Usage sync imported ${result.imported}, recovered ${result.recovered ?? 0}, skipped ${result.skipped}, unmatched ${result.unmatched}${result.cursorOut ? ` / cursor ${result.cursorOut}` : ""}`);
     await refresh("usages");
   }
 
