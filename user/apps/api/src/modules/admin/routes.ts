@@ -43,6 +43,8 @@ const systemHealthProductCatalogScanLimit = 200;
 const systemHealthProductCatalogIssueLimit = 50;
 const systemHealthSalesDeliveryScanLimit = 200;
 const systemHealthSalesDeliveryIssueLimit = 50;
+const systemHealthPendingUsageScanLimit = 200;
+const systemHealthPendingUsageIssueLimit = 50;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
 
@@ -122,6 +124,22 @@ interface ProductCatalogIssue {
   productId: string;
   productName: string;
   priceId?: string;
+  message: string;
+}
+
+interface PendingUsageBillingIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  usageId: string;
+  rentalId: string;
+  rentalStatus?: string | null;
+  userId: string;
+  userEmail?: string | null;
+  buyerCharge: string;
+  supplierIncome: string;
+  occurredAt: string;
+  ageMinutes: number;
   message: string;
 }
 
@@ -2644,6 +2662,7 @@ async function buildSystemHealthReport() {
     proxyRecentClientDisconnects,
     proxyRecentStreamErrors,
     billingSync,
+    pendingUsageBilling,
     reconciliation,
     sub2Bindings,
     apiKeyReadiness,
@@ -2674,6 +2693,7 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: "client_disconnected" } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed"] } } }),
     getSub2UsageSyncState(),
+    inspectPendingUsageBilling(checkedAt),
     findBillingReconciliationIssues(),
     findSub2BindingIssues(),
     inspectOpenAiProxyApiKeys(checkedAt),
@@ -2804,6 +2824,16 @@ async function buildSystemHealthReport() {
       { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors }
     ),
     billingSyncHealthCheck(billingSync, checkedAt),
+    systemHealthCheck(
+      "pendingUsageBilling",
+      "Pending 用量账务",
+      pendingUsageBilling.errors > 0 ? "error" : pendingUsageBilling.warnings > 0 ? "warning" : "ok",
+      pendingUsageBilling.errors > 0
+        ? `${pendingUsageBilling.errors} 条 pending usage 位于 active 租赁，需要立即复查`
+        : pendingUsageBilling.warnings > 0 ? `${pendingUsageBilling.warnings} 条 pending usage 等待余额恢复或重试同步` : "Pending usage 账务无积压",
+      pendingUsageBilling.summary,
+      pendingUsageBilling.issues.length > 0 ? { issues: pendingUsageBilling.issues } : undefined
+    ),
     systemHealthCheck(
       "reconciliation",
       "账务对账",
@@ -3341,6 +3371,133 @@ async function inspectSalesDeliveryReadiness() {
       truncated: matched > orders.length,
       returnedIssues: issues.length,
       ordersWithIssues: ordersWithIssues.size,
+      ...counters
+    },
+    issues
+  };
+}
+
+async function inspectPendingUsageBilling(checkedAt: Date) {
+  const where: Prisma.UsageRecordWhereInput = {
+    rental: nonSmokeRentalWhere(),
+    status: "pending",
+    buyerCharge: { gt: 0 }
+  };
+  const [summary, activePendingCount, lowBalancePendingCount, limitedPendingCount, usages] = await Promise.all([
+    prisma.usageRecord.aggregate({
+      where,
+      _count: true,
+      _sum: { buyerCharge: true, supplierIncome: true },
+      _min: { occurredAt: true }
+    }),
+    prisma.usageRecord.count({
+      where: {
+        ...where,
+        rental: { ...nonSmokeRentalWhere(), status: "active" }
+      }
+    }),
+    prisma.usageRecord.count({
+      where: {
+        ...where,
+        rental: { ...nonSmokeRentalWhere(), status: "low_balance" }
+      }
+    }),
+    prisma.usageRecord.count({
+      where: {
+        ...where,
+        rental: { ...nonSmokeRentalWhere(), status: "limited" }
+      }
+    }),
+    prisma.usageRecord.findMany({
+      where,
+      select: {
+        id: true,
+        rentalId: true,
+        userId: true,
+        buyerCharge: true,
+        supplierIncome: true,
+        occurredAt: true,
+        rental: { select: { status: true, user: { select: { email: true } } } }
+      },
+      orderBy: { occurredAt: "asc" },
+      take: systemHealthPendingUsageScanLimit
+    })
+  ]);
+
+  const issues: PendingUsageBillingIssue[] = [];
+  const counters = {
+    pendingUsages: summary._count,
+    pendingOnActiveRentals: activePendingCount,
+    pendingOnLowBalanceRentals: lowBalancePendingCount,
+    pendingOnLimitedRentals: limitedPendingCount,
+    pendingOnOtherRentals: Math.max(0, summary._count - activePendingCount - lowBalancePendingCount - limitedPendingCount)
+  };
+  const errors = counters.pendingOnActiveRentals;
+  const warnings = Math.max(0, counters.pendingUsages - counters.pendingOnActiveRentals);
+
+  const addIssue = (usage: (typeof usages)[number], type: string, severity: PendingUsageBillingIssue["severity"], message: string) => {
+    if (issues.length >= systemHealthPendingUsageIssueLimit) return;
+
+    const ageMinutes = Math.max(0, Math.floor((checkedAt.getTime() - usage.occurredAt.getTime()) / 60_000));
+    issues.push({
+      id: `${type}:${usage.id}`,
+      type,
+      severity,
+      usageId: usage.id,
+      rentalId: usage.rentalId,
+      rentalStatus: usage.rental?.status ?? null,
+      userId: usage.userId,
+      userEmail: usage.rental?.user.email ?? null,
+      buyerCharge: decimalText(usage.buyerCharge),
+      supplierIncome: decimalText(usage.supplierIncome),
+      occurredAt: usage.occurredAt.toISOString(),
+      ageMinutes,
+      message
+    });
+  };
+
+  for (const usage of usages) {
+    if (usage.rental?.status === "active") {
+      addIssue(
+        usage,
+        "pending_usage_on_active_rental",
+        "error",
+        `Usage ${usage.id} is pending while rental ${usage.rentalId} is still active.`
+      );
+      continue;
+    }
+
+    if (usage.rental?.status === "low_balance") {
+      addIssue(
+        usage,
+        "pending_usage_waiting_for_balance",
+        "warning",
+        `Usage ${usage.id} is pending because rental ${usage.rentalId} is low_balance.`
+      );
+      continue;
+    }
+
+    addIssue(
+      usage,
+      "pending_usage_on_inactive_rental",
+      "warning",
+      `Usage ${usage.id} is pending while rental ${usage.rentalId} is ${usage.rental?.status ?? "missing"}.`
+    );
+  }
+
+  return {
+    ok: errors === 0 && warnings === 0,
+    errors,
+    warnings,
+    summary: {
+      matched: summary._count,
+      scanned: usages.length,
+      truncated: summary._count > usages.length,
+      scanLimit: systemHealthPendingUsageScanLimit,
+      returnedIssues: issues.length,
+      totalBuyerCharge: decimalText(summary._sum.buyerCharge ?? new Prisma.Decimal(0)),
+      totalSupplierIncome: decimalText(summary._sum.supplierIncome ?? new Prisma.Decimal(0)),
+      oldestOccurredAt: summary._min.occurredAt?.toISOString() ?? null,
       ...counters
     },
     issues

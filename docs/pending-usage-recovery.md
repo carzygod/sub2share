@@ -35,3 +35,7 @@ user/prisma/migrations/0012_usage_billing_idempotency/migration.sql
 ## 可用性结论
 
 该能力补齐了按量商品零预付开通后的账务闭环：用户余额不足导致的 pending usage 不再只能人工处理，充值后下一次 Sub2 usage 同步即可尝试恢复扣费、恢复结算，并让管理员在同步结果中看到恢复数量。
+
+## 巡检配套
+
+系统可用性巡检已新增 `pendingUsageBilling` 检查项，用于统计仍处于 pending 的 usage 数量、金额、最早发生时间和问题样本。详见 `docs/pending-usage-health-check.md`。
