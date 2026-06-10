@@ -39,6 +39,8 @@ const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const systemHealthApiKeyScanLimit = 500;
 const systemHealthApiKeyIssueLimit = 50;
+const systemHealthSalesDeliveryScanLimit = 200;
+const systemHealthSalesDeliveryIssueLimit = 50;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
 
@@ -97,6 +99,17 @@ interface ApiKeyReadinessIssue {
   rentalId?: string | null;
   userId: string;
   keyPrefix: string;
+  message: string;
+}
+
+interface SalesDeliveryIssue {
+  id: string;
+  type: string;
+  severity: "error";
+  orderId: string;
+  userId: string;
+  userEmail?: string | null;
+  rentalId?: string;
   message: string;
 }
 
@@ -2605,7 +2618,8 @@ async function buildSystemHealthReport() {
     billingSync,
     reconciliation,
     sub2Bindings,
-    apiKeyReadiness
+    apiKeyReadiness,
+    salesDelivery
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -2633,7 +2647,8 @@ async function buildSystemHealthReport() {
     getSub2UsageSyncState(),
     findBillingReconciliationIssues(),
     findSub2BindingIssues(),
-    inspectOpenAiProxyApiKeys(checkedAt)
+    inspectOpenAiProxyApiKeys(checkedAt),
+    inspectSalesDeliveryReadiness()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
@@ -2664,6 +2679,16 @@ async function buildSystemHealthReport() {
       failedOrders > 0 ? "warning" : "ok",
       failedOrders > 0 ? `${failedOrders} 个订单需要人工复查` : "订单状态无明显阻断",
       ordersByStatus
+    ),
+    systemHealthCheck(
+      "salesDelivery",
+      "售出交付",
+      salesDelivery.errors > 0 ? "error" : "ok",
+      salesDelivery.errors > 0
+        ? `${salesDelivery.errors} 个售出交付问题`
+        : "应交付订单未发现交付阻断",
+      salesDelivery.summary,
+      { issues: salesDelivery.issues }
     ),
     systemHealthCheck(
       "rentals",
@@ -3149,6 +3174,135 @@ function buildOrderDeliverySummary(order: OrderDetailRecord, proxyRequestCount: 
       proxyRequestCount
     },
     checks
+  };
+}
+
+async function inspectSalesDeliveryReadiness() {
+  const where: Prisma.OrderWhereInput = {
+    ...nonSmokeOrderWhere(),
+    status: { in: ["paid", "provisioning", "active"] }
+  };
+  const [matched, orders] = await Promise.all([
+    prisma.order.count({ where }),
+    prisma.order.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        userId: true,
+        user: { select: { email: true } },
+        rentals: {
+          select: {
+            id: true,
+            status: true,
+            endpointUrl: true,
+            sub2KeyId: true,
+            apiKeys: { select: { id: true, status: true, keyPrefix: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: systemHealthSalesDeliveryScanLimit
+    })
+  ]);
+
+  const issues: SalesDeliveryIssue[] = [];
+  const ordersWithIssues = new Set<string>();
+  const counters = {
+    ordersWithoutRentals: 0,
+    activeOrdersWithoutActiveRentals: 0,
+    rentalsMissingEndpoint: 0,
+    rentalsMissingSub2Key: 0,
+    rentalsMissingActiveApiKey: 0
+  };
+  let errors = 0;
+
+  const addIssue = (input: Omit<SalesDeliveryIssue, "id" | "severity">) => {
+    errors += 1;
+    ordersWithIssues.add(input.orderId);
+    if (issues.length >= systemHealthSalesDeliveryIssueLimit) return;
+    issues.push({
+      id: `${input.type}:${input.orderId}:${input.rentalId ?? "order"}`,
+      severity: "error",
+      ...input
+    });
+  };
+
+  for (const order of orders) {
+    if (order.rentals.length === 0) {
+      counters.ordersWithoutRentals += 1;
+      addIssue({
+        type: "order_without_rental",
+        orderId: order.id,
+        userId: order.userId,
+        userEmail: order.user.email,
+        message: `Order ${order.id} is ${order.status} but has no rental.`
+      });
+      continue;
+    }
+
+    if (order.status === "active" && !order.rentals.some((rental) => rental.status === "active")) {
+      counters.activeOrdersWithoutActiveRentals += 1;
+      addIssue({
+        type: "active_order_without_active_rental",
+        orderId: order.id,
+        userId: order.userId,
+        userEmail: order.user.email,
+        message: `Active order ${order.id} has no active rental.`
+      });
+    }
+
+    for (const rental of order.rentals) {
+      if (!rental.endpointUrl) {
+        counters.rentalsMissingEndpoint += 1;
+        addIssue({
+          type: "rental_missing_endpoint",
+          orderId: order.id,
+          rentalId: rental.id,
+          userId: order.userId,
+          userEmail: order.user.email,
+          message: `Rental ${rental.id} has no endpoint URL.`
+        });
+      }
+
+      if (!rental.sub2KeyId) {
+        counters.rentalsMissingSub2Key += 1;
+        addIssue({
+          type: "rental_missing_sub2_key",
+          orderId: order.id,
+          rentalId: rental.id,
+          userId: order.userId,
+          userEmail: order.user.email,
+          message: `Rental ${rental.id} has no Sub2 key ID.`
+        });
+      }
+
+      if (!rental.apiKeys.some((apiKey) => apiKey.status === "active")) {
+        counters.rentalsMissingActiveApiKey += 1;
+        addIssue({
+          type: "rental_missing_active_api_key",
+          orderId: order.id,
+          rentalId: rental.id,
+          userId: order.userId,
+          userEmail: order.user.email,
+          message: `Rental ${rental.id} has no active local API key.`
+        });
+      }
+    }
+  }
+
+  return {
+    ok: errors === 0,
+    errors,
+    summary: {
+      matched,
+      scanned: orders.length,
+      truncated: matched > orders.length,
+      returnedIssues: issues.length,
+      ordersWithIssues: ordersWithIssues.size,
+      ...counters
+    },
+    issues
   };
 }
 
