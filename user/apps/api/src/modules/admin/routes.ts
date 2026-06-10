@@ -2888,6 +2888,7 @@ async function buildSystemHealthReport() {
     proxyRecentLocalErrors,
     proxyRecentClientDisconnects,
     proxyRecentStreamErrors,
+    proxyRecentErrorSamples,
     billingSync,
     pendingUsageBilling,
     reconciliation,
@@ -2920,6 +2921,31 @@ async function buildSystemHealthReport() {
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: "client_disconnected" } }),
     prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] } } }),
+    prisma.proxyRequestLog.findMany({
+      where: {
+        createdAt: { gte: proxySince },
+        OR: [
+          { statusCode: { gte: 400 } },
+          { errorCode: { not: null } }
+        ]
+      },
+      select: {
+        id: true,
+        requestId: true,
+        rentalId: true,
+        apiKeyId: true,
+        apiKeyPrefix: true,
+        method: true,
+        path: true,
+        statusCode: true,
+        upstreamStatusCode: true,
+        errorCode: true,
+        durationMs: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20
+    }),
     getSub2UsageSyncState(),
     inspectPendingUsageBilling(checkedAt),
     findBillingReconciliationIssues(),
@@ -3076,7 +3102,25 @@ async function buildSystemHealthReport() {
       proxyRecentTotal === 0
         ? "最近 1 小时无反代请求"
         : `${proxyRecentTotal} 次请求，${proxyRecentServerErrors} 次 5xx，${proxyRecentClientErrors} 次 4xx，${proxyRecentClientDisconnects} 次客户端断开，${proxyRecentStreamErrors} 次上游流异常`,
-      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors }
+      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors },
+      proxyRecentErrorSamples.length > 0 ? {
+        issues: proxyRecentErrorSamples.map((log) => ({
+          id: `proxy_request:${log.id}`,
+          type: log.errorCode ?? `http_${log.statusCode ?? "unknown"}`,
+          severity: (log.statusCode ?? 0) >= 500 || ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"].includes(log.errorCode ?? "") ? "error" : "warning",
+          proxyRequestLogId: log.id,
+          requestId: log.requestId,
+          rentalId: log.rentalId,
+          apiKeyId: log.apiKeyId,
+          apiKeyPrefix: log.apiKeyPrefix,
+          statusCode: log.statusCode,
+          upstreamStatusCode: log.upstreamStatusCode,
+          errorCode: log.errorCode,
+          path: log.path,
+          message: `${log.method} ${log.path} / HTTP ${log.statusCode ?? "-"} / upstream ${log.upstreamStatusCode ?? "-"} / ${log.errorCode ?? "-"} / ${log.durationMs}ms`,
+          createdAt: log.createdAt.toISOString()
+        }))
+      } : undefined
     ),
     billingSyncHealthCheck(billingSync, checkedAt),
     billingSyncSchedulerHealthCheck(),

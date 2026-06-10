@@ -10,14 +10,16 @@
 
 - 管理后台 `可用性巡检` 页面新增 `巡检问题样本` 表。
 - 页面会从每个检查项的 `detail.issues` 中抽取最多 100 条样本。
+- `反代请求` 巡检项会在最近 1 小时存在异常请求时返回最近 20 条异常样本。
 - 管理后台 `可用性巡检` 页面新增 `巡检候选样本` 表。
 - 页面会从每个检查项的 `detail.samples` 中抽取最多 100 条样本；当前主要用于展示资源凭据可应用候选。
 - 问题样本展示字段：
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`userId`、`bindingId`、`sub2AccountId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`userId`、`bindingId`、`sub2AccountId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON。
+  - 操作：如果样本包含 `resourceId`，可直接打开共享资源详情；如果样本来自反代请求巡检并包含 `requestId`、日志 id、租赁 ID、Key ID 或 Key 前缀，可直接打开 `反代请求` 页面并带入筛选条件。
 - 候选样本展示字段：
   - 检查项：检查项名称和 ID。
   - 对象：复用问题样本的定位字段拼接规则。
@@ -31,8 +33,10 @@
 - OpenAI 反代契约巡检发现 endpoint、CORS 或错误类型问题时，管理员可以在同一页看到具体契约问题。
 - 用量同步调度巡检发现生产环境禁用自动同步、间隔过长或启动后不立即同步时，管理员可以直接看到配置风险。
 - Pending 用量账务巡检发现待恢复扣费 usage 时，管理员可以直接看到 usage、租赁、用户、待扣金额、待结算金额和积压时长。
+- 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
+- 管理员可以从反代问题样本一键进入反代请求列表，减少在可用性巡检和日志页之间手动复制 request id 的时间。
 
 ## 验收方式
 

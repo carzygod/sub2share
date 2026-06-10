@@ -171,6 +171,8 @@ interface SystemHealthIssueRow {
   type: string;
   ref: string;
   message: string;
+  resourceId?: string;
+  proxyRequestLookup?: string;
 }
 
 interface SystemHealthSampleRow {
@@ -1621,6 +1623,13 @@ function App() {
     setMessage("已打开巡检候选资源");
   }
 
+  async function openProxyRequestCandidate(lookup: string) {
+    const query = { ...defaultListQuery, q: lookup };
+    setListQueries((current) => ({ ...current, proxyRequests: query }));
+    await refresh("proxyRequests", query);
+    setMessage("已打开巡检关联反代请求");
+  }
+
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
     if (["paused", "abnormal", "disabled"].includes(status) && !confirmAdminAction("确认调整共享资源状态？", `资源 ID：${resourceId}\n目标状态：${status}`)) return;
     await api(`/api/admin/resources/${resourceId}/status`, {
@@ -1919,6 +1928,7 @@ function App() {
             onRefresh={() => refresh("systemHealth")}
             onRunMaintenance={runSystemMaintenance}
             onOpenResource={openResourceCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
           />
         )}
         {view === "systemHealthHistory" && (
@@ -2268,13 +2278,14 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
   onOpenResource: (resourceId: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
@@ -2331,7 +2342,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
           </tr>
         )}
       </TablePanel>
-      <TablePanel title="巡检问题样本" count={issueRows.length} headers={["级别", "检查项", "类型", "对象", "说明"]}>
+      <TablePanel title="巡检问题样本" count={issueRows.length} headers={["级别", "检查项", "类型", "对象", "说明", "操作"]}>
         {issueRows.map((issue) => (
           <tr key={`${issue.checkId}-${issue.id}`}>
             <td><StatusPill status={healthIssueTone(issue.severity)} /></td>
@@ -2339,13 +2350,20 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td><small>{issue.type}</small></td>
             <td><small>{issue.ref}</small></td>
             <td><small>{issue.message}</small></td>
+            <td>
+              {issue.proxyRequestLookup
+                ? <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>
+                : issue.resourceId
+                ? <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>
+                : <small>-</small>}
+            </td>
           </tr>
         ))}
         {health && issueRows.length === 0 && (
-          <tr><td colSpan={5}><small>暂无巡检问题样本。</small></td></tr>
+          <tr><td colSpan={6}><small>暂无巡检问题样本。</small></td></tr>
         )}
         {!health && (
-          <tr><td colSpan={5}><small>点击重新巡检开始读取问题样本。</small></td></tr>
+          <tr><td colSpan={6}><small>点击重新巡检开始读取问题样本。</small></td></tr>
         )}
       </TablePanel>
       {sampleRows.length > 0 && (
@@ -4428,7 +4446,9 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       severity: textValue(record.severity) ?? check.status,
       type: textValue(record.type) ?? "-",
       ref: systemHealthIssueRef(record),
-      message: textValue(record.message) ?? compactJson(issue)
+      message: textValue(record.message) ?? compactJson(issue),
+      resourceId: textValue(record.resourceId),
+      proxyRequestLookup: proxyRequestIssueLookup(record, check.id)
     };
   });
 }
@@ -4450,11 +4470,18 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "userId", "bindingId", "sub2AccountId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "userId", "bindingId", "sub2AccountId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
   return parts.join(" / ") || textValue(issue.id) || "-";
+}
+
+function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string) {
+  const directLookup = textValue(issue.requestId) ?? textValue(issue.proxyRequestLogId);
+  if (directLookup) return directLookup;
+  if (checkId !== "proxy") return undefined;
+  return textValue(issue.rentalId) ?? textValue(issue.apiKeyId) ?? textValue(issue.apiKeyPrefix);
 }
 
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
