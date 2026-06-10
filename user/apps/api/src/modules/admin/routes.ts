@@ -1163,6 +1163,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
     let walletDebited = false;
     let debitTransactionId: string | null = null;
+    let reversalTransactionId: string | null = null;
     await prisma.$transaction(async (tx) => {
       const claim = await tx.order.updateMany({
         where: { id, status: "failed" },
@@ -1326,19 +1327,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         : { action: "none", ok: true };
       await prisma.$transaction(async (tx) => {
         await tx.order.update({ where: { id }, data: { status: "failed" } });
-        await recordOrderStatusHistory(tx, {
-          orderId: id,
-          fromStatus: "provisioning",
-          toStatus: "failed",
-          actorUserId: actor.id,
-          reason: "admin.order.retry_provision_failed",
-          meta: {
-            note: input.note,
-            error: redactError(error),
-            sub2KeyId: sub2Key?.sub2KeyId ?? null,
-            sub2Cleanup
-          }
-        });
         await tx.rental.update({
           where: { id: rental.id },
           data: { status: "closed" }
@@ -1355,19 +1343,36 @@ export async function registerAdminRoutes(app: FastifyInstance) {
               totalSpent: nextSpent
             }
           });
-          await tx.walletTransaction.create({
+          const reversalTransaction = await tx.walletTransaction.create({
             data: {
               walletId: wallet.id,
-              type: "refund",
+              type: "adjustment",
               amount: before.paidAmount,
               balanceAfter: nextBalance,
               currency: before.currency,
               refType: "order",
               refId: id,
-              note: input.note ?? "admin retry provisioning failed"
+              note: input.note ?? "admin retry provisioning failed reversal"
             }
           });
+          reversalTransactionId = reversalTransaction.id;
         }
+        await recordOrderStatusHistory(tx, {
+          orderId: id,
+          fromStatus: "provisioning",
+          toStatus: "failed",
+          actorUserId: actor.id,
+          reason: "admin.order.retry_provision_failed",
+          meta: {
+            note: input.note,
+            error: redactError(error),
+            sub2KeyId: sub2Key?.sub2KeyId ?? null,
+            sub2Cleanup,
+            walletDebited,
+            debitTransactionId,
+            reversalTransactionId
+          }
+        });
       });
       await writeAuditLog(request, actor.id, "admin.order.retry_provision", "order", id, {
         status: before.status,
@@ -1382,6 +1387,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         status: "failed",
         error: redactError(error),
         walletDebited,
+        debitTransactionId,
+        reversalTransactionId,
         sub2KeyId: sub2Key?.sub2KeyId ?? null,
         sub2Cleanup,
         note: input.note

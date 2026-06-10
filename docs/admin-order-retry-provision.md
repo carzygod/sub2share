@@ -72,7 +72,8 @@ Sub2 开通或本地写回失败时：
 - 尝试停用已经创建的 Sub2 Key。
 - 订单回到 `failed`。
 - 租约回到 `closed`。
-- 如果本次重试已经扣款，立即创建 `refund` 钱包流水并回补余额。
+- 如果本次重试已经扣款，立即创建 `adjustment` 钱包流水冲正本次重试扣款并回补余额。
+- 冲正流水仍使用 `refType=order`、`refId=<orderId>`，会出现在订单详情的钱包流水中；不使用第二笔 `refund`，避免破坏同一订单正式退款唯一约束。
 - 写入状态历史 `admin.order.retry_provision_failed`。
 - 写入脱敏后的审计日志。
 
