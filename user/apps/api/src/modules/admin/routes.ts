@@ -1434,7 +1434,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         order: where
       }
     };
-    const [orders, total, orderAgg, usageAgg] = await Promise.all([
+    const [orders, total, orderAgg, usageAgg, salesBreakdown] = await Promise.all([
       prisma.order.findMany({
         where,
         include: { user: true, items: true, rentals: true },
@@ -1451,7 +1451,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where: usageWhere,
         _sum: { buyerCharge: true, supplierIncome: true },
         _count: true
-      })
+      }),
+      buildSalesBreakdown(where)
     ]);
     return adminOk(reply, {
       ...paged(orders, total, query),
@@ -1463,7 +1464,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         usageCount: usageAgg._count,
         usageCharge: usageAgg._sum.buyerCharge ?? 0,
         supplierIncome: usageAgg._sum.supplierIncome ?? 0
-      }
+      },
+      breakdown: salesBreakdown
     });
   });
 
@@ -3019,6 +3021,116 @@ function decimalEquals(left: Prisma.Decimal, right: Prisma.Decimal) {
 
 function decimalText(value: Prisma.Decimal) {
   return value.toFixed(6);
+}
+
+async function buildSalesBreakdown(orderWhere: Prisma.OrderWhereInput) {
+  const zero = new Prisma.Decimal(0);
+  const [statusGroups, productGroups, rentalResourceGroups, rentalStatusGroups] = await Promise.all([
+    prisma.order.groupBy({
+      by: ["status"],
+      where: orderWhere,
+      _count: { _all: true },
+      _sum: { totalAmount: true, paidAmount: true }
+    }),
+    prisma.orderItem.groupBy({
+      by: ["productId"],
+      where: { order: orderWhere },
+      _count: { _all: true },
+      _sum: { quantity: true, amount: true }
+    }),
+    prisma.rental.groupBy({
+      by: ["resourceType"],
+      where: { ...nonSmokeRentalWhere(), order: orderWhere },
+      _count: { _all: true }
+    }),
+    prisma.rental.groupBy({
+      by: ["status"],
+      where: { ...nonSmokeRentalWhere(), order: orderWhere },
+      _count: { _all: true }
+    })
+  ]);
+
+  const productIds = productGroups.map((group) => group.productId);
+  const products = productIds.length
+    ? await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, name: true, resourceType: true }
+    })
+    : [];
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const resourceMap = new Map<string, {
+    resourceType: string;
+    orderItemCount: number;
+    quantity: number;
+    amount: Prisma.Decimal;
+    rentalCount: number;
+  }>();
+
+  const byProduct = productGroups.map((group) => {
+    const product = productById.get(group.productId);
+    const resourceType = product?.resourceType ?? "unknown";
+    const amount = group._sum.amount ?? zero;
+    const current = resourceMap.get(resourceType) ?? {
+      resourceType,
+      orderItemCount: 0,
+      quantity: 0,
+      amount: zero,
+      rentalCount: 0
+    };
+    current.orderItemCount += group._count._all;
+    current.quantity += group._sum.quantity ?? 0;
+    current.amount = current.amount.plus(amount);
+    resourceMap.set(resourceType, current);
+
+    return {
+      productId: group.productId,
+      productName: product?.name ?? group.productId,
+      resourceType,
+      orderItemCount: group._count._all,
+      quantity: group._sum.quantity ?? 0,
+      amount: decimalText(amount)
+    };
+  }).sort((left, right) => new Prisma.Decimal(right.amount).cmp(left.amount));
+
+  for (const group of rentalResourceGroups) {
+    const resourceType = group.resourceType;
+    const current = resourceMap.get(resourceType) ?? {
+      resourceType,
+      orderItemCount: 0,
+      quantity: 0,
+      amount: zero,
+      rentalCount: 0
+    };
+    current.rentalCount = group._count._all;
+    resourceMap.set(resourceType, current);
+  }
+
+  return {
+    byStatus: statusGroups
+      .map((group) => ({
+        status: group.status,
+        orderCount: group._count._all,
+        totalAmount: decimalText(group._sum.totalAmount ?? zero),
+        paidAmount: decimalText(group._sum.paidAmount ?? zero)
+      }))
+      .sort((left, right) => right.orderCount - left.orderCount),
+    byResourceType: [...resourceMap.values()]
+      .map((group) => ({
+        resourceType: group.resourceType,
+        orderItemCount: group.orderItemCount,
+        quantity: group.quantity,
+        amount: decimalText(group.amount),
+        rentalCount: group.rentalCount
+      }))
+      .sort((left, right) => new Prisma.Decimal(right.amount).cmp(left.amount)),
+    byProduct: byProduct.slice(0, 12),
+    byRentalStatus: rentalStatusGroups
+      .map((group) => ({
+        status: group.status,
+        rentalCount: group._count._all
+      }))
+      .sort((left, right) => right.rentalCount - left.rentalCount)
+  };
 }
 
 async function findSub2BindingIssues() {

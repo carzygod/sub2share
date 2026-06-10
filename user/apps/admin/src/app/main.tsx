@@ -593,6 +593,33 @@ interface SalesData extends PageMeta {
     usageCharge: string;
     supplierIncome: string;
   };
+  breakdown?: {
+    byStatus: Array<{
+      status: string;
+      orderCount: number;
+      totalAmount: string;
+      paidAmount: string;
+    }>;
+    byResourceType: Array<{
+      resourceType: string;
+      orderItemCount: number;
+      quantity: number;
+      amount: string;
+      rentalCount: number;
+    }>;
+    byProduct: Array<{
+      productId: string;
+      productName: string;
+      resourceType: string;
+      orderItemCount: number;
+      quantity: number;
+      amount: string;
+    }>;
+    byRentalStatus: Array<{
+      status: string;
+      rentalCount: number;
+    }>;
+  };
 }
 
 interface Sub2AccountStatus {
@@ -2618,6 +2645,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
   onCloseDetail: () => void;
 } & ManagedListProps) {
   const orders = sales?.orders ?? [];
+  const breakdown = sales?.breakdown;
   return (
     <section className="stack">
       <section className="cards compact-cards">
@@ -2625,6 +2653,72 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         <Metric label="订单金额" value={money(sales?.summary.totalAmount)} />
         <Metric label="已付金额" value={money(sales?.summary.paidAmount)} />
         <Metric label="按量收入" value={money(sales?.summary.usageCharge)} />
+        <Metric label="供给收入" value={money(sales?.summary.supplierIncome)} />
+      </section>
+      <section className="detail-grid">
+        <DetailBlock title="订单状态分布">
+          <MiniTable headers={["状态", "订单", "已付", "应付"]}>
+            {(breakdown?.byStatus ?? []).map((row) => (
+              <tr key={row.status}>
+                <td><StatusPill status={row.status} /></td>
+                <td>{row.orderCount}</td>
+                <td>{money(row.paidAmount)}</td>
+                <td>{money(row.totalAmount)}</td>
+              </tr>
+            ))}
+            {(breakdown?.byStatus ?? []).length === 0 && (
+              <tr><td colSpan={4}><small>暂无售出订单。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="资源类型分布">
+          <MiniTable headers={["资源", "订单项", "数量", "租赁", "金额"]}>
+            {(breakdown?.byResourceType ?? []).map((row) => (
+              <tr key={row.resourceType}>
+                <td>{row.resourceType}</td>
+                <td>{row.orderItemCount}</td>
+                <td>{row.quantity}</td>
+                <td>{row.rentalCount}</td>
+                <td>{money(row.amount)}</td>
+              </tr>
+            ))}
+            {(breakdown?.byResourceType ?? []).length === 0 && (
+              <tr><td colSpan={5}><small>暂无资源分布。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="商品排行">
+          <MiniTable headers={["商品", "资源", "订单项", "数量", "金额"]}>
+            {(breakdown?.byProduct ?? []).map((row) => (
+              <tr key={row.productId}>
+                <td><strong>{row.productName}</strong><small>{row.productId}</small></td>
+                <td>{row.resourceType}</td>
+                <td>{row.orderItemCount}</td>
+                <td>{row.quantity}</td>
+                <td>{money(row.amount)}</td>
+              </tr>
+            ))}
+            {(breakdown?.byProduct ?? []).length === 0 && (
+              <tr><td colSpan={5}><small>暂无商品销售数据。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
+        <DetailBlock title="租赁交付状态">
+          <MiniTable headers={["状态", "租赁"]}>
+            {(breakdown?.byRentalStatus ?? []).map((row) => (
+              <tr key={row.status}>
+                <td><StatusPill status={row.status} /></td>
+                <td>{row.rentalCount}</td>
+              </tr>
+            ))}
+            {(breakdown?.byRentalStatus ?? []).length === 0 && (
+              <tr><td colSpan={2}><small>暂无租赁交付数据。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
       </section>
       <ListControls
         query={query}
