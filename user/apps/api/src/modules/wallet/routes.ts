@@ -20,6 +20,10 @@ export async function registerWalletRoutes(app: FastifyInstance) {
 
   app.post("/api/wallet/recharge", async (request, reply) => {
     const user = await requireAuth(request);
+    if (env.PAYMENT_PROVIDER !== "mock") {
+      throw new AppError("recharge_unavailable", "Recharge is not available for the configured payment provider", 503);
+    }
+
     const input = rechargeSchema.parse(request.body);
     if (input.amount < env.MIN_RECHARGE_AMOUNT) {
       throw new AppError("amount_too_low", `Minimum recharge amount is ${env.MIN_RECHARGE_AMOUNT}`);

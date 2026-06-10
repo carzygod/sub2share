@@ -2716,6 +2716,7 @@ async function buildSystemHealthReport() {
       negativeWallets > 0 ? `${negativeWallets} 个钱包出现负余额` : "余额账户未发现负数",
       { negativeWallets }
     ),
+    paymentProviderHealthCheck(),
     systemHealthCheck(
       "resources",
       "共享资源",
@@ -3695,6 +3696,46 @@ function systemHealthCheck(
   detail?: unknown
 ): SystemHealthCheck {
   return { id, label, status, summary, metrics, detail };
+}
+
+function paymentProviderHealthCheck() {
+  const issues: Array<{ id: string; type: string; severity: "warning" | "error"; message: string }> = [];
+  let status: SystemHealthStatus = "ok";
+  let summary = "充值配置可用";
+
+  if (env.PAYMENT_PROVIDER === "disabled") {
+    status = "error";
+    summary = "充值入口已禁用";
+    issues.push({
+      id: "payment_provider_disabled",
+      type: "payment_provider_disabled",
+      severity: "error",
+      message: "PAYMENT_PROVIDER=disabled, user wallet recharge endpoint returns 503."
+    });
+  } else if (env.PAYMENT_PROVIDER === "mock" && env.NODE_ENV === "production") {
+    status = "warning";
+    summary = "生产环境仍启用 mock 充值";
+    issues.push({
+      id: "production_mock_recharge",
+      type: "production_mock_recharge",
+      severity: "warning",
+      message: "Production is using mock wallet recharge. Replace with a real payment provider before public billing."
+    });
+  }
+
+  return systemHealthCheck(
+    "payments",
+    "支付充值",
+    status,
+    summary,
+    {
+      provider: env.PAYMENT_PROVIDER,
+      nodeEnv: env.NODE_ENV,
+      minRechargeAmount: env.MIN_RECHARGE_AMOUNT,
+      rechargeEndpointEnabled: env.PAYMENT_PROVIDER === "mock"
+    },
+    issues.length > 0 ? { issues } : undefined
+  );
 }
 
 function aggregateHealthStatus(checks: SystemHealthCheck[]): SystemHealthStatus {
