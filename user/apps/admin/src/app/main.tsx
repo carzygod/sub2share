@@ -151,6 +151,22 @@ interface SystemHealthCheckRow {
   detail?: unknown;
 }
 
+interface DeliverySummary {
+  status: "ok" | "warning" | "error";
+  summary: {
+    totalChecks: number;
+    ok: number;
+    warning: number;
+    error: number;
+    rentals: number;
+    activeRentals: number;
+    apiKeys: number;
+    activeApiKeys: number;
+    proxyRequestCount: number;
+  };
+  checks: SystemHealthCheckRow[];
+}
+
 interface SystemHealthResult {
   checkedAt: string;
   status: "ok" | "warning" | "error";
@@ -354,6 +370,7 @@ interface OrderDetailRow extends OrderRow {
   walletTransactionSummary?: AggregateSummary;
   proxyRequests?: ProxyRequestLogRow[];
   proxyRequestSummary?: { _count: number };
+  deliverySummary?: DeliverySummary;
 }
 
 interface OrderStatusHistoryRow {
@@ -3015,6 +3032,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
 function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onClose: () => void }) {
   const walletTransactions = order.walletTransactions ?? [];
   const proxyRequests = order.proxyRequests ?? [];
+  const deliverySummary = order.deliverySummary;
   return (
     <section className="panel glass-panel wide detail-panel">
       <div className="section-head">
@@ -3042,9 +3060,26 @@ function OrderDetailPanel({ order, onCancel, onRefund, onClose }: { order: Order
         <div><span>钱包流水</span><strong>{order.walletTransactionSummary?._count ?? walletTransactions.length}</strong></div>
         <div><span>流水金额</span><strong>{money(order.walletTransactionSummary?._sum?.amount)}</strong></div>
         <div><span>反代请求</span><strong>{order.proxyRequestSummary?._count ?? proxyRequests.length}</strong></div>
+        <div><span>交付核查</span><strong>{deliverySummary ? deliveryStatusText(deliverySummary.status) : "-"}</strong></div>
       </div>
 
       <section className="detail-grid">
+        <DetailBlock title="交付核查">
+          <MiniTable headers={["状态", "检查项", "结论", "指标"]}>
+            {(deliverySummary?.checks ?? []).map((check) => (
+              <tr key={check.id}>
+                <td><StatusPill status={healthStatusTone(check.status)} /></td>
+                <td><strong>{check.label}</strong><small>{check.id}</small></td>
+                <td><small>{check.summary}</small></td>
+                <td><small>{healthMetricSummary(check.metrics)}</small></td>
+              </tr>
+            ))}
+            {!deliverySummary && (
+              <tr><td colSpan={4}><small>暂无交付核查结果。</small></td></tr>
+            )}
+          </MiniTable>
+        </DetailBlock>
+
         <DetailBlock title="钱包流水">
           <MiniTable headers={["类型", "金额", "余额后", "用户", "备注", "时间"]}>
             {walletTransactions.slice(0, 10).map((transaction) => (
@@ -4122,6 +4157,12 @@ function healthStatusText(status: SystemHealthResult["status"]) {
   if (status === "ok") return "系统可用";
   if (status === "warning") return "存在警告";
   return "存在阻断";
+}
+
+function deliveryStatusText(status: DeliverySummary["status"]) {
+  if (status === "ok") return "交付正常";
+  if (status === "warning") return "待复查";
+  return "交付异常";
 }
 
 function healthMetricSummary(metrics?: Record<string, string | number | boolean | null>) {

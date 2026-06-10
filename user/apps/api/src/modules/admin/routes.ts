@@ -113,6 +113,7 @@ const orderDetailInclude = {
   },
   statusHistory: { orderBy: { createdAt: "desc" }, take: 50 }
 } satisfies Prisma.OrderInclude;
+type OrderDetailRecord = Prisma.OrderGetPayload<{ include: typeof orderDetailInclude }>;
 
 const withdrawalInclude = {
   supplier: { include: { user: true } },
@@ -740,7 +741,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       })
     ]);
     if (!order) throw new AppError("order_not_found", "Order not found", 404);
-    return adminOk(reply, { ...order, walletTransactions, walletTransactionSummary, proxyRequests, proxyRequestSummary });
+    return adminOk(reply, {
+      ...order,
+      walletTransactions,
+      walletTransactionSummary,
+      proxyRequests,
+      proxyRequestSummary,
+      deliverySummary: buildOrderDeliverySummary(order, proxyRequestSummary._count)
+    });
   });
 
   app.post("/api/admin/orders/:id/cancel", async (request, reply) => {
@@ -3021,6 +3029,127 @@ function decimalEquals(left: Prisma.Decimal, right: Prisma.Decimal) {
 
 function decimalText(value: Prisma.Decimal) {
   return value.toFixed(6);
+}
+
+function buildOrderDeliverySummary(order: OrderDetailRecord, proxyRequestCount: number) {
+  const activeStatuses = new Set(["paid", "provisioning", "active", "closed", "expired", "refunding"]);
+  const closedStatuses = new Set(["cancelled", "refunded"]);
+  const deliveryClosed = closedStatuses.has(order.status);
+  const expectedDelivery = !deliveryClosed && (activeStatuses.has(order.status) || order.paidAmount.gt(0));
+  const rentals = order.rentals;
+  const codexRentals = rentals.filter((rental) => rental.resourceType === "codex");
+  const activeRentals = rentals.filter((rental) => rental.status === "active");
+  const missingEndpoints = rentals.filter((rental) => !rental.endpointUrl).length;
+  const missingSub2Keys = rentals.filter((rental) => !rental.sub2KeyId).length;
+  const apiKeys = rentals.flatMap((rental) => rental.apiKeys);
+  const activeApiKeys = apiKeys.filter((apiKey) => apiKey.status === "active");
+  const rentalsMissingActiveApiKey = rentals.filter((rental) => !rental.apiKeys.some((apiKey) => apiKey.status === "active")).length;
+  const minimumBalance = new Prisma.Decimal(env.OPENAI_PROXY_MIN_WALLET_BALANCE);
+  const walletBalance = order.user.wallet?.availableBalance ?? null;
+  const walletReady = !codexRentals.length || (walletBalance !== null && walletBalance.gt(minimumBalance));
+
+  const checks: SystemHealthCheck[] = [
+    systemHealthCheck(
+      "payment",
+      "付款状态",
+      deliveryClosed || order.paidAmount.gt(0) ? "ok" : expectedDelivery ? "error" : "warning",
+      deliveryClosed ? `订单已${order.status}，不要求可用交付` : order.paidAmount.gt(0) ? "订单已有已付金额" : "订单尚无已付金额",
+      {
+        orderStatus: order.status,
+        paidAmount: decimalText(order.paidAmount),
+        totalAmount: decimalText(order.totalAmount)
+      }
+    ),
+    systemHealthCheck(
+      "rentals",
+      "租赁交付",
+      deliveryClosed || rentals.length > 0 ? "ok" : expectedDelivery ? "error" : "warning",
+      deliveryClosed ? `订单已${order.status}，租赁不要求 active` : rentals.length > 0 ? `已生成 ${rentals.length} 个租赁` : "订单尚未生成租赁",
+      {
+        rentals: rentals.length,
+        activeRentals: activeRentals.length
+      }
+    ),
+    systemHealthCheck(
+      "endpoint",
+      "OpenAI Endpoint",
+      deliveryClosed ? "ok" : rentals.length === 0 ? "warning" : missingEndpoints > 0 ? "error" : "ok",
+      deliveryClosed
+        ? `订单已${order.status}，endpoint 不要求可用`
+        : rentals.length === 0
+        ? "无租赁可检查 endpoint"
+        : missingEndpoints > 0 ? `${missingEndpoints} 个租赁缺少 endpoint` : "租赁 endpoint 已写入",
+      {
+        rentals: rentals.length,
+        missingEndpoints
+      }
+    ),
+    systemHealthCheck(
+      "sub2Key",
+      "Sub2 Key",
+      deliveryClosed ? "ok" : rentals.length === 0 ? "warning" : missingSub2Keys > 0 ? "error" : "ok",
+      deliveryClosed
+        ? `订单已${order.status}，Sub2 Key 不要求可用`
+        : rentals.length === 0
+        ? "无租赁可检查 Sub2 Key"
+        : missingSub2Keys > 0 ? `${missingSub2Keys} 个租赁缺少 Sub2 Key` : "租赁已绑定 Sub2 Key",
+      {
+        rentals: rentals.length,
+        missingSub2Keys
+      }
+    ),
+    systemHealthCheck(
+      "apiKeys",
+      "本地 API Key",
+      deliveryClosed ? "ok" : rentals.length === 0 ? "warning" : rentalsMissingActiveApiKey > 0 ? "error" : "ok",
+      deliveryClosed
+        ? `订单已${order.status}，本地 API Key 不要求 active`
+        : rentals.length === 0
+        ? "无租赁可检查本地 API Key"
+        : rentalsMissingActiveApiKey > 0 ? `${rentalsMissingActiveApiKey} 个租赁缺少 active API Key` : "每个租赁都有 active API Key",
+      {
+        apiKeys: apiKeys.length,
+        activeApiKeys: activeApiKeys.length,
+        rentalsMissingActiveApiKey
+      }
+    ),
+    systemHealthCheck(
+      "wallet",
+      "钱包准入",
+      deliveryClosed || walletReady ? "ok" : "error",
+      deliveryClosed ? `订单已${order.status}，钱包不要求通过反代准入` : walletReady ? "Codex/OpenAI 反代钱包准入正常" : "钱包余额低于本地反代最低准入",
+      {
+        codexRentals: codexRentals.length,
+        availableBalance: walletBalance ? decimalText(walletBalance) : null,
+        minimumBalance: decimalText(minimumBalance)
+      }
+    ),
+    systemHealthCheck(
+      "proxyRequests",
+      "反代请求证据",
+      proxyRequestCount > 0 ? "ok" : "warning",
+      proxyRequestCount > 0 ? `已有 ${proxyRequestCount} 条关联反代请求` : "尚未看到该订单关联反代请求",
+      {
+        proxyRequestCount
+      }
+    )
+  ];
+
+  return {
+    status: aggregateHealthStatus(checks),
+    summary: {
+      totalChecks: checks.length,
+      ok: checks.filter((check) => check.status === "ok").length,
+      warning: checks.filter((check) => check.status === "warning").length,
+      error: checks.filter((check) => check.status === "error").length,
+      rentals: rentals.length,
+      activeRentals: activeRentals.length,
+      apiKeys: apiKeys.length,
+      activeApiKeys: activeApiKeys.length,
+      proxyRequestCount
+    },
+    checks
+  };
 }
 
 async function buildSalesBreakdown(orderWhere: Prisma.OrderWhereInput) {
