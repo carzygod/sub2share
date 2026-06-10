@@ -342,6 +342,7 @@ select option { color: #111; }
   color: var(--success);
 }
 .health-row.warning { color: var(--warning); }
+.health-row.error { color: var(--danger); }
 .diagnostic-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -343,7 +343,7 @@ const updateWithdrawalSchema = z.object({
 export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/dashboard", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
-    const [users, activeRentals, onlineResources, pendingWithdrawals, usageAgg, walletAgg, orderAgg] = await Promise.all([
+    const [users, activeRentals, onlineResources, pendingWithdrawals, usageAgg, walletAgg, orderAgg, latestSystemHealth] = await Promise.all([
       prisma.user.count({ where: nonSmokeUserWhere() }),
       prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
       prisma.supplierResource.count({ where: { status: "online" } }),
@@ -361,6 +361,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where: { status: { in: ["paid", "provisioning", "active", "closed", "expired"] }, ...nonSmokeOrderWhere() },
         _sum: { paidAmount: true },
         _count: true
+      }),
+      prisma.systemHealthSnapshot.findFirst({
+        select: {
+          id: true,
+          status: true,
+          source: true,
+          summary: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: "desc" }
       })
     ]);
 
@@ -377,7 +387,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       totalRecharged: walletAgg._sum.totalRecharged ?? 0,
       totalSpent: walletAgg._sum.totalSpent ?? 0,
       paidOrderCount: orderAgg._count,
-      paidOrderAmount: orderAgg._sum.paidAmount ?? 0
+      paidOrderAmount: orderAgg._sum.paidAmount ?? 0,
+      latestSystemHealth
     });
   });
 

@@ -140,6 +140,18 @@ interface Dashboard {
   totalSpent: string;
   paidOrderCount: number;
   paidOrderAmount: string;
+  latestSystemHealth?: {
+    id: string;
+    status: "ok" | "warning" | "error";
+    source: string;
+    summary: {
+      totalChecks?: number;
+      ok?: number;
+      warning?: number;
+      error?: number;
+    };
+    createdAt: string;
+  } | null;
 }
 
 interface SystemHealthCheckRow {
@@ -2073,6 +2085,7 @@ interface ManagedListProps {
 }
 
 function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
+  const latestHealth = dashboard?.latestSystemHealth ?? null;
   const cards = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} /> },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} /> },
@@ -2111,9 +2124,23 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
         <div className="panel glass-panel">
           <span className="eyebrow">Risk Signal</span>
           <h2>系统状态</h2>
-          <div className="health-row"><CheckCircle2 size={18} />业务 API 正常</div>
-          <div className="health-row"><ShieldCheck size={18} />Sub2API 调度在线</div>
-          <div className="health-row warning"><AlertTriangle size={18} />OAuth 与资源池仍需生产配置</div>
+          {latestHealth ? (
+            <>
+              <div className={healthRowClass(latestHealth.status)}>
+                {latestHealth.status === "ok" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                <strong>{healthStatusText(latestHealth.status)}</strong>
+              </div>
+              <table>
+                <tbody>
+                  <tr><td>最近巡检</td><td>{dateTime(latestHealth.createdAt)}</td></tr>
+                  <tr><td>来源</td><td>{latestHealth.source}</td></tr>
+                  <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
+                </tbody>
+              </table>
+            </>
+          ) : (
+            <div className="health-row warning"><AlertTriangle size={18} />尚无巡检快照</div>
+          )}
         </div>
       </section>
     </>
@@ -4185,6 +4212,12 @@ function healthStatusText(status: SystemHealthResult["status"]) {
   if (status === "ok") return "系统可用";
   if (status === "warning") return "存在警告";
   return "存在阻断";
+}
+
+function healthRowClass(status: SystemHealthResult["status"]) {
+  if (status === "ok") return "health-row";
+  if (status === "warning") return "health-row warning";
+  return "health-row error";
 }
 
 function deliveryStatusText(status: DeliverySummary["status"]) {
