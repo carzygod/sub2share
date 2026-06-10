@@ -45,6 +45,7 @@ const systemHealthProxyWindowMs = 60 * 60 * 1000;
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const systemHealthApiKeyScanLimit = 500;
 const systemHealthApiKeyIssueLimit = 50;
+const systemHealthOrderStatusIssueLimit = 50;
 const systemHealthProductCatalogScanLimit = 200;
 const systemHealthProductCatalogIssueLimit = 50;
 const systemHealthSalesDeliveryScanLimit = 200;
@@ -105,6 +106,19 @@ interface SystemHealthCheck {
   summary: string;
   metrics?: Record<string, string | number | boolean | null>;
   detail?: unknown;
+}
+
+interface OrderStatusIssue {
+  id: string;
+  type: string;
+  severity: "warning";
+  orderId: string;
+  userId: string;
+  userEmail?: string | null;
+  orderStatus: string;
+  paidAmount: string;
+  rentalId?: string;
+  message: string;
 }
 
 interface Sub2BindingIssue {
@@ -3161,6 +3175,7 @@ async function buildSystemHealthReport() {
     constrainedRentals,
     negativeWallets,
     orderCounts,
+    orderStatusReadiness,
     resourceCounts,
     pendingWithdrawals,
     pendingSettlements,
@@ -3194,6 +3209,7 @@ async function buildSystemHealthReport() {
       }
     }),
     prisma.order.groupBy({ by: ["status"], where: nonSmokeOrderWhere(), _count: true }),
+    inspectOrderStatusReadiness(),
     prisma.supplierResource.groupBy({ by: ["status"], _count: true }),
     prisma.withdrawal.count({ where: { status: "pending" } }),
     prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
@@ -3267,7 +3283,11 @@ async function buildSystemHealthReport() {
       "订单状态",
       failedOrders > 0 ? "warning" : "ok",
       failedOrders > 0 ? `${failedOrders} 个订单需要人工复查` : "订单状态无明显阻断",
-      ordersByStatus
+      {
+        ...ordersByStatus,
+        ...orderStatusReadiness.summary
+      },
+      orderStatusReadiness.issues.length > 0 ? { issues: orderStatusReadiness.issues } : undefined
     ),
     systemHealthCheck(
       "productCatalog",
@@ -3847,6 +3867,115 @@ function buildOrderDeliverySummary(order: OrderDetailRecord, proxyRequestCount: 
     },
     checks
   };
+}
+
+async function inspectOrderStatusReadiness() {
+  const where: Prisma.OrderWhereInput = {
+    ...nonSmokeOrderWhere(),
+    status: { in: ["failed", "refunding"] }
+  };
+  const [matched, orders] = await Promise.all([
+    prisma.order.count({ where }),
+    prisma.order.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        userId: true,
+        paidAmount: true,
+        user: { select: { email: true } },
+        rentals: {
+          select: {
+            id: true,
+            sub2UserId: true,
+            sub2KeyId: true,
+            sub2KeyHash: true,
+            endpointUrl: true,
+            limits: { select: { id: true } },
+            apiKeys: { select: { status: true } }
+          }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: systemHealthOrderStatusIssueLimit
+    })
+  ]);
+  const paidFailedOrderIds = orders
+    .filter((order) => order.status === "failed" && order.paidAmount.gt(0))
+    .map((order) => order.id);
+  const refundTransactions = paidFailedOrderIds.length > 0
+    ? await prisma.walletTransaction.findMany({
+      where: { type: "refund", refType: "order", refId: { in: paidFailedOrderIds } },
+      select: { refId: true }
+    })
+    : [];
+  const refundedOrderIds = new Set(refundTransactions.map((transaction) => transaction.refId).filter((refId): refId is string => Boolean(refId)));
+  const issues: OrderStatusIssue[] = [];
+  const summary = {
+    matched,
+    scanned: orders.length,
+    truncated: matched > orders.length,
+    returnedIssues: 0,
+    failedOrderSamples: 0,
+    refundingOrderSamples: 0,
+    retryCandidates: 0,
+    retryBlocked: 0
+  };
+
+  for (const order of orders) {
+    const rental = order.rentals[0];
+    const baseIssue = {
+      severity: "warning" as const,
+      orderId: order.id,
+      userId: order.userId,
+      userEmail: order.user.email,
+      orderStatus: order.status,
+      paidAmount: String(order.paidAmount),
+      rentalId: rental?.id
+    };
+
+    if (order.status === "refunding") {
+      summary.refundingOrderSamples += 1;
+      issues.push({
+        ...baseIssue,
+        id: `refunding_order_review:${order.id}`,
+        type: "refunding_order_review",
+        message: `Order ${order.id} is refunding and needs refund reconciliation.`
+      });
+      continue;
+    }
+
+    summary.failedOrderSamples += 1;
+    const activeApiKeys = order.rentals.flatMap((item) => item.apiKeys).filter((apiKey) => apiKey.status === "active").length;
+    const retryBlockers = [
+      order.rentals.length !== 1 ? "not exactly one rental" : null,
+      !rental?.limits ? "missing rental limits" : null,
+      rental?.sub2UserId || rental?.sub2KeyId || rental?.sub2KeyHash || rental?.endpointUrl ? "has Sub2 delivery fields" : null,
+      activeApiKeys > 0 ? "has active local API key" : null,
+      order.paidAmount.gt(0) && !refundedOrderIds.has(order.id) ? "missing original refund transaction" : null
+    ].filter(Boolean);
+
+    if (retryBlockers.length === 0) {
+      summary.retryCandidates += 1;
+      issues.push({
+        ...baseIssue,
+        id: `failed_order_retry_candidate:${order.id}`,
+        type: "failed_order_retry_candidate",
+        message: `Failed order ${order.id} can be retried from Admin order detail.`
+      });
+    } else {
+      summary.retryBlocked += 1;
+      issues.push({
+        ...baseIssue,
+        id: `failed_order_manual_review:${order.id}`,
+        type: "failed_order_manual_review",
+        message: `Failed order ${order.id} needs manual review before retry: ${retryBlockers.join(", ")}.`
+      });
+    }
+  }
+
+  summary.returnedIssues = issues.length;
+  return { summary, issues };
 }
 
 async function inspectSalesDeliveryReadiness() {
