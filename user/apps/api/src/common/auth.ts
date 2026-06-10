@@ -3,6 +3,7 @@ import { AppError } from "./errors.js";
 import { prisma } from "./prisma.js";
 
 export interface AuthUser {
+  type?: "access";
   id: string;
   email: string;
   roles: string[];
@@ -20,6 +21,9 @@ export async function requireAuth(request: FastifyRequest) {
   try {
     decoded = await request.jwtVerify<AuthUser>();
   } catch {
+    throw new AppError("unauthorized", "Please login first", 401);
+  }
+  if (decoded.type && decoded.type !== "access") {
     throw new AppError("unauthorized", "Please login first", 401);
   }
 

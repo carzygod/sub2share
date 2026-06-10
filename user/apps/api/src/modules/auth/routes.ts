@@ -28,6 +28,10 @@ const registerSchema = z.object({
   displayName: z.string().min(1).max(64).optional()
 });
 
+const refreshSchema = z.object({
+  refreshToken: z.string().min(1)
+});
+
 const oauthStartParamsSchema = z.object({
   provider: z.enum(["google", "x"])
 });
@@ -73,12 +77,12 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       include: { roles: true }
     }));
 
-    const token = signAuthToken(app, user);
+    const tokens = issueAuthTokens(app, user);
     await writeAuthAuditLog(request, user.id, "auth.register.success", user.id, {
       email: user.email,
       roles: user.roles.map((role) => role.role)
     });
-    return ok(reply, { token, user: publicUser(user) });
+    return ok(reply, { ...tokens, user: publicUser(user) });
   });
 
   app.post("/api/auth/login", async (request, reply) => {
@@ -120,13 +124,42 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       throw new AppError("oauth_required", "User password login is disabled. Please sign in with Google or X.", 403);
     }
 
-    const token = signAuthToken(app, user);
+    const tokens = issueAuthTokens(app, user);
     await writeAuthAuditLog(request, user.id, "auth.login.success", user.id, {
       email: user.email,
       method: "password",
       roles
     });
-    return ok(reply, { token, user: publicUser(user) });
+    return ok(reply, { ...tokens, user: publicUser(user) });
+  });
+
+  app.post("/api/auth/refresh", async (request, reply) => {
+    const input = refreshSchema.parse(request.body);
+    const decoded = verifyRefreshToken(app, input.refreshToken);
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.sub },
+      include: { roles: true }
+    });
+    if (!user) {
+      await writeAuthAuditLog(request, undefined, "auth.refresh.failure", undefined, {
+        reason: "user_not_found"
+      });
+      throw new AppError("invalid_refresh_token", "Refresh token is invalid or expired", 401);
+    }
+    if (user.status !== "active") {
+      await writeAuthAuditLog(request, undefined, "auth.refresh.failure", user.id, {
+        reason: "account_disabled",
+        status: user.status
+      });
+      throw new AppError("account_disabled", "Account is disabled", 403);
+    }
+
+    const tokens = issueAuthTokens(app, user);
+    await writeAuthAuditLog(request, user.id, "auth.refresh.success", user.id, {
+      email: user.email,
+      roles: user.roles.map((role) => role.role)
+    });
+    return ok(reply, { ...tokens, user: publicUser(user) });
   });
 
   app.get("/api/auth/oauth/:provider/start", async (request, reply) => {
@@ -199,7 +232,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       });
     }
 
-    const token = signAuthToken(app, user);
+    const tokens = issueAuthTokens(app, user);
     await writeAuthAuditLog(request, user.id, "auth.oauth.login.success", user.id, {
       provider,
       email: user.email,
@@ -207,7 +240,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       identityCreated: oauthResult.identityCreated,
       roles: user.roles.map((role) => role.role)
     });
-    return redirectOAuthResult(reply, { token });
+    return redirectOAuthResult(reply, tokens);
   });
 
   app.get("/api/me", async (request, reply) => {
@@ -405,21 +438,56 @@ async function postForm<T>(url: string, body: Record<string, string>, headers: R
   return data;
 }
 
-function redirectOAuthResult(reply: FastifyReply, result: { token?: string; error?: string }) {
+function redirectOAuthResult(reply: FastifyReply, result: { token?: string; refreshToken?: string; error?: string }) {
   const url = new URL(env.APP_PUBLIC_URL);
   const params = new URLSearchParams();
   if (result.token) params.set("auth_token", result.token);
+  if (result.refreshToken) params.set("auth_refresh_token", result.refreshToken);
   if (result.error) params.set("auth_error", result.error);
   url.hash = params.toString();
   return reply.redirect(url.toString());
 }
 
-function signAuthToken(app: FastifyInstance, user: { id: string; email: string; roles: { role: string }[] }) {
+function issueAuthTokens(app: FastifyInstance, user: { id: string; email: string; roles: { role: string }[] }) {
+  return {
+    token: signAccessToken(app, user),
+    refreshToken: signRefreshToken(app, user),
+    expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+    refreshExpiresIn: env.JWT_REFRESH_EXPIRES_IN
+  };
+}
+
+function signAccessToken(app: FastifyInstance, user: { id: string; email: string; roles: { role: string }[] }) {
   return app.jwt.sign({
+    type: "access",
     id: user.id,
     email: user.email,
     roles: user.roles.map((role) => role.role)
-  });
+  }, { expiresIn: env.JWT_ACCESS_EXPIRES_IN });
+}
+
+function signRefreshToken(app: FastifyInstance, user: { id: string }) {
+  return app.jwt.sign({
+    type: "refresh",
+    sub: user.id
+  }, { key: refreshSecret(), expiresIn: env.JWT_REFRESH_EXPIRES_IN });
+}
+
+function verifyRefreshToken(app: FastifyInstance, token: string) {
+  let decoded: { type?: string; sub?: string };
+  try {
+    decoded = app.jwt.verify<{ type?: string; sub?: string }>(token, { key: refreshSecret() });
+  } catch {
+    throw new AppError("invalid_refresh_token", "Refresh token is invalid or expired", 401);
+  }
+  if (decoded.type !== "refresh" || !decoded.sub) {
+    throw new AppError("invalid_refresh_token", "Refresh token is invalid or expired", 401);
+  }
+  return { sub: decoded.sub };
+}
+
+function refreshSecret() {
+  return env.JWT_REFRESH_SECRET ?? env.JWT_ACCESS_SECRET;
 }
 
 function publicUser(user: { id: string; email: string; displayName: string | null; status: string; roles: { role: string }[] }) {

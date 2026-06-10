@@ -868,11 +868,11 @@ function App() {
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const data = await api<{ token: string }>("/api/auth/login", {
+    const data = await api<{ token: string; refreshToken?: string }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ email: form.get("email"), password: form.get("password") })
     });
-    saveAdminToken(data.token);
+    saveAdminToken(data.token, data.refreshToken);
     setLoggedIn(true);
     setMessage("登录成功");
     await refresh("dashboard");

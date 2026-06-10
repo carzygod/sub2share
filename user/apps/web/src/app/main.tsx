@@ -128,10 +128,11 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const token = params.get("auth_token");
+    const refreshToken = params.get("auth_refresh_token");
     const error = params.get("auth_error");
 
     if (token) {
-      saveToken(token);
+      saveToken(token, refreshToken);
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
       setMessage("登录成功");
       void refresh();
@@ -155,7 +156,7 @@ function App() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const path = authMode === "register" ? "/api/auth/register" : "/api/auth/login";
-    const result = await api<{ token: string; user: User }>(path, {
+    const result = await api<{ token: string; refreshToken?: string; user: User }>(path, {
       method: "POST",
       body: JSON.stringify({
         email: form.get("email"),
@@ -163,7 +164,7 @@ function App() {
         displayName: form.get("displayName")
       })
     });
-    saveToken(result.token);
+    saveToken(result.token, result.refreshToken);
     setUser(result.user);
     setAuthMode(null);
     setMessage(authMode === "register" ? "账号已创建" : "登录成功");
