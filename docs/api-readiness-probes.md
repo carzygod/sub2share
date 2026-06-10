@@ -40,12 +40,14 @@
 
 - PostgreSQL 数据库：执行 `SELECT 1`。
 - Sub2API 网关：请求 `${SUB2_BASE_URL}/health`，超时时间 5 秒。
+- OAuth state store：检查当前 `OAUTH_STATE_STORE` 模式；Redis 模式会执行 Redis `PING`。
 
 状态规则：
 
-- 数据库和 Sub2API 都正常时返回 HTTP 200，`ok = true`。
+- 数据库、Sub2API 和 OAuth state store 都正常时返回 HTTP 200，`ok = true`。
 - 任一依赖异常时返回 HTTP 503，`ok = false`。
 - 返回体会包含每个依赖的状态、HTTP 状态码或错误摘要。
+- 非生产环境使用内存 OAuth state store 时仍可就绪；生产环境默认使用 Redis，Redis 不可达时会让 `/ready` 返回 503。
 
 ## 与既有 `/health` 的关系
 

@@ -7,7 +7,7 @@ import { sendError } from "./common/errors.js";
 import { ok } from "./common/response.js";
 import { prisma } from "./common/prisma.js";
 import { registerAuthRoutes } from "./modules/auth/routes.js";
-import { closeOAuthStateStore } from "./modules/auth/oauth-state-store.js";
+import { closeOAuthStateStore, inspectOAuthStateStoreReadiness } from "./modules/auth/oauth-state-store.js";
 import { registerWalletRoutes } from "./modules/wallet/routes.js";
 import { registerProductRoutes } from "./modules/products/routes.js";
 import { registerOrderRoutes } from "./modules/orders/routes.js";
@@ -46,11 +46,12 @@ export async function buildServer() {
 
   app.get("/ready", async (_request, reply) => {
     const checkedAt = new Date().toISOString();
-    const [database, sub2api] = await Promise.all([
+    const [database, sub2api, oauthStateStore] = await Promise.all([
       checkDatabase(),
-      checkSub2Api()
+      checkSub2Api(),
+      checkOAuthStateStore()
     ]);
-    const ready = database.ok && sub2api.ok;
+    const ready = database.ok && sub2api.ok && oauthStateStore.ok;
     return reply.status(ready ? 200 : 503).send({
       ok: ready,
       data: {
@@ -59,7 +60,8 @@ export async function buildServer() {
         checkedAt,
         dependencies: {
           database,
-          sub2api
+          sub2api,
+          oauthStateStore
         }
       }
     });
@@ -112,6 +114,16 @@ async function checkSub2Api() {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function checkOAuthStateStore() {
+  const readiness = await inspectOAuthStateStoreReadiness();
+  return {
+    ok: readiness.ok,
+    status: readiness.ok ? "ok" : "error",
+    ...readiness.summary,
+    issues: readiness.issues
+  };
 }
 
 function readinessError(error: unknown) {
