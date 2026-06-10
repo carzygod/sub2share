@@ -38,6 +38,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
   - 用户、租赁、余额、资源类型、到期时间、请求量、RPM、TPM、并发等本地准入失败。
   - Sub2API 上游超时或不可用。
   - Sub2API 正常返回，包括 2xx、4xx、5xx。
+- Sub2API/OpenAI 上游返回 HTTP `>=400` 时，日志会写入 `errorCode=upstream_http_<status>`，例如 `upstream_http_429` 或 `upstream_http_500`，便于后台按错误码筛选。
 - 流式响应结束后会回写同一条日志的 `durationMs`。
 - 客户端在流式响应中途断开时，同一条日志会写入 `errorCode=client_disconnected`。
 - 日志写入失败不会阻断用户请求，只记录服务端 warning。

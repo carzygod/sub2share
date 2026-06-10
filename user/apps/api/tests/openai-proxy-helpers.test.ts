@@ -16,6 +16,7 @@ import {
   proxyRequestIdHeaderName,
   proxyBodyText,
   pruneProxyRateLimitWindow,
+  upstreamHttpProxyErrorCode,
   type ProxyRateLimitWindow
 } from "../src/modules/openai-proxy/helpers.js";
 
@@ -149,6 +150,16 @@ test("builds OpenAI-compatible local proxy error payloads", () => {
       code: "request_limit_exceeded"
     }
   });
+});
+
+test("labels upstream HTTP errors for proxy request logs", () => {
+  assert.equal(upstreamHttpProxyErrorCode(undefined), null);
+  assert.equal(upstreamHttpProxyErrorCode(null), null);
+  assert.equal(upstreamHttpProxyErrorCode(200), null);
+  assert.equal(upstreamHttpProxyErrorCode(302), null);
+  assert.equal(upstreamHttpProxyErrorCode(400), "upstream_http_400");
+  assert.equal(upstreamHttpProxyErrorCode(429), "upstream_http_429");
+  assert.equal(upstreamHttpProxyErrorCode(500), "upstream_http_500");
 });
 
 test("inspects the local OpenAI proxy public contract", () => {

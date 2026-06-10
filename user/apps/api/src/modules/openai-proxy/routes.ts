@@ -11,7 +11,8 @@ import {
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   proxyBodyByteLength,
-  proxyBodyText
+  proxyBodyText,
+  upstreamHttpProxyErrorCode
 } from "./helpers.js";
 import { acquireOpenAiProxyConcurrency, consumeOpenAiProxyRateLimit } from "./limiter-store.js";
 
@@ -194,6 +195,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           ...logContext,
           statusCode: upstreamResponse.status,
           upstreamStatusCode: upstreamResponse.status,
+          errorCode: upstreamHttpProxyErrorCode(upstreamResponse.status),
           estimatedInputTokens: rateLimitCheck.estimatedTokens
         });
 

@@ -70,6 +70,11 @@ export function openAiProxyErrorPayload(statusCode: number, code: string, messag
   };
 }
 
+export function upstreamHttpProxyErrorCode(statusCode: number | null | undefined) {
+  if (statusCode === undefined || statusCode === null || statusCode < 400) return null;
+  return `upstream_http_${statusCode}`;
+}
+
 export function inspectOpenAiProxyContract(endpoint: string) {
   const trimmedEndpoint = endpoint.trim();
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");

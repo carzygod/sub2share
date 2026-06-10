@@ -15,6 +15,7 @@
 - 402 余额不足和花费额度耗尽返回 `insufficient_quota`。
 - 429 请求量、RPM/TPM 和并发限制返回 `rate_limit_error`。
 - 502/504 上游不可用或超时返回 `api_error`。
+- Sub2API/OpenAI 上游实际返回 HTTP `>=400` 时，本地不改写客户端响应，但会在 `ProxyRequestLog.errorCode` 中记录 `upstream_http_<status>`，例如 `upstream_http_429` 或 `upstream_http_500`。
 - 新增 Node test 覆盖类型映射和 payload 结构，避免后续网关错误格式回归。
 - `GET /api/admin/system-health` 新增 `openAiProxyContract` 检查项，会验证公开 endpoint、CORS 请求 ID 暴露头和关键本地错误类型映射。
 
