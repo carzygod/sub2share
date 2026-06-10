@@ -349,7 +349,9 @@ const upsertResourceCredentialSchema = z.object({
 
 const applyResourceCredentialToSub2Schema = z.object({
   clientId: z.string().trim().min(1).max(240).optional(),
-  proxyId: z.coerce.number().int().positive().optional()
+  proxyId: z.coerce.number().int().positive().optional(),
+  runSmokeTest: z.boolean().default(false),
+  smokeModel: z.string().trim().min(1).max(160).optional()
 });
 
 const updateSupplierSchema = z.object({
@@ -2193,6 +2195,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         credential: { select: typeof resourceCredentialSummarySelect };
       };
     }> | null = null;
+    let smokeTest: Sub2ProxySmokeTestResult | null = null;
+    let smokeTestSkippedReason: string | null = null;
     if (result.ok) {
       testResult = await testSub2AccountForResourceApply(accountId);
       updatedResource = await prisma.supplierResource.update({
@@ -2206,6 +2210,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           credential: { select: resourceCredentialSummarySelect }
         }
       });
+      if (input.runSmokeTest) {
+        if (testResult.ok) {
+          smokeTest = await runLocalOpenAiProxySmokeTest(input.smokeModel);
+        } else {
+          smokeTestSkippedReason = "sub2_account_test_failed";
+        }
+      }
+    } else if (input.runSmokeTest) {
+      smokeTestSkippedReason = "credential_apply_failed";
     }
     const credentialSummary = resourceCredentialAuditPayload(resource.credential);
     await writeAuditLog(request, actor.id, "admin.resource.credential_apply_sub2", "supplier_resource", id, {
@@ -2229,9 +2242,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       resource: updatedResource ? {
         status: updatedResource.status,
         lastCheckedAt: updatedResource.lastCheckedAt?.toISOString() ?? null
+      } : null,
+      smokeTestRequested: input.runSmokeTest,
+      smokeTestSkippedReason,
+      smokeTest: smokeTest ? {
+        ok: smokeTest.ok,
+        model: smokeTest.model,
+        keyDisabled: smokeTest.keyDisabled,
+        localProxy: smokeTest.localProxy,
+        models: smokeTest.models,
+        responses: smokeTest.responses
       } : null
     });
-    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource });
+    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource, smokeTest, smokeTestSkippedReason });
   });
 
   app.post("/api/admin/resources/:id/test", async (request, reply) => {

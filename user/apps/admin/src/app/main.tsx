@@ -792,6 +792,8 @@ interface Sub2CredentialApplyResult {
   };
   test?: Sub2AccountTestResult | null;
   resource?: ResourceRow | null;
+  smokeTest?: Sub2ProxySmokeTestResult | null;
+  smokeTestSkippedReason?: string | null;
 }
 
 interface Sub2BindingIssueRow {
@@ -1717,19 +1719,26 @@ function App() {
     const form = new FormData(event.currentTarget);
     const clientId = String(form.get("clientId") || "").trim();
     const proxyIdText = String(form.get("proxyId") || "").trim();
-    if (!confirmAdminAction("确认应用共享资源凭据到 Sub2？", `资源 ID：${resourceId}\nClient ID：${clientId || "-"}\nProxy ID：${proxyIdText || "-"}`)) return;
+    const runSmokeTest = form.get("runSmokeTest") === "on";
+    const smokeModel = optionalFormString(form, "smokeModel");
+    if (!confirmAdminAction("确认应用共享资源凭据到 Sub2？", `资源 ID：${resourceId}\nClient ID：${clientId || "-"}\nProxy ID：${proxyIdText || "-"}\n端到端自检：${runSmokeTest ? "是" : "否"}\n自检模型：${smokeModel ?? "-"}`)) return;
     const result = await api<Sub2CredentialApplyResult>(`/api/admin/resources/${resourceId}/apply-credential-to-sub2`, {
       method: "POST",
       body: JSON.stringify({
         clientId: clientId || undefined,
-        proxyId: proxyIdText ? Number(proxyIdText) : undefined
+        proxyId: proxyIdText ? Number(proxyIdText) : undefined,
+        runSmokeTest,
+        smokeModel
       })
     });
     event.currentTarget.reset();
     const testMessage = result.test
       ? `，测试${result.test.ok ? "通过" : "失败"} / HTTP ${result.test.statusCode} / ${testSummary(result.test)}`
       : "";
-    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}${testMessage}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}`);
+    const smokeMessage = result.smokeTest
+      ? result.smokeTest.ok ? "，端到端通过" : `，端到端失败 / ${smokeSummary(result.smokeTest)}`
+      : result.smokeTestSkippedReason ? `，端到端跳过：${credentialApplySmokeSkipLabel(result.smokeTestSkippedReason)}` : "";
+    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}${testMessage}${smokeMessage}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}${smokeMessage}`);
     await refresh("resources");
     await openResourceDetail(resourceId);
     await refresh("sub2");
@@ -4060,6 +4069,11 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
             <form className="resource-config-form" onSubmit={(event) => onApplyCredentialToSub2(event, resource.id)}>
               <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
               <input name="proxyId" type="number" min={1} placeholder="proxy_id，可选" />
+              <label className="checkbox-line">
+                <input name="runSmokeTest" type="checkbox" />
+                <span>应用后端到端自检</span>
+              </label>
+              <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
               <button disabled={!resource.sub2AccountId || resource.credential.status !== "active"}>应用到 Sub2</button>
             </form>
           )}
@@ -4833,6 +4847,12 @@ function smokeSummary(result: Sub2ProxySmokeTestResult) {
   }
   if (!result.keyDisabled) return result.cleanupError ?? "临时 Key 清理失败";
   return "-";
+}
+
+function credentialApplySmokeSkipLabel(reason: string) {
+  if (reason === "credential_apply_failed") return "凭据应用失败";
+  if (reason === "sub2_account_test_failed") return "Sub2 账号测试失败";
+  return reason;
 }
 
 function auditSummary(value: unknown) {

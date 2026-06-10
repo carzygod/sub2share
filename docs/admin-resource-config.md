@@ -28,6 +28,7 @@
 - 凭据写入和删除分别记录审计日志：`admin.resource.credential_upsert`、`admin.resource.credential_delete`。
 - 凭据应用动作会读取资源绑定的 `sub2AccountId`，仅支持 active 的 `openai_refresh_token`，并记录审计日志 `admin.resource.credential_apply_sub2`。
 - 凭据应用成功后会立即测试 Sub2 账号，并更新共享资源的 `status` 与 `lastCheckedAt`。
+- 凭据应用请求可传入 `runSmokeTest=true` 和可选 `smokeModel`；只有凭据应用成功且 Sub2 账号测试通过时，才会继续执行本地 OpenAI/Codex 反代端到端自检。
 
 ## 管理员入口
 
@@ -37,7 +38,7 @@
 - 详情面板新增配置调整表单。
 - 管理员可直接保存状态、等级、并发、分成、保留比例、日上限和 Sub2 账号。
 - 管理员可在资源详情中登记、轮换或删除接入凭据。
-- 管理员可把资源中已加密保存的 OpenAI refresh token 应用到绑定的 Sub2 上游账号，并看到应用后的账号测试结果。
+- 管理员可把资源中已加密保存的 OpenAI refresh token 应用到绑定的 Sub2 上游账号，并看到应用后的账号测试结果；需要完整恢复证据时，可勾选“应用后端到端自检”，同次验证本地 `/v1/models` 与 `/v1/responses`。
 - 保存后刷新资源列表和当前详情面板。
 - 共享资源 CSV 导出新增分成、保留比例、日上限、凭据类型、凭据状态、凭据指纹和最后检查时间字段。
 
@@ -49,7 +50,7 @@
 - `admin` 才能把共享资源凭据应用到 Sub2 上游账号。
 - 资源类型暂不允许在创建后修改，避免历史用量、商品和调度归属被改写。
 - 后台列表、详情、导出和审计日志都不回显凭据明文或密文。
-- 凭据应用结果只返回 `ok/refreshed/applied/error`、账号测试结果和资源摘要，不返回 refresh token 或 OAuth credentials。
+- 凭据应用结果只返回 `ok/refreshed/applied/error`、账号测试结果、可选端到端自检摘要和资源摘要，不返回 refresh token 或 OAuth credentials。
 
 ## 验收方式
 

@@ -426,6 +426,18 @@ select option { color: #111; }
 .resource-config-form button {
   grid-column: 1 / -1;
 }
+.checkbox-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.checkbox-line input {
+  width: auto;
+  min-height: 0;
+}
 .price-line {
   display: grid;
   gap: 7px;
