@@ -205,15 +205,15 @@ verify_port_cwd() {
   fi
   log "port $port cwd $cwd"
   case "$cwd" in
-    "$current"*) ;;
-    *)
-      echo "Port $port is running from unexpected cwd: $cwd" >&2
+    *user-replaced-*|*user.new-*)
+      echo "Port $port is running from stale or staging cwd: $cwd" >&2
       return 1
       ;;
   esac
   case "$cwd" in
-    *user-replaced-*|*user.new-*)
-      echo "Port $port is running from stale or staging cwd: $cwd" >&2
+    "$current"|"$current"/*) ;;
+    *)
+      echo "Port $port is running from unexpected cwd: $cwd" >&2
       return 1
       ;;
   esac
@@ -237,9 +237,11 @@ verify_runtime() {
 }
 
 verify_all_port_cwds() {
-  verify_port_cwd "$api_port"
-  verify_port_cwd "$web_port"
-  verify_port_cwd "$admin_port"
+  local failed=0
+  verify_port_cwd "$api_port" || failed=1
+  verify_port_cwd "$web_port" || failed=1
+  verify_port_cwd "$admin_port" || failed=1
+  return "$failed"
 }
 
 log "creating staging release $staging"
