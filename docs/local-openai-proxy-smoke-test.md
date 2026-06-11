@@ -29,6 +29,8 @@
    - Sub2 临时 Key 置为 `inactive`
 8. 写入审计日志 `admin.sub2.proxy_smoke_test`。
 
+系统巡检 `GET /api/admin/system-health` 会读取最近的 smoke 审计日志，新增 `localProxySmoke` 检查项。该检查不会自动发起真实请求，只把最近自检结果作为 `/v1/models` 与 `/v1/responses` 端到端证据纳入可用性巡检。
+
 ## 返回结果
 
 接口仍为：

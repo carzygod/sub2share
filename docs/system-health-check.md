@@ -37,6 +37,7 @@
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况；若存在阻断原因，会返回结构化问题样本，包含 blocking reason、默认分组、OpenAI 账号数、active 账号数、网关可达性和维修建议。
 - OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露 `x-proxy-request-id`、本地错误类型是否符合 OpenAI 风格分类。
 - OpenAI 反代运行态：统计当前 limiter store、共享作用域、Redis 可达性、活跃并发租约和 RPM/TPM 速率窗口；生产环境显式使用 memory 限流器标记 warning，Redis 不可达标记 error。
+- 本地反代自检：读取最近审计日志中的 OpenAI/Codex 端到端 smoke test 结果；最近失败标记 error，超过 24 小时或缺少证据标记 warning，不会在巡检时主动发起真实 OpenAI 请求。
 - 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地/上游错误码、客户端中途断开、上游流异常和上游流空闲超时，并返回最近异常反代请求样本；上游 HTTP `>=400` 会以 `upstream_http_<status>` 进入错误码，样本会携带请求模型。
 - 用量同步：检查 Sub2 usage 同步状态，超过 24 小时未成功同步会标记 warning，失败会标记 error。
 - 用量同步调度：检查 `SUB2_USAGE_SYNC_INTERVAL_MS` 与 `SUB2_USAGE_SYNC_ON_START`，生产环境禁用定时同步会标记 error。
@@ -70,6 +71,7 @@
 - API Key 可用性巡检默认扫描最近 500 条 active OpenAI/Codex Key，并在 `detail.issues` 中返回最多 50 条样本，避免巡检响应过大。
 - OpenAI 反代契约巡检是静态契约检查，不会发起真实上游请求；真实 Sub2API 调度仍由 `Sub2/OpenAI 上游` 和反代 smoke test 覆盖。
 - OpenAI 反代运行态巡检只读取 limiter 状态，不会改变请求拦截行为；Redis 模式适合多实例一致限流，memory 模式只适合本地开发、测试或明确的单实例部署。
+- 本地反代自检巡检只读取 `AuditLog` 中最近 smoke 证据，不会自动创建临时 Key、订单、租赁或真实请求；实时验收仍通过 `反代状态 -> 端到端自检` 执行。
 - 管理后台问题样本表默认只展示后端返回的 issue 样本，候选样本表只展示后端返回的 samples 样本，前端每类最多聚合 100 条，避免巡检页因大量问题产生过重渲染。
 - 巡检问题样本的操作按钮只使用后端返回的定位字段做列表筛选、详情打开或跳转到反代状态页，不会绕过对应管理页面的权限、分页和脱敏边界。
 - 订单状态巡检默认返回最近 50 条 failed/refunding 订单问题样本，只做定位和重试可行性提示，不自动执行订单重试、退款或账务调整。

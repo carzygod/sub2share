@@ -183,6 +183,7 @@ interface SystemHealthIssueRow {
   settlementLookup?: string;
   withdrawalLookup?: string;
   sub2Status?: boolean;
+  auditLogLookup?: string;
 }
 
 interface SystemHealthSampleRow {
@@ -1704,6 +1705,10 @@ function App() {
     await openFilteredListCandidate("proxyRequests", lookup, "已打开巡检关联反代请求");
   }
 
+  async function openAuditLogCandidate(lookup: string) {
+    await openFilteredListCandidate("audit", lookup, "已打开巡检关联审计记录");
+  }
+
   async function openSub2StatusCandidate() {
     await refresh("sub2");
     setMessage("Opened Sub2/OpenAI proxy status for the selected health issue");
@@ -2018,6 +2023,7 @@ function App() {
             onOpenSettlement={openSettlementCandidate}
             onOpenWithdrawal={openWithdrawalCandidate}
             onOpenSub2Status={openSub2StatusCandidate}
+            onOpenAuditLog={openAuditLogCandidate}
           />
         )}
         {view === "systemHealthHistory" && (
@@ -2369,7 +2375,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2387,6 +2393,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenSettlement: (lookup: string) => void;
   onOpenWithdrawal: (lookup: string) => void;
   onOpenSub2Status: () => void;
+  onOpenAuditLog: (lookup: string) => void;
 }) {
   const checks = health?.checks ?? [];
   const issueRows = checks.flatMap(systemHealthIssueRows);
@@ -2465,6 +2472,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {issue.productLookup && <button className="secondary mini" onClick={() => onOpenProduct(issue.productLookup!)}>打开商品</button>}
                 {issue.settlementLookup && <button className="secondary mini" onClick={() => onOpenSettlement(issue.settlementLookup!)}>打开结算</button>}
                 {issue.withdrawalLookup && <button className="secondary mini" onClick={() => onOpenWithdrawal(issue.withdrawalLookup!)}>打开提现</button>}
+                {issue.auditLogLookup && <button className="secondary mini" onClick={() => onOpenAuditLog(issue.auditLogLookup!)}>打开审计</button>}
                 {!systemHealthIssueHasAction(issue) && <small>-</small>}
               </div>
             </td>
@@ -4576,7 +4584,8 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       productLookup: textValue(record.productId) ?? textValue(record.priceId),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
       withdrawalLookup: textValue(record.withdrawalId),
-      sub2Status: check.id === "sub2" || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId))
+      sub2Status: check.id === "sub2" || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
+      auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
     };
   });
 }
@@ -4598,7 +4607,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4632,6 +4641,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
     || issue.settlementLookup
     || issue.withdrawalLookup
     || issue.sub2Status
+    || issue.auditLogLookup
   );
 }
 

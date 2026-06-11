@@ -52,6 +52,8 @@ const systemHealthSalesDeliveryScanLimit = 200;
 const systemHealthSalesDeliveryIssueLimit = 50;
 const systemHealthPendingUsageScanLimit = 200;
 const systemHealthPendingUsageIssueLimit = 50;
+const systemHealthLocalSmokeFreshMs = 24 * 60 * 60 * 1000;
+const systemHealthLocalSmokeAuditScanLimit = 20;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
 
@@ -148,6 +150,24 @@ interface Sub2UpstreamIssue {
   error?: string | null;
   actionHint: string;
   message: string;
+}
+
+interface LocalProxySmokeEvidenceIssue {
+  id: string;
+  type: string;
+  severity: "warning" | "error";
+  auditLogId?: string;
+  auditAction?: string;
+  model?: string | null;
+  modelsOk?: boolean | null;
+  responsesOk?: boolean | null;
+  localProxyOk?: boolean | null;
+  keyDisabled?: boolean | null;
+  proxyRequestLogCount?: number | null;
+  createdAt?: string;
+  ageMinutes?: number | null;
+  message: string;
+  actionHint: string;
 }
 
 interface ApiKeyReadinessIssue {
@@ -3211,7 +3231,8 @@ async function buildSystemHealthReport() {
     apiKeyReadiness,
     productCatalog,
     salesDelivery,
-    oauthStateStore
+    oauthStateStore,
+    localProxySmokeEvidence
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -3270,7 +3291,8 @@ async function buildSystemHealthReport() {
     inspectOpenAiProxyApiKeys(checkedAt),
     inspectProductCatalogReadiness(),
     inspectSalesDeliveryReadiness(),
-    inspectOAuthStateStoreReadiness()
+    inspectOAuthStateStoreReadiness(),
+    inspectLocalProxySmokeEvidence(checkedAt)
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
@@ -3415,6 +3437,7 @@ async function buildSystemHealthReport() {
       { ...openAiProxyRuntime.summary },
       openAiProxyRuntime.issues.length > 0 ? { issues: openAiProxyRuntime.issues } : undefined
     ),
+    localProxySmokeEvidenceHealthCheck(localProxySmokeEvidence),
     systemHealthCheck(
       "sub2Bindings",
       "Sub2 绑定",
@@ -5081,6 +5104,222 @@ function sub2UpstreamIssueActionHint(reason: string) {
   if (reason === "openai_group_has_no_active_accounts") return "Refresh/test existing OpenAI accounts or apply a valid refresh token, then run the local end-to-end proxy smoke test.";
   if (reason === "sub2_status_query_failed") return "Review the redacted error, verify Sub2 admin credentials, and retry the status query.";
   return "Review Sub2API status and run the local end-to-end proxy smoke test after repair.";
+}
+
+async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
+  const auditLogs = await prisma.auditLog.findMany({
+    where: { action: { in: ["admin.sub2.proxy_smoke_test", "admin.resource.credential_apply_sub2"] } },
+    select: {
+      id: true,
+      action: true,
+      objectId: true,
+      after: true,
+      createdAt: true
+    },
+    orderBy: { createdAt: "desc" },
+    take: systemHealthLocalSmokeAuditScanLimit
+  });
+  const latest = auditLogs
+    .map((log) => normalizeLocalProxySmokeAuditLog(log))
+    .find((result): result is LocalProxySmokeEvidence => Boolean(result));
+  const issues: LocalProxySmokeEvidenceIssue[] = [];
+
+  if (!latest) {
+    issues.push({
+      id: "local_proxy_smoke:missing",
+      type: "local_proxy_smoke_missing",
+      severity: "warning",
+      ageMinutes: null,
+      message: "No local OpenAI/Codex end-to-end smoke test evidence was found in recent audit logs.",
+      actionHint: "Run the Sub2 proxy end-to-end smoke test from the admin proxy status page."
+    });
+    return {
+      ok: false,
+      status: "warning" as const,
+      summary: {
+        hasEvidence: false,
+        latestAuditLogId: null,
+        latestAction: null,
+        latestAt: null,
+        ageMinutes: null,
+        stale: null,
+        ok: false,
+        model: null,
+        modelsOk: null,
+        responsesOk: null,
+        localProxyOk: null,
+        keyDisabled: null,
+        proxyRequestLogCount: null,
+        checkedAuditLogs: auditLogs.length,
+        freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
+      },
+      latest: null,
+      issues
+    };
+  }
+
+  const ageMs = Math.max(0, checkedAt.getTime() - latest.createdAt.getTime());
+  const ageMinutes = Math.floor(ageMs / 60_000);
+  const stale = ageMs > systemHealthLocalSmokeFreshMs;
+  if (!latest.ok) {
+    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_failed", "error", ageMinutes, localProxySmokeFailureSummary(latest), "Repair the failing stage, then rerun the local end-to-end proxy smoke test."));
+  } else if (stale) {
+    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_stale", "warning", ageMinutes, `Latest local OpenAI/Codex smoke test passed but is ${ageMinutes} minutes old.`, "Rerun the smoke test to refresh live /v1/responses evidence."));
+  }
+
+  return {
+    ok: latest.ok && !stale,
+    status: latest.ok ? stale ? "warning" as const : "ok" as const : "error" as const,
+    summary: {
+      hasEvidence: true,
+      latestAuditLogId: latest.auditLogId,
+      latestAction: latest.action,
+      latestAt: latest.createdAt.toISOString(),
+      ageMinutes,
+      stale,
+      ok: latest.ok,
+      model: latest.model ?? null,
+      modelsOk: latest.modelsOk,
+      responsesOk: latest.responsesOk,
+      localProxyOk: latest.localProxyOk,
+      keyDisabled: latest.keyDisabled,
+      proxyRequestLogCount: latest.proxyRequestLogCount,
+      checkedAuditLogs: auditLogs.length,
+      freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
+    },
+    latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale),
+    issues
+  };
+}
+
+function localProxySmokeEvidenceHealthCheck(result: Awaited<ReturnType<typeof inspectLocalProxySmokeEvidence>>) {
+  return systemHealthCheck(
+    "localProxySmoke",
+    "本地反代自检",
+    result.status,
+    result.latest
+      ? result.ok ? `最近自检通过：${result.latest.model ?? "-"} / ${result.latest.ageMinutes} 分钟前` : result.issues[0]?.message ?? "最近本地反代自检需要复查"
+      : "尚未发现本地 OpenAI/Codex 端到端自检证据",
+    result.summary,
+    {
+      latest: result.latest,
+      issues: result.issues
+    }
+  );
+}
+
+interface LocalProxySmokeEvidence {
+  auditLogId: string;
+  action: string;
+  objectId?: string | null;
+  createdAt: Date;
+  ok: boolean;
+  model?: string | null;
+  modelsOk: boolean | null;
+  responsesOk: boolean | null;
+  localProxyOk: boolean | null;
+  keyDisabled: boolean | null;
+  proxyRequestLogCount: number | null;
+}
+
+function normalizeLocalProxySmokeAuditLog(log: {
+  id: string;
+  action: string;
+  objectId: string | null;
+  after: Prisma.JsonValue | null;
+  createdAt: Date;
+}): LocalProxySmokeEvidence | null {
+  const after = jsonRecord(log.after);
+  if (!after) return null;
+  const smoke = log.action === "admin.resource.credential_apply_sub2"
+    ? jsonRecord(after.smokeTest)
+    : after;
+  if (!smoke) return null;
+  const models = jsonRecord(smoke.models);
+  const responses = jsonRecord(smoke.responses);
+  const localProxy = jsonRecord(smoke.localProxy);
+  return {
+    auditLogId: log.id,
+    action: log.action,
+    objectId: log.objectId,
+    createdAt: log.createdAt,
+    ok: Boolean(smoke.ok),
+    model: jsonText(smoke.model),
+    modelsOk: jsonBoolean(models?.ok),
+    responsesOk: jsonBoolean(responses?.ok),
+    localProxyOk: jsonBoolean(localProxy?.ok),
+    keyDisabled: jsonBoolean(smoke.keyDisabled),
+    proxyRequestLogCount: jsonNumber(localProxy?.proxyRequestLogCount)
+  };
+}
+
+function localProxySmokeEvidenceSummary(smoke: LocalProxySmokeEvidence, ageMinutes: number, stale: boolean) {
+  return {
+    auditLogId: smoke.auditLogId,
+    auditAction: smoke.action,
+    objectId: smoke.objectId ?? null,
+    createdAt: smoke.createdAt.toISOString(),
+    ageMinutes,
+    stale,
+    ok: smoke.ok,
+    model: smoke.model ?? null,
+    modelsOk: smoke.modelsOk,
+    responsesOk: smoke.responsesOk,
+    localProxyOk: smoke.localProxyOk,
+    keyDisabled: smoke.keyDisabled,
+    proxyRequestLogCount: smoke.proxyRequestLogCount
+  };
+}
+
+function localProxySmokeEvidenceIssue(
+  smoke: LocalProxySmokeEvidence,
+  type: string,
+  severity: "warning" | "error",
+  ageMinutes: number,
+  message: string,
+  actionHint: string
+): LocalProxySmokeEvidenceIssue {
+  return {
+    id: `local_proxy_smoke:${smoke.auditLogId}:${type}`,
+    type,
+    severity,
+    auditLogId: smoke.auditLogId,
+    auditAction: smoke.action,
+    model: smoke.model ?? null,
+    modelsOk: smoke.modelsOk,
+    responsesOk: smoke.responsesOk,
+    localProxyOk: smoke.localProxyOk,
+    keyDisabled: smoke.keyDisabled,
+    proxyRequestLogCount: smoke.proxyRequestLogCount,
+    createdAt: smoke.createdAt.toISOString(),
+    ageMinutes,
+    message,
+    actionHint
+  };
+}
+
+function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
+  if (smoke.modelsOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/models.";
+  if (smoke.responsesOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/responses.";
+  if (smoke.localProxyOk === false) return "Latest local OpenAI/Codex smoke test did not complete local proxy cleanup or log evidence.";
+  if (smoke.keyDisabled === false) return "Latest local OpenAI/Codex smoke test did not disable the temporary Sub2 key.";
+  return "Latest local OpenAI/Codex smoke test failed.";
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function jsonText(value: unknown) {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : null;
+}
+
+function jsonBoolean(value: unknown) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function jsonNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function billingSyncHealthCheck(

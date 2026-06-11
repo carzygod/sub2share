@@ -17,7 +17,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON；如果后端返回 `actionHint`，页面会追加展示维修建议。
   - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持资源、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
@@ -37,7 +37,8 @@
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
 - Sub2/OpenAI 上游巡检发现网关不可达、OpenAI 分组缺失、分组非 active、分组无账号或无 active 账号时，管理员可以在统一问题样本中看到阻断原因、分组、OpenAI 账号数量、active 账号数量和维修建议，并一键进入反代状态页继续执行账号刷新、测试、自检或凭据应用。
-- 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现、反代状态或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。
+- 本地反代自检巡检发现最近 smoke 失败、过期或缺失时，管理员可以看到模型、`/v1/models`、`/v1/responses`、本地代理清理、临时 Key 禁用和代理日志数量，并可一键打开对应审计记录。
+- 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现、反代状态、审计记录或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。
 - 订单状态巡检发现 `failed` 或 `refunding` 订单时，会把具体订单作为问题样本暴露；`failed_order_retry_candidate` 可直接打开订单详情继续执行失败订单 `Retry`，`failed_order_manual_review` 会提示阻塞原因。
 
 ## 验收方式
