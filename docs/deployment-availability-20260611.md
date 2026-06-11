@@ -1656,3 +1656,81 @@ CORS 复查：
 - `openAiProxyContract` / `openAiProxyRuntime` / `adminCapabilities`：`ok`
 
 结论：支付配置 warning 现在能同时回答“生产是否仍在 mock 充值”和“最近 24 小时 mock 充值是否已经写入余额流水”。当前线上未发现最近 mock 充值流水，余额风险仍主要来自生产继续启用 mock 充值配置本身；真实支付渠道接入仍是生产级后续任务。
+
+## 2026-06-12 02:49 巡检共享资源生产范围跳转发布
+
+### 发布版本
+
+- `6e44e8f fix: scope resource health jumps to production`
+
+### 本轮修复
+
+- `resources.detail.issues` 与 `resourceCredentials.detail.issues` 的共享资源修复入口新增 `resourceScope=production`。
+- `GET /api/admin/resources` 新增隐藏查询语义 `action=production`，会应用生产资源过滤，排除内部 smoke / disabled 自检资源。
+- Admin `可用性巡检 -> 巡检问题样本 -> 打开共享资源` 会把 `resourceScope=production` 映射到生产资源列表。
+- 普通共享资源列表不带 `action=production` 时仍保留内部资源行，用于管理员审计和清理。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：63/63 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=6e44e8f`
+  - `deployed_at=20260611T184954Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：63/63 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resources`：`warning`
+  - summary：`No online production Codex shared resource`
+  - `totalCodexResources=0`
+  - `onlineCodexResources=0`
+  - `ignoredInternalResources=1`
+  - `issueSamples=1`
+  - `resourceSamples=0`
+  - issue：`codex_online_resource_missing`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+- `resourceCredentials`：`error`
+  - issue：`openai_refresh_token_candidate_missing`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+  - `resourceStatus=null`
+  - `sub2Status=true`
+- 资源列表口径：
+  - `GET /api/admin/resources?page=1&pageSize=5&resourceType=codex&action=production`：`total=0`，`items=0`。
+  - `GET /api/admin/resources?page=1&pageSize=5&resourceType=codex`：`total=1`，仍可看到内部 `admin-disabled-smoke-resource`。
+- `openAiProxyContract`：`ok`
+- `openAiProxyRuntime`：`ok`
+- `payments`：`warning`，生产仍启用 mock 充值。
+- `sub2` / `localProxySmoke` / `resourceCredentials` 仍为 error：上游 OpenAI/Sub2 refresh token 失效或无 active OpenAI 账号。
+
+结论：从系统巡检进入共享资源修复时，管理员现在看到的是生产 Codex 资源范围，不会被内部 disabled smoke resource 误导；内部自检资源仍可通过普通共享资源列表审计。完整 `/v1/responses` 真实生成仍需要补充有效 OpenAI/Sub2 refresh token 并重新通过账号测试与端到端自检。
