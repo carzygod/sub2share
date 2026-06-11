@@ -142,6 +142,17 @@ export interface Sub2GatewayAccountTestResult {
   raw: string;
 }
 
+export interface Sub2ProxySmokeRequestLogSummary {
+  id: string;
+  requestId: string;
+  path: string;
+  model?: string | null;
+  statusCode?: number | null;
+  upstreamStatusCode?: number | null;
+  errorCode?: string | null;
+  createdAt: string;
+}
+
 export interface Sub2ProxySmokeTestResult {
   ok: boolean;
   checkedAt: string;
@@ -177,6 +188,7 @@ export interface Sub2ProxySmokeTestResult {
     rentalId?: string | null;
     apiKeyPrefix?: string | null;
     proxyRequestLogCount: number;
+    proxyRequestLogs?: Sub2ProxySmokeRequestLogSummary[];
     apiKeyDeactivated: boolean;
     rentalClosed: boolean;
     orderClosed: boolean;

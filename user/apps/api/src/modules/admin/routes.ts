@@ -6110,6 +6110,7 @@ async function runLocalOpenAiProxySmokeTest(model = env.SUB2_SMOKE_MODEL): Promi
         rentalId: local?.rentalId ?? null,
         apiKeyPrefix: local?.apiKeyPrefix ?? null,
         proxyRequestLogCount: 0,
+        proxyRequestLogs: [],
         apiKeyDeactivated: cleanup.apiKeyDeactivated,
         rentalClosed: cleanup.rentalClosed,
         orderClosed: cleanup.orderClosed,
@@ -6153,7 +6154,10 @@ async function runLocalOpenAiProxySmokeTest(model = env.SUB2_SMOKE_MODEL): Promi
       : responsesProbe.ok ? null : extractLocalProxyError(responsesProbe)
   };
 
-  const proxyRequestLogCount = await countLocalProxySmokeLogs(local.rentalId);
+  const [proxyRequestLogCount, proxyRequestLogs] = await Promise.all([
+    countLocalProxySmokeLogs(local.rentalId),
+    listLocalProxySmokeLogs(local.rentalId)
+  ]);
   const cleanup = await cleanupLocalOpenAiProxySmoke(local, sub2Key);
   const localProxyOk = models.ok
     && responses.ok
@@ -6182,6 +6186,7 @@ async function runLocalOpenAiProxySmokeTest(model = env.SUB2_SMOKE_MODEL): Promi
       rentalId: local.rentalId,
       apiKeyPrefix: local.apiKeyPrefix,
       proxyRequestLogCount,
+      proxyRequestLogs,
       apiKeyDeactivated: cleanup.apiKeyDeactivated,
       rentalClosed: cleanup.rentalClosed,
       orderClosed: cleanup.orderClosed,
@@ -6393,6 +6398,38 @@ async function countLocalProxySmokeLogs(rentalId: string) {
     return await prisma.proxyRequestLog.count({ where: { rentalId } });
   } catch {
     return 0;
+  }
+}
+
+async function listLocalProxySmokeLogs(rentalId: string) {
+  try {
+    const logs = await prisma.proxyRequestLog.findMany({
+      where: { rentalId },
+      select: {
+        id: true,
+        requestId: true,
+        path: true,
+        model: true,
+        statusCode: true,
+        upstreamStatusCode: true,
+        errorCode: true,
+        createdAt: true
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5
+    });
+    return logs.map((log) => ({
+      id: log.id,
+      requestId: log.requestId,
+      path: log.path,
+      model: log.model,
+      statusCode: log.statusCode,
+      upstreamStatusCode: log.upstreamStatusCode,
+      errorCode: log.errorCode,
+      createdAt: log.createdAt.toISOString()
+    }));
+  } catch {
+    return [];
   }
 }
 

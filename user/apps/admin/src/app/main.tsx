@@ -805,6 +805,16 @@ interface Sub2ProxySmokeTestResult {
     rentalId?: string | null;
     apiKeyPrefix?: string | null;
     proxyRequestLogCount: number;
+    proxyRequestLogs?: Array<{
+      id: string;
+      requestId: string;
+      path: string;
+      model?: string | null;
+      statusCode?: number | null;
+      upstreamStatusCode?: number | null;
+      errorCode?: string | null;
+      createdAt: string;
+    }>;
     apiKeyDeactivated: boolean;
     rentalClosed: boolean;
     orderClosed: boolean;
@@ -4672,7 +4682,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);

@@ -20,7 +20,14 @@ test("normalizes direct local proxy smoke audit evidence", () => {
       keyDisabled: true,
       models: { ok: true, statusCode: 200 },
       responses: { ok: true, statusCode: 200 },
-      localProxy: { ok: true, proxyRequestLogCount: 2 }
+      localProxy: {
+        ok: true,
+        proxyRequestLogCount: 2,
+        proxyRequestLogs: [
+          { id: "proxy-2", requestId: "req-responses", path: "/v1/responses", statusCode: 200 },
+          { id: "proxy-1", requestId: "req-models", path: "/v1/models", statusCode: 200 }
+        ]
+      }
     }
   });
 
@@ -33,6 +40,11 @@ test("normalizes direct local proxy smoke audit evidence", () => {
   assert.equal(evidence.localProxyOk, true);
   assert.equal(evidence.keyDisabled, true);
   assert.equal(evidence.proxyRequestLogCount, 2);
+  assert.equal(evidence.proxyRequestLogs.length, 2);
+  assert.equal(evidence.proxyRequestLogId, "proxy-2");
+  assert.equal(evidence.requestId, "req-responses");
+  assert.equal(evidence.proxyRequestPath, "/v1/responses");
+  assert.equal(evidence.proxyRequestStatusCode, 200);
   assert.equal(evidence.smokeTestSkippedReason, null);
 });
 
@@ -124,7 +136,14 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
       keyDisabled: true,
       models: { ok: true },
       responses: { ok: false },
-      localProxy: { ok: false, proxyRequestLogCount: 2 }
+      localProxy: {
+        ok: false,
+        proxyRequestLogCount: 2,
+        proxyRequestLogs: [
+          { id: "proxy-models", requestId: "req-models", path: "/v1/models", statusCode: 200 },
+          { id: "proxy-responses", requestId: "req-responses", path: "/v1/responses", statusCode: 503, errorCode: "upstream_server_error" }
+        ]
+      }
     }
   });
   assert.ok(direct);
@@ -141,6 +160,11 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
   assert.equal(directIssue.sub2Status, true);
   assert.equal(directIssue.resourceId, null);
   assert.equal(directIssue.auditLogId, "direct-failed");
+  assert.equal(directIssue.proxyRequestLogId, "proxy-responses");
+  assert.equal(directIssue.requestId, "req-responses");
+  assert.equal(directIssue.proxyRequestPath, "/v1/responses");
+  assert.equal(directIssue.proxyRequestStatusCode, 503);
+  assert.equal(directIssue.proxyRequestErrorCode, "upstream_server_error");
 
   const credentialApply = normalizeLocalProxySmokeAuditLog({
     id: "credential-apply-failed",
@@ -154,7 +178,13 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
         keyDisabled: true,
         models: { ok: true },
         responses: { ok: false },
-        localProxy: { ok: false, proxyRequestLogCount: 2 }
+        localProxy: {
+          ok: false,
+          proxyRequestLogCount: 2,
+          proxyRequestLogs: [
+            { id: "credential-proxy-responses", requestId: "credential-req-responses", path: "/v1/responses", statusCode: 503 }
+          ]
+        }
       }
     }
   });
@@ -172,4 +202,6 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
   assert.equal(credentialIssue.sub2Status, true);
   assert.equal(credentialIssue.resourceId, "resource-1");
   assert.equal(credentialIssue.auditLogId, "credential-apply-failed");
+  assert.equal(credentialIssue.proxyRequestLogId, "credential-proxy-responses");
+  assert.equal(credentialIssue.requestId, "credential-req-responses");
 });

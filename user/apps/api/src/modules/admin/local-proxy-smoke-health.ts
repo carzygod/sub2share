@@ -19,6 +19,23 @@ export interface LocalProxySmokeEvidence {
   keyDisabled: boolean | null;
   smokeTestSkippedReason: string | null;
   proxyRequestLogCount: number | null;
+  proxyRequestLogs: LocalProxySmokeProxyRequestEvidence[];
+  proxyRequestLogId?: string | null;
+  requestId?: string | null;
+  proxyRequestPath?: string | null;
+  proxyRequestStatusCode?: number | null;
+  proxyRequestErrorCode?: string | null;
+}
+
+export interface LocalProxySmokeProxyRequestEvidence {
+  proxyRequestLogId: string;
+  requestId: string;
+  path?: string | null;
+  model?: string | null;
+  statusCode?: number | null;
+  upstreamStatusCode?: number | null;
+  errorCode?: string | null;
+  createdAt?: string | null;
 }
 
 export interface LocalProxySmokeEvidenceIssue {
@@ -36,6 +53,11 @@ export interface LocalProxySmokeEvidenceIssue {
   keyDisabled?: boolean | null;
   smokeTestSkippedReason?: string | null;
   proxyRequestLogCount?: number | null;
+  proxyRequestLogId?: string | null;
+  requestId?: string | null;
+  proxyRequestPath?: string | null;
+  proxyRequestStatusCode?: number | null;
+  proxyRequestErrorCode?: string | null;
   createdAt?: string;
   ageMinutes?: number | null;
   message: string;
@@ -64,6 +86,10 @@ export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): 
   const models = jsonRecord(smoke?.models);
   const responses = jsonRecord(smoke?.responses);
   const localProxy = jsonRecord(smoke?.localProxy);
+  const proxyRequestLogs = jsonArray(localProxy?.proxyRequestLogs)
+    .map((item) => normalizeProxyRequestLogEvidence(item))
+    .filter((item): item is LocalProxySmokeProxyRequestEvidence => Boolean(item));
+  const primaryProxyRequest = primaryProxyRequestLogEvidence(proxyRequestLogs);
   return {
     auditLogId: log.id,
     action: log.action,
@@ -76,7 +102,13 @@ export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): 
     localProxyOk: jsonBoolean(localProxy?.ok),
     keyDisabled: smoke ? jsonBoolean(smoke.keyDisabled) : null,
     smokeTestSkippedReason: skippedReason,
-    proxyRequestLogCount: jsonNumber(localProxy?.proxyRequestLogCount)
+    proxyRequestLogCount: jsonNumber(localProxy?.proxyRequestLogCount),
+    proxyRequestLogs,
+    proxyRequestLogId: primaryProxyRequest?.proxyRequestLogId ?? null,
+    requestId: primaryProxyRequest?.requestId ?? null,
+    proxyRequestPath: primaryProxyRequest?.path ?? null,
+    proxyRequestStatusCode: primaryProxyRequest?.statusCode ?? null,
+    proxyRequestErrorCode: primaryProxyRequest?.errorCode ?? null
   };
 }
 
@@ -95,7 +127,13 @@ export function localProxySmokeEvidenceSummary(smoke: LocalProxySmokeEvidence, a
     localProxyOk: smoke.localProxyOk,
     keyDisabled: smoke.keyDisabled,
     smokeTestSkippedReason: smoke.smokeTestSkippedReason,
-    proxyRequestLogCount: smoke.proxyRequestLogCount
+    proxyRequestLogCount: smoke.proxyRequestLogCount,
+    proxyRequestLogs: smoke.proxyRequestLogs,
+    proxyRequestLogId: smoke.proxyRequestLogId ?? null,
+    requestId: smoke.requestId ?? null,
+    proxyRequestPath: smoke.proxyRequestPath ?? null,
+    proxyRequestStatusCode: smoke.proxyRequestStatusCode ?? null,
+    proxyRequestErrorCode: smoke.proxyRequestErrorCode ?? null
   };
 }
 
@@ -122,6 +160,11 @@ export function localProxySmokeEvidenceIssue(
     keyDisabled: smoke.keyDisabled,
     smokeTestSkippedReason: smoke.smokeTestSkippedReason,
     proxyRequestLogCount: smoke.proxyRequestLogCount,
+    proxyRequestLogId: smoke.proxyRequestLogId ?? null,
+    requestId: smoke.requestId ?? null,
+    proxyRequestPath: smoke.proxyRequestPath ?? null,
+    proxyRequestStatusCode: smoke.proxyRequestStatusCode ?? null,
+    proxyRequestErrorCode: smoke.proxyRequestErrorCode ?? null,
     createdAt: smoke.createdAt.toISOString(),
     ageMinutes,
     message,
@@ -142,6 +185,34 @@ export function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
 
 function jsonRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function jsonArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
+}
+
+function normalizeProxyRequestLogEvidence(value: unknown): LocalProxySmokeProxyRequestEvidence | null {
+  const record = jsonRecord(value);
+  if (!record) return null;
+  const proxyRequestLogId = jsonText(record.id) ?? jsonText(record.proxyRequestLogId);
+  const requestId = jsonText(record.requestId);
+  if (!proxyRequestLogId && !requestId) return null;
+  return {
+    proxyRequestLogId: proxyRequestLogId ?? requestId!,
+    requestId: requestId ?? proxyRequestLogId!,
+    path: jsonText(record.path),
+    model: jsonText(record.model),
+    statusCode: jsonNumber(record.statusCode),
+    upstreamStatusCode: jsonNumber(record.upstreamStatusCode),
+    errorCode: jsonText(record.errorCode),
+    createdAt: jsonText(record.createdAt)
+  };
+}
+
+function primaryProxyRequestLogEvidence(logs: LocalProxySmokeProxyRequestEvidence[]) {
+  return logs.find((log) => Boolean(log.errorCode) || (typeof log.statusCode === "number" && log.statusCode >= 400))
+    ?? logs[0]
+    ?? null;
 }
 
 function jsonText(value: unknown) {
