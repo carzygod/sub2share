@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  resourceCredentialCodexResourceListFields,
   resourceCredentialRepairCandidateFields,
   resourceCredentialSub2AccountRepairSamples
 } from "../src/modules/admin/resource-credential-health.js";
+
+test("resource credential health points missing credential repairs to Codex resources", () => {
+  assert.deepEqual(resourceCredentialCodexResourceListFields(), {
+    resourceList: true,
+    resourceType: "codex",
+    resourceStatus: null
+  });
+});
 
 test("resource credential health exposes the first Sub2 account repair candidate", () => {
   const fields = resourceCredentialRepairCandidateFields([

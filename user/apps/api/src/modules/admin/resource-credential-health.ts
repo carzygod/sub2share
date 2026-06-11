@@ -11,6 +11,14 @@ export interface ResourceCredentialSub2AccountCandidate {
   updatedAt?: string | null;
 }
 
+export function resourceCredentialCodexResourceListFields() {
+  return {
+    resourceList: true,
+    resourceType: "codex",
+    resourceStatus: null
+  };
+}
+
 export function resourceCredentialRepairCandidateFields(candidates: ResourceCredentialSub2AccountCandidate[]) {
   const candidate = candidates.find((item) => item.sub2AccountId !== undefined && item.sub2AccountId !== null);
   if (!candidate) return {};

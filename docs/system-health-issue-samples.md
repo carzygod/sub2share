@@ -37,6 +37,7 @@
 - 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、模型、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 资源凭据巡检发现没有 active 可应用 refresh token 时，会从 Sub2/OpenAI 巡检结果中暴露 `sub2_account_repair_candidate`，让管理员直接看到可优先补 token 的 Sub2 账号 ID、名称、状态、凭据状态和调度状态。
+- 资源凭据巡检的 `openai_refresh_token_candidate_missing` 问题会同时暴露 `resourceList=true`、`resourceType=codex` 和 `sub2Status=true`，管理员可以在同一行进入共享资源列表创建/补凭据，或进入反代状态页直接应用 fresh token。
 - 共享资源巡检发现没有 online Codex 资源或存在异常资源时，管理员可以直接看到资源类型、资源状态、Sub2 账号、供给方邮箱和维修建议，并一键打开共享资源列表或具体资源详情。
 - 如果共享资源问题样本带有 `resourceType` 和 `resourceStatus`，点击“打开共享资源”会自动把这些字段写入共享资源列表筛选条件，例如直接打开 `codex + disabled` 的资源列表。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。

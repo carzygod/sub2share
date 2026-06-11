@@ -39,6 +39,7 @@ import {
 } from "./capabilities.js";
 import { inspectCurrentDeploymentRuntime } from "./deployment-runtime.js";
 import {
+  resourceCredentialCodexResourceListFields,
   resourceCredentialRepairCandidateFields,
   resourceCredentialSub2AccountRepairSamples
 } from "./resource-credential-health.js";
@@ -261,6 +262,9 @@ interface ResourceCredentialReadinessIssue {
   type: string;
   severity: "warning" | "error";
   resourceId?: string;
+  resourceList?: boolean;
+  resourceType?: string | null;
+  resourceStatus?: string | null;
   refId?: string;
   sub2Status?: boolean;
   sub2AccountId?: number | string | null;
@@ -5886,6 +5890,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       type: "openai_refresh_token_candidate_missing",
       severity: "error",
       sub2Status: true,
+      ...resourceCredentialCodexResourceListFields(),
       ...sub2AccountRepairFields,
       actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id, or paste a valid token on the Sub2 status page.",
       message: "Sub2 reports no active OpenAI upstream accounts and no active resource credential can be applied"
