@@ -24,6 +24,18 @@
 - 管理后台 `可用性巡检` 的说明列会展示维修建议，操作列会为 Sub2 上游问题提供 `打开反代状态` 操作。
 - 管理后台 `反代状态` 页会按当前 blocking reason 汇总展示维修建议。
 - `Sub2/OpenAI 上游` 指标新增 OpenAI 账号数和 active OpenAI 账号数。
+- `Sub2/OpenAI 上游` 的 `detail.samples` 会返回默认 OpenAI 分组下非 active 或不可调度的账号样本，字段包括：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `groupIds` / `groupNames`
+  - `rateLimitedAt` / `overloadUntil` / `tempUnschedulableUntil`
+  - `tempUnschedulableReason`
+  - `updatedAt`
+  - `message`
+- 管理后台 `巡检候选样本` 会展示 Sub2 账号样本，并提供 `打开反代状态` 操作。
 
 ## 阻断类型
 
@@ -38,6 +50,7 @@
 
 - 管理员在系统巡检页可以直接看到 `/v1/responses` 真实生成失败是否来自上游调度阻断。
 - 当阻断原因为 `openai_group_has_no_active_accounts` 时，管理员可以从同一行看到“刷新/测试现有账号或应用有效 refresh token，再运行端到端自检”的建议，并跳到反代状态页继续执行账号刷新、账号测试、端到端自检或凭据应用。
+- 管理员可以在候选样本中直接看到具体失效账号，例如账号 ID、名称、凭据配置状态、是否可调度和 OpenAI 返回的 token invalidated/token revoked 摘要，减少进入 Sub2 状态页前的二次排查。
 - 问题样本不包含上游凭据、明文 Key 或 refresh token，只展示可排障的聚合状态。
 
 ## 验证方式

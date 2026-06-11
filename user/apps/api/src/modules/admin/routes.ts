@@ -20,7 +20,7 @@ import {
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
-import { sub2Client, type Sub2GatewayAccountTestResult, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
+import { sub2Client, type Sub2GatewayAccountStatus, type Sub2GatewayAccountTestResult, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
 import { releaseAvailableSettlements } from "../../jobs/release-settlements.js";
 import { getSub2UsageSyncState, syncSub2UsageOnce } from "../../jobs/sync-sub2-usage.js";
@@ -3451,7 +3451,8 @@ async function buildSystemHealthReport() {
       {
         blockingReasons: sub2Status.blockingReasons,
         error: sub2Status.error,
-        issues: sub2Status.issues
+        issues: sub2Status.issues,
+        samples: sub2Status.accountSamples
       }
     ),
     systemHealthCheck(
@@ -5240,6 +5241,7 @@ async function fetchSub2HealthStatus() {
       accountCount: status.accounts.length,
       openAiAccountCount: openAiAccounts.length,
       activeOpenAiAccountCount: activeOpenAiAccounts.length,
+      accountSamples: sub2AccountHealthSamples(openAiAccounts),
       error: null as string | null
     };
     return {
@@ -5257,6 +5259,7 @@ async function fetchSub2HealthStatus() {
       accountCount: 0,
       openAiAccountCount: 0,
       activeOpenAiAccountCount: 0,
+      accountSamples: [] as ReturnType<typeof sub2AccountHealthSamples>,
       error: redactSensitiveText(error instanceof Error ? error.message : String(error))
     };
     return {
@@ -5264,6 +5267,34 @@ async function fetchSub2HealthStatus() {
       issues: buildSub2UpstreamIssues(base)
     };
   }
+}
+
+function sub2AccountHealthSamples(accounts: Sub2GatewayAccountStatus[]) {
+  return accounts
+    .filter((account) => account.status !== "active" || account.schedulable === false)
+    .slice(0, 20)
+    .map((account) => ({
+      id: `sub2_account:${account.id}`,
+      sub2AccountId: account.id,
+      sub2AccountName: account.name,
+      platform: account.platform,
+      accountType: account.type,
+      accountStatus: account.status,
+      credentialsStatus: account.credentialsStatus ?? null,
+      schedulable: account.schedulable ?? null,
+      groupIds: account.groupIds.join(","),
+      groupNames: account.groupNames.join(","),
+      currentConcurrency: account.currentConcurrency ?? null,
+      concurrency: account.concurrency ?? null,
+      rateLimitedAt: account.rateLimitedAt ?? null,
+      overloadUntil: account.overloadUntil ?? null,
+      tempUnschedulableUntil: account.tempUnschedulableUntil ?? null,
+      tempUnschedulableReason: account.tempUnschedulableReason ?? null,
+      updatedAt: account.updatedAt ?? null,
+      message: account.errorMessage
+        ?? account.tempUnschedulableReason
+        ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`
+    }));
 }
 
 function buildSub2UpstreamIssues(input: {

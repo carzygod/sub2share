@@ -194,6 +194,7 @@ interface SystemHealthSampleRow {
   ref: string;
   summary: string;
   resourceId?: string;
+  sub2Status?: boolean;
 }
 
 interface DeliverySummary {
@@ -2499,6 +2500,8 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 {sample.resourceId
                   ? <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>
+                  : sample.sub2Status
+                    ? <button className="secondary mini" onClick={onOpenSub2Status}>打开反代状态</button>
                   : <small>-</small>}
               </td>
             </tr>
@@ -4613,19 +4616,21 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 
   return check.detail.samples.slice(0, 100).map((sample, index): SystemHealthSampleRow => {
     const record = isPlainRecord(sample) ? sample : {};
+    const sub2StatusFlag = record.sub2Status === true || check.id === "sub2" || Boolean(textValue(record.sub2AccountId));
     return {
       id: textValue(record.id) ?? String(index),
       checkId: check.id,
       checkLabel: check.label,
       ref: systemHealthIssueRef(record),
       summary: systemHealthSampleSummary(record, sample),
-      resourceId: textValue(record.resourceId)
+      resourceId: textValue(record.resourceId),
+      sub2Status: sub2StatusFlag
     };
   });
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4665,7 +4670,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
 }
 
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
-  const fields = ["supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
+  const fields = ["supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "tempUnschedulableReason", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
   const parts = fields
     .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
     .filter(Boolean);
