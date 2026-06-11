@@ -2204,6 +2204,11 @@ function App() {
             onAdjust={adjustWallet}
             onDetail={openWalletDetail}
             onCloseDetail={() => setSelectedWallet(null)}
+            onOpenUser={openUserCandidate}
+            onOpenWalletTransaction={openWalletTransactionCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
             onDraft={(patch) => updateListDraft("wallets", patch)}
             onFilter={(event) => submitListFilters("wallets", event)}
             onClear={() => clearListFilters("wallets")}
@@ -2216,6 +2221,11 @@ function App() {
             transactions={walletTransactions}
             query={listQueries.walletTransactions}
             meta={listMeta.walletTransactions}
+            onOpenWallet={openWalletCandidate}
+            onOpenUser={openUserCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
             onDraft={(patch) => updateListDraft("walletTransactions", patch)}
             onFilter={(event) => submitListFilters("walletTransactions", event)}
             onClear={() => clearListFilters("walletTransactions")}
@@ -3008,13 +3018,18 @@ function MiniTable({ headers, children }: { headers: string[]; children: React.R
   );
 }
 
-function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, onDetail, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenOrder, onOpenUsage, onOpenWithdrawal, onDraft, onFilter, onClear, onPage, onExport }: {
   wallets: WalletRow[];
   selectedWallet: WalletDetailRow | null;
   users: UserRow[];
   onAdjust: (event: FormEvent<HTMLFormElement>) => void;
   onDetail: (walletId: string) => void;
   onCloseDetail: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
 } & ManagedListProps) {
   const userOptions = useMemo(() => {
     const seen = new Set(wallets.map((wallet) => wallet.userId));
@@ -3052,16 +3067,40 @@ function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, on
             <td>{money(wallet.totalRecharged)}</td>
             <td>{money(wallet.totalSpent)}</td>
             <td>{dateTime(wallet.updatedAt)}</td>
-            <td><button type="button" className="secondary mini" onClick={() => onDetail(wallet.id)}>详情</button></td>
+            <td>
+              <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onDetail(wallet.id)}>详情</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenUser(wallet.userId)}>用户</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenWalletTransaction(wallet.id)}>流水</button>
+              </div>
+            </td>
           </tr>
         ))}
       </TablePanel>
-      {selectedWallet && <WalletDetailPanel wallet={selectedWallet} onClose={onCloseDetail} />}
+      {selectedWallet && (
+        <WalletDetailPanel
+          wallet={selectedWallet}
+          onClose={onCloseDetail}
+          onOpenUser={onOpenUser}
+          onOpenWalletTransaction={onOpenWalletTransaction}
+          onOpenOrder={onOpenOrder}
+          onOpenUsage={onOpenUsage}
+          onOpenWithdrawal={onOpenWithdrawal}
+        />
+      )}
     </section>
   );
 }
 
-function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClose: () => void }) {
+function WalletDetailPanel({ wallet, onClose, onOpenUser, onOpenWalletTransaction, onOpenOrder, onOpenUsage, onOpenWithdrawal }: {
+  wallet: WalletDetailRow;
+  onClose: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
+}) {
   const transactions = wallet.transactions ?? [];
   return (
     <section className="panel glass-panel wide detail-panel">
@@ -3070,7 +3109,11 @@ function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClo
           <span className="eyebrow">Wallet Detail</span>
           <h2>{wallet.user?.email ?? wallet.userId}</h2>
         </div>
-        <button className="secondary mini" onClick={onClose}>关闭</button>
+        <div className="row-actions">
+          <button className="secondary mini" onClick={() => onOpenUser(wallet.userId)}>打开用户</button>
+          <button className="secondary mini" onClick={() => onOpenWalletTransaction(wallet.id)}>打开流水</button>
+          <button className="secondary mini" onClick={onClose}>关闭</button>
+        </div>
       </div>
 
       <div className="diagnostic-grid">
@@ -3085,7 +3128,7 @@ function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClo
       </div>
 
       <DetailBlock title="最近余额流水">
-        <MiniTable headers={["类型", "金额", "余额后", "引用", "备注", "时间"]}>
+        <MiniTable headers={["类型", "金额", "余额后", "引用", "备注", "时间", "操作"]}>
           {transactions.slice(0, 20).map((transaction) => (
             <tr key={transaction.id}>
               <td><StatusPill status={transaction.type} /></td>
@@ -3094,10 +3137,21 @@ function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClo
               <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
               <td><small>{transaction.note ?? "-"}</small></td>
               <td>{dateTime(transaction.createdAt)}</td>
+              <td>
+                <div className="row-actions">
+                  <WalletTransactionActions
+                    transaction={transaction}
+                    onOpenWalletTransaction={onOpenWalletTransaction}
+                    onOpenOrder={onOpenOrder}
+                    onOpenUsage={onOpenUsage}
+                    onOpenWithdrawal={onOpenWithdrawal}
+                  />
+                </div>
+              </td>
             </tr>
           ))}
           {transactions.length === 0 && (
-            <tr><td colSpan={6}><small>暂无余额流水。</small></td></tr>
+            <tr><td colSpan={7}><small>暂无余额流水。</small></td></tr>
           )}
         </MiniTable>
       </DetailBlock>
@@ -3105,8 +3159,13 @@ function WalletDetailPanel({ wallet, onClose }: { wallet: WalletDetailRow; onClo
   );
 }
 
-function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, onClear, onPage, onExport }: {
+function WalletTransactionsView({ transactions, query, meta, onOpenWallet, onOpenUser, onOpenOrder, onOpenUsage, onOpenWithdrawal, onDraft, onFilter, onClear, onPage, onExport }: {
   transactions: WalletTransactionRow[];
+  onOpenWallet: (lookup: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -3121,7 +3180,7 @@ function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, 
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="余额流水" count={meta.total} headers={["用户", "类型", "金额", "余额后", "引用", "备注", "时间"]}>
+      <TablePanel title="余额流水" count={meta.total} headers={["用户", "类型", "金额", "余额后", "引用", "备注", "时间", "操作"]}>
         {transactions.map((transaction) => (
           <tr key={transaction.id}>
             <td><strong>{transaction.wallet?.user?.email ?? transaction.walletId}</strong><small>{transaction.id}</small></td>
@@ -3131,9 +3190,40 @@ function WalletTransactionsView({ transactions, query, meta, onDraft, onFilter, 
             <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
             <td><small>{transaction.note ?? "-"}</small></td>
             <td>{dateTime(transaction.createdAt)}</td>
+            <td>
+              <div className="row-actions">
+                <button className="secondary mini" onClick={() => onOpenWallet(transaction.walletId)}>钱包</button>
+                {transaction.wallet?.userId && <button className="secondary mini" onClick={() => onOpenUser(transaction.wallet!.userId)}>用户</button>}
+                <WalletTransactionActions
+                  transaction={transaction}
+                  onOpenOrder={onOpenOrder}
+                  onOpenUsage={onOpenUsage}
+                  onOpenWithdrawal={onOpenWithdrawal}
+                />
+              </div>
+            </td>
           </tr>
         ))}
       </TablePanel>
+    </>
+  );
+}
+
+function WalletTransactionActions({ transaction, onOpenWalletTransaction, onOpenOrder, onOpenUsage, onOpenWithdrawal }: {
+  transaction: WalletTransactionRow;
+  onOpenWalletTransaction?: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
+}) {
+  const refType = transaction.refType?.toLowerCase() ?? "";
+  const refId = transaction.refId ?? "";
+  return (
+    <>
+      {onOpenWalletTransaction && <button className="secondary mini" onClick={() => onOpenWalletTransaction(transaction.id)}>流水</button>}
+      {refType === "order" && refId && <button className="secondary mini" onClick={() => onOpenOrder(refId)}>订单</button>}
+      {refType === "usage" && refId && <button className="secondary mini" onClick={() => onOpenUsage(refId)}>用量</button>}
+      {refType === "withdrawal" && refId && <button className="secondary mini" onClick={() => onOpenWithdrawal(refId)}>提现</button>}
     </>
   );
 }
