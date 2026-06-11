@@ -6,6 +6,20 @@ export interface PaymentRechargeActivitySummary {
   recentRechargeTransactions: number;
   recentRechargeAmount: string;
   latestRechargeAt: string | null;
+  recentRechargeSamples: PaymentRechargeActivitySample[];
+}
+
+export interface PaymentRechargeActivitySample {
+  id: string;
+  walletId: string;
+  userId?: string | null;
+  userEmail?: string | null;
+  amount: string;
+  balanceAfter: string;
+  currency: string;
+  refType?: string | null;
+  refId?: string | null;
+  createdAt: string;
 }
 
 export interface PaymentProviderHealthInput {
@@ -28,8 +42,21 @@ export interface PaymentProviderHealthIssue {
   message: string;
 }
 
+export interface PaymentProviderHealthSample extends PaymentRechargeActivitySample {
+  type: "recent_recharge_transaction";
+  walletTransactionId: string;
+  walletTransactionList: true;
+  walletTransactionType: "recharge";
+  walletLookup: string;
+  walletList: true;
+  salesList: true;
+  message: string;
+}
+
 export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) {
   const issues: PaymentProviderHealthIssue[] = [];
+  const { recentRechargeSamples, ...rechargeMetrics } = input.rechargeActivity;
+  const samples = recentRechargeSamples.map(paymentProviderSample);
   let status: "ok" | "warning" | "error" = "ok";
   let summary = "充值配置可用";
 
@@ -67,9 +94,11 @@ export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) 
       nodeEnv: input.nodeEnv,
       minRechargeAmount: input.minRechargeAmount,
       rechargeEndpointEnabled: input.provider === "mock",
-      ...input.rechargeActivity
+      ...rechargeMetrics,
+      recentRechargeSamples: samples.length
     },
-    issues
+    issues,
+    samples
   };
 }
 
@@ -81,5 +110,21 @@ function paymentProviderIssue(input: Pick<PaymentProviderHealthIssue, "id" | "ty
     walletTransactionList: true,
     walletTransactionType: "recharge",
     salesList: true
+  };
+}
+
+function paymentProviderSample(sample: PaymentRechargeActivitySample): PaymentProviderHealthSample {
+  const actor = sample.userEmail ?? sample.userId ?? sample.walletId;
+  return {
+    ...sample,
+    id: `payment_recharge:${sample.id}`,
+    type: "recent_recharge_transaction",
+    walletTransactionId: sample.id,
+    walletTransactionList: true,
+    walletTransactionType: "recharge",
+    walletLookup: sample.walletId,
+    walletList: true,
+    salesList: true,
+    message: `${actor} recharged ${sample.amount} ${sample.currency}; balanceAfter=${sample.balanceAfter}`
   };
 }

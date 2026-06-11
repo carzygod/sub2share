@@ -206,6 +206,12 @@ interface SystemHealthSampleRow {
   checkLabel: string;
   ref: string;
   summary: string;
+  userId?: string;
+  walletLookup?: string;
+  walletList?: boolean;
+  walletTransactionList?: boolean;
+  walletTransactionType?: string;
+  salesList?: boolean;
   resourceId?: string;
   resourceType?: string;
   resourceStatus?: string;
@@ -2620,11 +2626,16 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td><small>{sample.ref}</small></td>
               <td><small>{sample.summary}</small></td>
               <td>
-                {sample.resourceId
-                  ? <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>
-                  : sample.sub2Status
-                    ? <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: sample.sub2AccountId, resourceId: sample.resourceId, supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, resourceStatus: sample.resourceStatus })}>打开反代状态</button>
-                  : <small>-</small>}
+                <div className="row-actions">
+                  {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
+                  {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: sample.sub2AccountId, resourceId: sample.resourceId, supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, resourceStatus: sample.resourceStatus })}>打开反代状态</button>}
+                  {sample.userId && <button className="secondary mini" onClick={() => onOpenUser(sample.userId!)}>打开用户</button>}
+                  {sample.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
+                  {sample.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: sample.walletTransactionType })}>打开余额流水</button>}
+                  {sample.salesList && <button className="secondary mini" onClick={onOpenSales}>打开售出情况</button>}
+                  {sample.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(sample.walletLookup!)}>打开余额</button>}
+                  {!systemHealthSampleHasAction(sample) && <small>-</small>}
+                </div>
               </td>
             </tr>
           ))}
@@ -4839,6 +4850,12 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       checkLabel: check.label,
       ref: systemHealthIssueRef(record),
       summary: systemHealthSampleSummary(record, sample),
+      userId: textValue(record.userId),
+      walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId) ?? textValue(record.walletLookup),
+      walletList: record.walletList === true,
+      walletTransactionList: record.walletTransactionList === true,
+      walletTransactionType: textValue(record.walletTransactionType),
+      salesList: record.salesList === true,
       resourceId: textValue(record.resourceId),
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
@@ -4850,7 +4867,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4892,8 +4909,20 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
   );
 }
 
+function systemHealthSampleHasAction(sample: SystemHealthSampleRow) {
+  return Boolean(
+    sample.resourceId
+    || sample.sub2Status
+    || sample.userId
+    || sample.walletList
+    || sample.walletTransactionList
+    || sample.salesList
+    || sample.walletLookup
+  );
+}
+
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
-  const fields = ["supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "tempUnschedulableReason", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
+  const fields = ["userEmail", "amount", "balanceAfter", "currency", "refType", "refId", "createdAt", "supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "tempUnschedulableReason", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
   const parts = fields
     .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
     .filter(Boolean);

@@ -23,8 +23,8 @@
 - 候选样本展示字段：
   - 检查项：检查项名称和 ID。
   - 对象：复用问题样本的定位字段拼接规则。
-  - 摘要：自动拼接 `supplierEmail`、`resourceType`、`resourceStatus`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`tempUnschedulableReason`、`level`、`maxConcurrency`、`credentialType`、`status`、`keyFingerprint`、`lastRotatedAt`、`updatedAt` 等摘要字段。
-  - 操作：如果样本包含 `resourceId`，可直接打开共享资源详情；如果样本来自 Sub2/OpenAI 上游账号，可直接打开反代状态页。
+  - 摘要：自动拼接 `userEmail`、`amount`、`balanceAfter`、`currency`、`refType`、`refId`、`createdAt`、`supplierEmail`、`resourceType`、`resourceStatus`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`tempUnschedulableReason`、`level`、`maxConcurrency`、`credentialType`、`status`、`keyFingerprint`、`lastRotatedAt`、`updatedAt` 等摘要字段。
+  - 操作：如果样本包含 `resourceId`，可直接打开共享资源详情；如果样本来自 Sub2/OpenAI 上游账号，可直接打开反代状态页；如果样本来自充值流水，可直接打开用户、余额、余额流水和售出情况。
 
 ## 管理价值
 
@@ -45,6 +45,7 @@
 - 当 `codex_online_resource_missing` 没有具体资源绑定但 Sub2/OpenAI 上游巡检发现可修复账号时，共享资源问题会继承首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`，创建生产 Codex 资源时可直接预填该账号。
 - 当 `codex_online_resource_missing` 没有具体资源绑定且系统只有一个 active 用户关联的供给方时，共享资源问题会附带该 `supplierEmail`；点击“打开共享资源”会用该邮箱筛选列表，并把创建表单的供给方邮箱预填为该值。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
+- 支付充值巡检会在 `detail.samples` 返回最近 5 条充值流水样本，管理员可以直接看到用户、钱包、金额、充值后余额、引用对象和创建时间，并一键打开用户、余额、余额流水或售出情况。
 - Sub2/OpenAI 上游巡检发现网关不可达、OpenAI 分组缺失、分组非 active、分组无账号或无 active 账号时，管理员可以在统一问题样本中看到阻断原因、分组、OpenAI 账号数量、active 账号数量和维修建议，并一键进入反代状态页继续执行账号刷新、测试、自检或凭据应用。
 - 当 Sub2/OpenAI 上游问题是 `openai_group_has_no_active_accounts` 且巡检已经发现非 active 或不可调度的 OpenAI 账号时，主问题样本会携带首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`；点击 `打开反代状态` 会直接预选该账号。
 - Sub2/OpenAI 上游巡检还会在候选样本中列出非 active 或不可调度的 OpenAI 账号，管理员可以直接看到账号 ID、名称、状态、凭据配置状态、调度状态和错误摘要；点击 `打开反代状态` 时会携带 `sub2AccountId`，反代状态页的凭据应用表单会预选该账号。

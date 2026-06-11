@@ -23,6 +23,18 @@
   - `recentRechargeTransactions`
   - `recentRechargeAmount`
   - `latestRechargeAt`
+  - `recentRechargeSamples`
+- 巡检详情会返回最近 5 条充值流水候选样本：
+  - `walletTransactionId`
+  - `walletId`
+  - `userId`
+  - `userEmail`
+  - `amount`
+  - `balanceAfter`
+  - `currency`
+  - `refType`
+  - `refId`
+  - `createdAt`
 - 当充值配置产生 issue 时，`detail.issues` 会返回：
   - `refId=PAYMENT_PROVIDER`
   - `walletList=true`
@@ -33,6 +45,7 @@
   - `message`
   便于管理员在 `可用性巡检` 的问题样本中直接看到需要复查的环境配置和处理边界。
 - 管理后台 `可用性巡检 -> 巡检问题样本` 会识别 `walletList`、`walletTransactionList`、`walletTransactionType` 和 `salesList`，提供 `打开余额列表`、`打开余额流水` 与 `打开售出情况` 操作；余额流水跳转会自动筛选 `recharge` 类型，便于管理员从支付配置 warning 直接复查充值流水和售出收入。
+- 管理后台 `可用性巡检 -> 巡检候选样本` 会展示最近充值流水样本，并提供 `打开用户`、`打开余额`、`打开余额流水` 和 `打开售出情况` 操作。
 
 ## 管理价值
 
@@ -40,6 +53,7 @@
 - 支付配置风险可以直接跳转到余额管理、余额流水和售出情况，减少从巡检发现到账务复核之间的手动导航。
 - 生产环境 mock 充值不再隐藏在代码实现里，而会成为后台可见的 warning。
 - 生产环境 mock 充值如果已经写入最近充值流水，巡检会直接展示最近 24 小时的充值笔数、金额和最后充值时间，提醒管理员复核余额与售出收入是否可作为真实收款依据。
+- 生产环境 mock 充值如果已经写入最近充值流水，管理员可以直接在候选样本里看到具体用户、钱包、金额、余额和引用对象。
 - 如果需要临时关闭充值，可以设置 `PAYMENT_PROVIDER=disabled`，系统巡检会明确显示该阻断。
 - 生产环境继续使用 mock 充值时，巡检会明确提示该模式不能作为公开计费依据；需要真实对外收费时，应先接入真实支付单、支付渠道回调和幂等校验。
 

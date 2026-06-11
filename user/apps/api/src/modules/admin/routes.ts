@@ -5096,14 +5096,16 @@ function paymentProviderHealthCheck(rechargeActivity: PaymentRechargeActivitySum
     result.status,
     result.summary,
     result.metrics,
-    result.issues.length > 0 ? { issues: result.issues } : undefined
+    result.issues.length > 0 || result.samples.length > 0
+      ? { issues: result.issues, samples: result.samples }
+      : undefined
   );
 }
 
 async function inspectPaymentRechargeActivity(checkedAt: Date): Promise<PaymentRechargeActivitySummary> {
   const rechargeWindowHours = 24;
   const rechargeWindowStartedAt = new Date(checkedAt.getTime() - rechargeWindowHours * 60 * 60 * 1000);
-  const [recent, latest] = await Promise.all([
+  const [recent, latest, samples] = await Promise.all([
     prisma.walletTransaction.aggregate({
       where: {
         ...nonSmokeWalletTransactionWhere(),
@@ -5120,6 +5122,31 @@ async function inspectPaymentRechargeActivity(checkedAt: Date): Promise<PaymentR
       },
       select: { createdAt: true },
       orderBy: { createdAt: "desc" }
+    }),
+    prisma.walletTransaction.findMany({
+      where: {
+        ...nonSmokeWalletTransactionWhere(),
+        type: "recharge",
+        createdAt: { gte: rechargeWindowStartedAt }
+      },
+      select: {
+        id: true,
+        walletId: true,
+        amount: true,
+        balanceAfter: true,
+        currency: true,
+        refType: true,
+        refId: true,
+        createdAt: true,
+        wallet: {
+          select: {
+            userId: true,
+            user: { select: { email: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: "desc" },
+      take: 5
     })
   ]);
 
@@ -5128,7 +5155,19 @@ async function inspectPaymentRechargeActivity(checkedAt: Date): Promise<PaymentR
     rechargeWindowStartedAt: rechargeWindowStartedAt.toISOString(),
     recentRechargeTransactions: recent._count._all,
     recentRechargeAmount: decimalText(recent._sum.amount ?? new Prisma.Decimal(0)),
-    latestRechargeAt: latest?.createdAt.toISOString() ?? null
+    latestRechargeAt: latest?.createdAt.toISOString() ?? null,
+    recentRechargeSamples: samples.map((sample) => ({
+      id: sample.id,
+      walletId: sample.walletId,
+      userId: sample.wallet.userId,
+      userEmail: sample.wallet.user.email,
+      amount: decimalText(sample.amount),
+      balanceAfter: decimalText(sample.balanceAfter),
+      currency: sample.currency,
+      refType: sample.refType,
+      refId: sample.refId,
+      createdAt: sample.createdAt.toISOString()
+    }))
   };
 }
 
