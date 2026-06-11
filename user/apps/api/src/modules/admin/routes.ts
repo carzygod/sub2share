@@ -163,6 +163,7 @@ interface LocalProxySmokeEvidenceIssue {
   responsesOk?: boolean | null;
   localProxyOk?: boolean | null;
   keyDisabled?: boolean | null;
+  smokeTestSkippedReason?: string | null;
   proxyRequestLogCount?: number | null;
   createdAt?: string;
   ageMinutes?: number | null;
@@ -5149,6 +5150,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
         responsesOk: null,
         localProxyOk: null,
         keyDisabled: null,
+        smokeTestSkippedReason: null,
         proxyRequestLogCount: null,
         checkedAuditLogs: auditLogs.length,
         freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
@@ -5183,6 +5185,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       responsesOk: latest.responsesOk,
       localProxyOk: latest.localProxyOk,
       keyDisabled: latest.keyDisabled,
+      smokeTestSkippedReason: latest.smokeTestSkippedReason,
       proxyRequestLogCount: latest.proxyRequestLogCount,
       checkedAuditLogs: auditLogs.length,
       freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
@@ -5219,6 +5222,7 @@ interface LocalProxySmokeEvidence {
   responsesOk: boolean | null;
   localProxyOk: boolean | null;
   keyDisabled: boolean | null;
+  smokeTestSkippedReason: string | null;
   proxyRequestLogCount: number | null;
 }
 
@@ -5234,21 +5238,23 @@ function normalizeLocalProxySmokeAuditLog(log: {
   const smoke = log.action === "admin.resource.credential_apply_sub2"
     ? jsonRecord(after.smokeTest)
     : after;
-  if (!smoke) return null;
-  const models = jsonRecord(smoke.models);
-  const responses = jsonRecord(smoke.responses);
-  const localProxy = jsonRecord(smoke.localProxy);
+  const skippedReason = jsonText(after.smokeTestSkippedReason);
+  if (!smoke && !skippedReason) return null;
+  const models = jsonRecord(smoke?.models);
+  const responses = jsonRecord(smoke?.responses);
+  const localProxy = jsonRecord(smoke?.localProxy);
   return {
     auditLogId: log.id,
     action: log.action,
     objectId: log.objectId,
     createdAt: log.createdAt,
-    ok: Boolean(smoke.ok),
-    model: jsonText(smoke.model),
+    ok: smoke ? Boolean(smoke.ok) : false,
+    model: smoke ? jsonText(smoke.model) : null,
     modelsOk: jsonBoolean(models?.ok),
     responsesOk: jsonBoolean(responses?.ok),
     localProxyOk: jsonBoolean(localProxy?.ok),
-    keyDisabled: jsonBoolean(smoke.keyDisabled),
+    keyDisabled: smoke ? jsonBoolean(smoke.keyDisabled) : null,
+    smokeTestSkippedReason: skippedReason,
     proxyRequestLogCount: jsonNumber(localProxy?.proxyRequestLogCount)
   };
 }
@@ -5267,6 +5273,7 @@ function localProxySmokeEvidenceSummary(smoke: LocalProxySmokeEvidence, ageMinut
     responsesOk: smoke.responsesOk,
     localProxyOk: smoke.localProxyOk,
     keyDisabled: smoke.keyDisabled,
+    smokeTestSkippedReason: smoke.smokeTestSkippedReason,
     proxyRequestLogCount: smoke.proxyRequestLogCount
   };
 }
@@ -5290,6 +5297,7 @@ function localProxySmokeEvidenceIssue(
     responsesOk: smoke.responsesOk,
     localProxyOk: smoke.localProxyOk,
     keyDisabled: smoke.keyDisabled,
+    smokeTestSkippedReason: smoke.smokeTestSkippedReason,
     proxyRequestLogCount: smoke.proxyRequestLogCount,
     createdAt: smoke.createdAt.toISOString(),
     ageMinutes,
@@ -5299,6 +5307,9 @@ function localProxySmokeEvidenceIssue(
 }
 
 function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
+  if (smoke.smokeTestSkippedReason === "credential_apply_failed") return "Latest requested local OpenAI/Codex smoke test was skipped because credential application failed.";
+  if (smoke.smokeTestSkippedReason === "sub2_account_test_failed") return "Latest requested local OpenAI/Codex smoke test was skipped because the Sub2 account test failed.";
+  if (smoke.smokeTestSkippedReason) return `Latest requested local OpenAI/Codex smoke test was skipped: ${smoke.smokeTestSkippedReason}.`;
   if (smoke.modelsOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/models.";
   if (smoke.responsesOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/responses.";
   if (smoke.localProxyOk === false) return "Latest local OpenAI/Codex smoke test did not complete local proxy cleanup or log evidence.";

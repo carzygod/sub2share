@@ -4607,7 +4607,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);

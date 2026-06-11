@@ -14,18 +14,20 @@
 - 最近自检失败时标记 `error`。
 - 最近自检超过 24 小时时标记 `warning`。
 - 没有找到自检证据时标记 `warning`。
-- 问题样本包含 `auditLogId`、`auditAction`、模型、`modelsOk`、`responsesOk`、`localProxyOk`、`keyDisabled`、代理日志数量、发生时间、证据年龄和维修建议。
+- 如果资源凭据应用请求了端到端自检但因凭据应用失败或 Sub2 账号测试失败而跳过，自检证据会标记为 `error`，并携带 `smokeTestSkippedReason`。
+- 问题样本包含 `auditLogId`、`auditAction`、模型、`smokeTestSkippedReason`、`modelsOk`、`responsesOk`、`localProxyOk`、`keyDisabled`、代理日志数量、发生时间、证据年龄和维修建议。
 - Admin `可用性巡检` 问题样本支持从 smoke 问题一键打开对应审计记录。
 
 ## 证据来源
 
 - `admin.sub2.proxy_smoke_test`
 - `admin.resource.credential_apply_sub2` 中携带的 `smokeTest`
+- `admin.resource.credential_apply_sub2` 中携带的 `smokeTestSkippedReason`
 
 ## 管理员价值
 
 - 管理员刷新系统巡检时，可以直接看到真实 `/v1/responses` 是否在最近 24 小时内被端到端证明过。
-- 当最新自检失败时，巡检页会明确失败阶段，例如 `/v1/models`、`/v1/responses`、本地代理清理、临时 Sub2 Key 禁用或日志证据不足。
+- 当最新自检失败或被跳过时，巡检页会明确失败阶段，例如凭据应用失败、Sub2 账号测试失败、`/v1/models`、`/v1/responses`、本地代理清理、临时 Sub2 Key 禁用或日志证据不足。
 - 管理员可以从巡检问题样本打开审计记录，查看当次自检的完整脱敏结果。
 
 ## 设计边界
