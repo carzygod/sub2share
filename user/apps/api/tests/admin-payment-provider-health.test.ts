@@ -24,7 +24,10 @@ test("flags production mock recharge without recent ledger impact", () => {
   assert.equal(result.metrics.recentRechargeTransactions, 0);
   assert.equal(result.issues.length, 1);
   assert.equal(result.issues[0].type, "production_mock_recharge");
+  assert.equal(result.issues[0].walletList, true);
+  assert.equal(result.issues[0].walletTransactionList, true);
   assert.equal(result.issues[0].walletTransactionType, "recharge");
+  assert.equal(result.issues[0].salesList, true);
   assert.match(result.issues[0].actionHint, /real payment provider/);
 });
 
@@ -59,4 +62,5 @@ test("reports disabled recharge as unavailable", () => {
   assert.equal(result.status, "error");
   assert.equal(result.metrics.rechargeEndpointEnabled, false);
   assert.equal(result.issues[0].type, "payment_provider_disabled");
+  assert.equal(result.issues[0].salesList, true);
 });

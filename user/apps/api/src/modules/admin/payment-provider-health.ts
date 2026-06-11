@@ -23,6 +23,7 @@ export interface PaymentProviderHealthIssue {
   walletList: true;
   walletTransactionList: true;
   walletTransactionType: "recharge";
+  salesList: true;
   actionHint: string;
   message: string;
 }
@@ -78,6 +79,7 @@ function paymentProviderIssue(input: Pick<PaymentProviderHealthIssue, "id" | "ty
     refId: "PAYMENT_PROVIDER",
     walletList: true,
     walletTransactionList: true,
-    walletTransactionType: "recharge"
+    walletTransactionType: "recharge",
+    salesList: true
   };
 }

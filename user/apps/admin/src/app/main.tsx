@@ -183,6 +183,7 @@ interface SystemHealthIssueRow {
   walletList?: boolean;
   walletTransactionList?: boolean;
   walletTransactionType?: string;
+  salesList?: boolean;
   walletLookup?: string;
   apiKeyLookup?: string;
   usageLookup?: string;
@@ -1657,6 +1658,13 @@ function App() {
     setMessage(filter?.type ? "已打开巡检关联余额流水" : "已打开余额流水");
   }
 
+  async function openSalesCandidate() {
+    const query = { ...defaultListQuery };
+    setListQueries((current) => ({ ...current, sales: query }));
+    await refresh("sales", query);
+    setMessage("已打开巡检关联售出情况");
+  }
+
   async function openOrderCandidate(orderId: string) {
     await openFilteredListCandidate("orders", orderId, "已打开巡检关联订单");
     await openOrderDetail(orderId);
@@ -2090,6 +2098,7 @@ function App() {
             onOpenProxyRequest={openProxyRequestCandidate}
             onOpenWallets={() => { void refresh("wallets"); }}
             onOpenWalletTransactions={openWalletTransactionsCandidate}
+            onOpenSales={openSalesCandidate}
             onOpenUser={openUserCandidate}
             onOpenWallet={openWalletCandidate}
             onOpenOrder={openOrderCandidate}
@@ -2454,7 +2463,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenWallets, onOpenWalletTransactions, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenWallets, onOpenWalletTransactions, onOpenSales, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2465,6 +2474,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
   onOpenWalletTransactions: (filter?: { type?: string }) => void;
+  onOpenSales: () => void;
   onOpenUser: (userId: string) => void;
   onOpenWallet: (lookup: string) => void;
   onOpenOrder: (orderId: string) => void;
@@ -2551,6 +2561,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {issue.userId && <button className="secondary mini" onClick={() => onOpenUser(issue.userId!)}>打开用户</button>}
                 {issue.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
                 {issue.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: issue.walletTransactionType })}>打开余额流水</button>}
+                {issue.salesList && <button className="secondary mini" onClick={onOpenSales}>打开售出情况</button>}
                 {issue.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(issue.walletLookup!)}>打开余额</button>}
                 {issue.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(issue.apiKeyLookup!)}>打开 Key</button>}
                 {issue.usageLookup && <button className="secondary mini" onClick={() => onOpenUsage(issue.usageLookup!)}>打开用量</button>}
@@ -4707,6 +4718,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       walletList: record.walletList === true || textValue(record.walletList)?.toLowerCase() === "true",
       walletTransactionList: record.walletTransactionList === true || textValue(record.walletTransactionList)?.toLowerCase() === "true",
       walletTransactionType: textValue(record.walletTransactionType),
+      salesList: record.salesList === true || textValue(record.salesList)?.toLowerCase() === "true",
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId),
@@ -4770,6 +4782,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
     || issue.userId
     || issue.walletList
     || issue.walletTransactionList
+    || issue.salesList
     || issue.walletLookup
     || issue.apiKeyLookup
     || issue.usageLookup

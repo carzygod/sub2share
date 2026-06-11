@@ -28,15 +28,16 @@
   - `walletList=true`
   - `walletTransactionList=true`
   - `walletTransactionType=recharge`
+  - `salesList=true`
   - `actionHint`
   - `message`
   便于管理员在 `可用性巡检` 的问题样本中直接看到需要复查的环境配置和处理边界。
-- 管理后台 `可用性巡检 -> 巡检问题样本` 会识别 `walletList`、`walletTransactionList` 和 `walletTransactionType`，提供 `打开余额列表` 与 `打开余额流水` 操作；余额流水跳转会自动筛选 `recharge` 类型，便于管理员从支付配置 warning 直接复查充值流水。
+- 管理后台 `可用性巡检 -> 巡检问题样本` 会识别 `walletList`、`walletTransactionList`、`walletTransactionType` 和 `salesList`，提供 `打开余额列表`、`打开余额流水` 与 `打开售出情况` 操作；余额流水跳转会自动筛选 `recharge` 类型，便于管理员从支付配置 warning 直接复查充值流水和售出收入。
 
 ## 管理价值
 
 - 管理员可以在 `可用性巡检` 页面直接看到余额充值链路是否处于真实可用或风险状态。
-- 支付配置风险可以直接跳转到余额管理和余额流水，减少从巡检发现到账务复核之间的手动导航。
+- 支付配置风险可以直接跳转到余额管理、余额流水和售出情况，减少从巡检发现到账务复核之间的手动导航。
 - 生产环境 mock 充值不再隐藏在代码实现里，而会成为后台可见的 warning。
 - 生产环境 mock 充值如果已经写入最近充值流水，巡检会直接展示最近 24 小时的充值笔数、金额和最后充值时间，提醒管理员复核余额与售出收入是否可作为真实收款依据。
 - 如果需要临时关闭充值，可以设置 `PAYMENT_PROVIDER=disabled`，系统巡检会明确显示该阻断。
