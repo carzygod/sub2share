@@ -17,7 +17,12 @@
   - `PAYMENT_PROVIDER=disabled`：标记 `error`，表示用户无法充值。
   - `NODE_ENV=production` 且 `PAYMENT_PROVIDER=mock`：标记 `warning`，提示生产环境仍在使用 mock 充值。
   - 其他情况：标记 `ok`。
-- 巡检指标返回 provider、运行环境、最小充值金额和充值入口是否启用。
+- 巡检指标返回 provider、运行环境、最小充值金额、充值入口是否启用，以及最近充值流水影响：
+  - `rechargeWindowHours`
+  - `rechargeWindowStartedAt`
+  - `recentRechargeTransactions`
+  - `recentRechargeAmount`
+  - `latestRechargeAt`
 - 当充值配置产生 issue 时，`detail.issues` 会返回：
   - `refId=PAYMENT_PROVIDER`
   - `walletList=true`
@@ -33,6 +38,7 @@
 - 管理员可以在 `可用性巡检` 页面直接看到余额充值链路是否处于真实可用或风险状态。
 - 支付配置风险可以直接跳转到余额管理和余额流水，减少从巡检发现到账务复核之间的手动导航。
 - 生产环境 mock 充值不再隐藏在代码实现里，而会成为后台可见的 warning。
+- 生产环境 mock 充值如果已经写入最近充值流水，巡检会直接展示最近 24 小时的充值笔数、金额和最后充值时间，提醒管理员复核余额与售出收入是否可作为真实收款依据。
 - 如果需要临时关闭充值，可以设置 `PAYMENT_PROVIDER=disabled`，系统巡检会明确显示该阻断。
 - 生产环境继续使用 mock 充值时，巡检会明确提示该模式不能作为公开计费依据；需要真实对外收费时，应先接入真实支付单、支付渠道回调和幂等校验。
 

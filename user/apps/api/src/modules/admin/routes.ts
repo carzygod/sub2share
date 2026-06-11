@@ -57,6 +57,7 @@ import {
   localProxySmokeFailureSummary,
   type LocalProxySmokeEvidenceIssue
 } from "./local-proxy-smoke-health.js";
+import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } from "./payment-provider-health.js";
 import {
   internalHealthCheckSupplierResourceWhere,
   nonSmokeSupplierResourceWhere,
@@ -3343,7 +3344,8 @@ async function buildSystemHealthReport() {
     salesDelivery,
     oauthStateStore,
     localProxySmokeEvidence,
-    frontendRuntime
+    frontendRuntime,
+    paymentRechargeActivity
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -3408,7 +3410,8 @@ async function buildSystemHealthReport() {
     inspectSalesDeliveryReadiness(),
     inspectOAuthStateStoreReadiness(),
     inspectLocalProxySmokeEvidence(checkedAt),
-    inspectFrontendRuntimeEndpoints()
+    inspectFrontendRuntimeEndpoints(),
+    inspectPaymentRechargeActivity(checkedAt)
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint, {
@@ -3511,7 +3514,7 @@ async function buildSystemHealthReport() {
     ),
     authTokenConfigHealthCheck(),
     apiCorsPolicy,
-    paymentProviderHealthCheck(),
+    paymentProviderHealthCheck(paymentRechargeActivity),
     resourceAvailability,
     resourceCredentialReadiness,
     systemHealthCheck(
@@ -4991,64 +4994,53 @@ function apiCorsPolicyHealthCheck() {
   );
 }
 
-function paymentProviderHealthCheck() {
-  const issues: Array<{
-    id: string;
-    type: string;
-    severity: "warning" | "error";
-    refId: string;
-    walletList: true;
-    walletTransactionList: true;
-    walletTransactionType: "recharge";
-    actionHint: string;
-    message: string;
-  }> = [];
-  let status: SystemHealthStatus = "ok";
-  let summary = "充值配置可用";
-
-  if (env.PAYMENT_PROVIDER === "disabled") {
-    status = "error";
-    summary = "充值入口已禁用";
-    issues.push({
-      id: "payment_provider_disabled",
-      type: "payment_provider_disabled",
-      severity: "error",
-      refId: "PAYMENT_PROVIDER",
-      walletList: true,
-      walletTransactionList: true,
-      walletTransactionType: "recharge",
-      actionHint: "Enable a supported recharge provider only after the wallet recharge flow is intentionally available to users.",
-      message: "PAYMENT_PROVIDER=disabled, user wallet recharge endpoint returns 503."
-    });
-  } else if (env.PAYMENT_PROVIDER === "mock" && env.NODE_ENV === "production") {
-    status = "warning";
-    summary = "生产环境仍启用 mock 充值";
-    issues.push({
-      id: "production_mock_recharge",
-      type: "production_mock_recharge",
-      severity: "warning",
-      refId: "PAYMENT_PROVIDER",
-      walletList: true,
-      walletTransactionList: true,
-      walletTransactionType: "recharge",
-      actionHint: "Do not rely on mock recharge for public billing; integrate a real payment provider and webhook flow, or keep the service internal until then.",
-      message: "Production is using mock wallet recharge. Replace with a real payment provider before public billing."
-    });
-  }
-
+function paymentProviderHealthCheck(rechargeActivity: PaymentRechargeActivitySummary) {
+  const result = inspectPaymentProviderHealth({
+    provider: env.PAYMENT_PROVIDER,
+    nodeEnv: env.NODE_ENV,
+    minRechargeAmount: env.MIN_RECHARGE_AMOUNT,
+    rechargeActivity
+  });
   return systemHealthCheck(
     "payments",
     "支付充值",
-    status,
-    summary,
-    {
-      provider: env.PAYMENT_PROVIDER,
-      nodeEnv: env.NODE_ENV,
-      minRechargeAmount: env.MIN_RECHARGE_AMOUNT,
-      rechargeEndpointEnabled: env.PAYMENT_PROVIDER === "mock"
-    },
-    issues.length > 0 ? { issues } : undefined
+    result.status,
+    result.summary,
+    result.metrics,
+    result.issues.length > 0 ? { issues: result.issues } : undefined
   );
+}
+
+async function inspectPaymentRechargeActivity(checkedAt: Date): Promise<PaymentRechargeActivitySummary> {
+  const rechargeWindowHours = 24;
+  const rechargeWindowStartedAt = new Date(checkedAt.getTime() - rechargeWindowHours * 60 * 60 * 1000);
+  const [recent, latest] = await Promise.all([
+    prisma.walletTransaction.aggregate({
+      where: {
+        ...nonSmokeWalletTransactionWhere(),
+        type: "recharge",
+        createdAt: { gte: rechargeWindowStartedAt }
+      },
+      _count: { _all: true },
+      _sum: { amount: true }
+    }),
+    prisma.walletTransaction.findFirst({
+      where: {
+        ...nonSmokeWalletTransactionWhere(),
+        type: "recharge"
+      },
+      select: { createdAt: true },
+      orderBy: { createdAt: "desc" }
+    })
+  ]);
+
+  return {
+    rechargeWindowHours,
+    rechargeWindowStartedAt: rechargeWindowStartedAt.toISOString(),
+    recentRechargeTransactions: recent._count._all,
+    recentRechargeAmount: decimalText(recent._sum.amount ?? new Prisma.Decimal(0)),
+    latestRechargeAt: latest?.createdAt.toISOString() ?? null
+  };
 }
 
 async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string, number>) {
