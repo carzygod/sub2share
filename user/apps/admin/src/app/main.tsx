@@ -181,6 +181,7 @@ interface SystemHealthIssueRow {
   rentalId?: string;
   walletList?: boolean;
   walletTransactionList?: boolean;
+  walletTransactionType?: string;
   walletLookup?: string;
   apiKeyLookup?: string;
   usageLookup?: string;
@@ -1627,6 +1628,16 @@ function App() {
     await openFilteredListCandidate("wallets", lookup, "已打开巡检关联余额账户");
   }
 
+  async function openWalletTransactionsCandidate(filter?: { type?: string }) {
+    const query = {
+      ...defaultListQuery,
+      status: filter?.type ?? ""
+    };
+    setListQueries((current) => ({ ...current, walletTransactions: query }));
+    await refresh("walletTransactions", query);
+    setMessage(filter?.type ? "已打开巡检关联余额流水" : "已打开余额流水");
+  }
+
   async function openOrderCandidate(orderId: string) {
     await openFilteredListCandidate("orders", orderId, "已打开巡检关联订单");
     await openOrderDetail(orderId);
@@ -2033,7 +2044,7 @@ function App() {
             onOpenResource={openResourceCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
             onOpenWallets={() => { void refresh("wallets"); }}
-            onOpenWalletTransactions={() => { void refresh("walletTransactions"); }}
+            onOpenWalletTransactions={openWalletTransactionsCandidate}
             onOpenUser={openUserCandidate}
             onOpenWallet={openWalletCandidate}
             onOpenOrder={openOrderCandidate}
@@ -2406,7 +2417,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
-  onOpenWalletTransactions: () => void;
+  onOpenWalletTransactions: (filter?: { type?: string }) => void;
   onOpenUser: (userId: string) => void;
   onOpenWallet: (lookup: string) => void;
   onOpenOrder: (orderId: string) => void;
@@ -2492,7 +2503,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
                 {issue.userId && <button className="secondary mini" onClick={() => onOpenUser(issue.userId!)}>打开用户</button>}
                 {issue.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
-                {issue.walletTransactionList && <button className="secondary mini" onClick={onOpenWalletTransactions}>打开余额流水</button>}
+                {issue.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: issue.walletTransactionType })}>打开余额流水</button>}
                 {issue.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(issue.walletLookup!)}>打开余额</button>}
                 {issue.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(issue.apiKeyLookup!)}>打开 Key</button>}
                 {issue.usageLookup && <button className="secondary mini" onClick={() => onOpenUsage(issue.usageLookup!)}>打开用量</button>}
@@ -4629,6 +4640,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       rentalId: textValue(record.rentalId),
       walletList: record.walletList === true || textValue(record.walletList)?.toLowerCase() === "true",
       walletTransactionList: record.walletTransactionList === true || textValue(record.walletTransactionList)?.toLowerCase() === "true",
+      walletTransactionType: textValue(record.walletTransactionType),
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId),
@@ -4660,7 +4672,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);

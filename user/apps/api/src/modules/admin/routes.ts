@@ -4859,6 +4859,7 @@ function paymentProviderHealthCheck() {
     refId: string;
     walletList: true;
     walletTransactionList: true;
+    walletTransactionType: "recharge";
     actionHint: string;
     message: string;
   }> = [];
@@ -4875,6 +4876,7 @@ function paymentProviderHealthCheck() {
       refId: "PAYMENT_PROVIDER",
       walletList: true,
       walletTransactionList: true,
+      walletTransactionType: "recharge",
       actionHint: "Enable a supported recharge provider only after the wallet recharge flow is intentionally available to users.",
       message: "PAYMENT_PROVIDER=disabled, user wallet recharge endpoint returns 503."
     });
@@ -4888,6 +4890,7 @@ function paymentProviderHealthCheck() {
       refId: "PAYMENT_PROVIDER",
       walletList: true,
       walletTransactionList: true,
+      walletTransactionType: "recharge",
       actionHint: "Do not rely on mock recharge for public billing; integrate a real payment provider and webhook flow, or keep the service internal until then.",
       message: "Production is using mock wallet recharge. Replace with a real payment provider before public billing."
     });
