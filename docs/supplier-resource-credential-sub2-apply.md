@@ -13,7 +13,9 @@
 
 ## 已实现范围
 
-- 新增后端接口：`POST /api/admin/resources/:id/apply-credential-to-sub2`。
+- 后端接口：
+  - `POST /api/admin/resources/:id/apply-credential-to-sub2`
+  - `POST /api/admin/resources`（当 `applyCredentialToSub2=true` 且提供初始 `openai_refresh_token` 时，创建后复用同一应用流程）
 - 接口权限：`admin`。
 - 接口读取共享资源绑定的 `sub2AccountId`，并要求该值为数字型 Sub2 账号 ID。
 - 接口读取该资源已保存的 `SupplierResourceCredential`：
@@ -29,6 +31,7 @@
   - 根据测试结果把 pending/testing/abnormal/online 等状态收敛到更合适的状态。
 - 返回结果只包含资源 ID、Sub2 账号 ID、凭据摘要、应用结果摘要、测试结果、可选端到端自检结果和更新后的资源摘要。
 - 审计动作：`admin.resource.credential_apply_sub2`。
+- 创建资源后立即应用初始凭据也会写入同一个审计动作，便于和资源详情中的手动应用统一追踪。
 - 审计日志不记录 refresh token、密文或 Sub2 OAuth credentials。
 - Admin 共享资源详情页新增“应用到 Sub2”入口，可填写可选 `client_id`、`proxy_id`，并可勾选“应用后端到端自检”。
 - `GET /api/admin/system-health` 的 `resourceCredentials` 巡检会展示可应用凭据数量、缺少 Sub2 账号绑定的凭据数量和候选样本。

@@ -26,6 +26,7 @@
 - 更新动作写入审计日志：`admin.resource.update`。
 - 凭据写入动作使用 `API_KEY_ENCRYPTION_SECRET` 加密保存，只返回类型、状态、指纹和轮换时间。
 - `POST /api/admin/resources` 支持在创建共享资源时同步传入可选初始凭据字段：`credentialType`、`credentialStatus`、`credentialSecret`；只有填写 `credentialSecret` 时才会创建加密凭据。
+- 创建共享资源时可显式传入 `applyCredentialToSub2=true`，系统会在创建成功后把初始 `openai_refresh_token` 应用到绑定的 Sub2 账号；可选字段包括 `credentialClientId`、`credentialProxyId`、`credentialRunSmokeTest` 和 `credentialSmokeModel`。
 - 凭据写入和删除分别记录审计日志：`admin.resource.credential_upsert`、`admin.resource.credential_delete`。
 - 凭据应用动作会读取资源绑定的 `sub2AccountId`，仅支持 active 的 `openai_refresh_token`，并记录审计日志 `admin.resource.credential_apply_sub2`。
 - 凭据应用成功后会立即测试 Sub2 账号，并更新共享资源的 `status` 与 `lastCheckedAt`。
@@ -38,7 +39,7 @@
 - 列表展示分成、保留比例和日上限。
 - 详情面板新增配置调整表单。
 - 管理员可直接保存状态、等级、并发、分成、保留比例、日上限和 Sub2 账号。
-- 管理员创建共享资源时可同步保存初始接入凭据；创建成功后仍需在资源详情或反代状态页显式应用到 Sub2 并运行测试。
+- 管理员创建共享资源时可同步保存初始接入凭据；也可勾选“创建后应用到 Sub2”，同次触发 Sub2 凭据应用、账号测试和可选端到端自检。
 - 管理员可在资源详情中登记、轮换或删除接入凭据。
 - 管理员可把资源中已加密保存的 OpenAI refresh token 应用到绑定的 Sub2 上游账号，并看到应用后的账号测试结果；需要完整恢复证据时，可勾选“应用后端到端自检”，同次验证本地 `/v1/models` 与 `/v1/responses`。
 - 从 `可用性巡检` 中资源凭据或共享资源问题点击 `打开共享资源` 时，创建共享资源表单会预填巡检关联的供给方邮箱、资源类型和 Sub2 账号 ID；如果共享资源缺失问题没有具体资源行，后端会继承 Sub2/OpenAI 上游巡检的首个修复候选账号，并在系统只有一个 active 用户关联供给方时继承该供给方邮箱；普通进入或清空筛选时恢复默认创建表单。

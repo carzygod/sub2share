@@ -443,7 +443,12 @@ const createResourceSchema = z.object({
   sub2AccountId: z.string().trim().min(1).optional(),
   credentialType: z.enum(resourceCredentialTypes).optional(),
   credentialStatus: z.enum(resourceCredentialStatuses).optional(),
-  credentialSecret: z.string().trim().min(8).max(20_000).optional()
+  credentialSecret: z.string().trim().min(8).max(20_000).optional(),
+  applyCredentialToSub2: z.boolean().default(false),
+  credentialClientId: z.string().trim().min(1).max(240).optional(),
+  credentialProxyId: z.coerce.number().int().positive().optional(),
+  credentialRunSmokeTest: z.boolean().default(false),
+  credentialSmokeModel: z.string().trim().min(1).max(160).optional()
 });
 
 const upsertResourceCredentialSchema = z.object({
@@ -458,6 +463,7 @@ const applyResourceCredentialToSub2Schema = z.object({
   runSmokeTest: z.boolean().default(false),
   smokeModel: z.string().trim().min(1).max(160).optional()
 });
+type ApplyResourceCredentialToSub2Input = z.infer<typeof applyResourceCredentialToSub2Schema>;
 
 const updateSupplierSchema = z.object({
   displayName: nullableProfileText(64),
@@ -2365,6 +2371,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const input = createResourceSchema.parse(request.body);
     const email = input.supplierEmail.toLowerCase();
+    if (input.credentialRunSmokeTest && !input.applyCredentialToSub2) {
+      throw new AppError("initial_credential_apply_required", "Run smoke test requires applying the initial credential to Sub2", 400);
+    }
+    if (input.applyCredentialToSub2 && !input.credentialSecret) {
+      throw new AppError("initial_credential_required", "Initial credential secret is required before applying it to Sub2", 400);
+    }
+    if (input.applyCredentialToSub2 && (input.credentialType ?? "openai_refresh_token") !== "openai_refresh_token") {
+      throw new AppError("initial_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
+    }
+    if (input.applyCredentialToSub2 && (input.credentialStatus ?? "active") !== "active") {
+      throw new AppError("initial_credential_not_active", "Initial credential must be active before applying it to Sub2", 400);
+    }
     if (input.credentialSecret && !env.API_KEY_ENCRYPTION_SECRET) {
       throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
     }
@@ -2416,7 +2434,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       sub2AccountId: resource.sub2AccountId,
       credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null
     });
-    return adminOk(reply, resource);
+    const credentialApply = input.applyCredentialToSub2
+      ? await applyStoredResourceCredentialToSub2(request, actor.id, resource.id, {
+        clientId: input.credentialClientId,
+        proxyId: input.credentialProxyId,
+        runSmokeTest: input.credentialRunSmokeTest,
+        smokeModel: input.credentialSmokeModel
+      })
+      : null;
+    return adminOk(reply, { ...(credentialApply?.resource ?? resource), credentialApply });
   });
 
   app.get("/api/admin/resources/:id", async (request, reply) => {
@@ -2563,110 +2589,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const { id } = request.params as { id: string };
     const input = applyResourceCredentialToSub2Schema.parse(request.body ?? {});
-    const resource = await prisma.supplierResource.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        status: true,
-        sub2AccountId: true,
-        lastCheckedAt: true,
-        credential: { select: resourceCredentialPrivateSelect }
-      }
-    });
-    if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
-    const accountId = parseResourceSub2AccountId(resource.sub2AccountId);
-    if (!resource.credential) {
-      throw new AppError("resource_credential_missing", "Supplier resource does not have a stored credential", 400);
-    }
-    if (resource.credential.status !== "active") {
-      throw new AppError("resource_credential_not_active", "Supplier resource credential is not active", 400);
-    }
-    if (resource.credential.credentialType !== "openai_refresh_token") {
-      throw new AppError("resource_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
-    }
-    if (!env.API_KEY_ENCRYPTION_SECRET) {
-      throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before reading resource credentials", 500);
-    }
-
-    let refreshToken: string;
-    try {
-      refreshToken = decryptSupplierResourceCredential(resource.credential.encryptedValue, env.API_KEY_ENCRYPTION_SECRET);
-    } catch {
-      throw new AppError("resource_credential_decrypt_failed", "Supplier resource credential could not be decrypted", 500);
-    }
-
-    const result = await sub2Client.applyOpenAiRefreshToken(accountId, {
-      refreshToken,
-      clientId: input.clientId,
-      proxyId: input.proxyId
-    });
-    let testResult: Sub2GatewayAccountTestResult | null = null;
-    let updatedResource: Prisma.SupplierResourceGetPayload<{
-      include: {
-        supplier: { include: { user: true } };
-        credential: { select: typeof resourceCredentialSummarySelect };
-      };
-    }> | null = null;
-    let smokeTest: Sub2ProxySmokeTestResult | null = null;
-    let smokeTestSkippedReason: string | null = null;
-    if (result.ok) {
-      testResult = await testSub2AccountForResourceApply(accountId);
-      updatedResource = await prisma.supplierResource.update({
-        where: { id },
-        data: {
-          status: statusAfterResourceTest(resource.status, testResult.ok),
-          lastCheckedAt: new Date()
-        },
-        include: {
-          supplier: { include: { user: true } },
-          credential: { select: resourceCredentialSummarySelect }
-        }
-      });
-      if (input.runSmokeTest) {
-        if (testResult.ok) {
-          smokeTest = await runLocalOpenAiProxySmokeTest(input.smokeModel);
-        } else {
-          smokeTestSkippedReason = "sub2_account_test_failed";
-        }
-      }
-    } else if (input.runSmokeTest) {
-      smokeTestSkippedReason = "credential_apply_failed";
-    }
-    const credentialSummary = resourceCredentialAuditPayload(resource.credential);
-    await writeAuditLog(request, actor.id, "admin.resource.credential_apply_sub2", "supplier_resource", id, {
-      sub2AccountId: resource.sub2AccountId,
-      status: resource.status,
-      lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
-      credential: credentialSummary
-    }, {
-      sub2AccountId: resource.sub2AccountId,
-      accountId,
-      credential: credentialSummary,
-      ok: result.ok,
-      refreshed: result.refreshed,
-      applied: result.applied,
-      error: result.error,
-      test: testResult ? {
-        ok: testResult.ok,
-        statusCode: testResult.statusCode,
-        events: testResult.events.map((event) => event.type ?? event.message ?? "event")
-      } : null,
-      resource: updatedResource ? {
-        status: updatedResource.status,
-        lastCheckedAt: updatedResource.lastCheckedAt?.toISOString() ?? null
-      } : null,
-      smokeTestRequested: input.runSmokeTest,
-      smokeTestSkippedReason,
-      smokeTest: smokeTest ? {
-        ok: smokeTest.ok,
-        model: smokeTest.model,
-        keyDisabled: smokeTest.keyDisabled,
-        localProxy: smokeTest.localProxy,
-        models: smokeTest.models,
-        responses: smokeTest.responses
-      } : null
-    });
-    return adminOk(reply, { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource, smokeTest, smokeTestSkippedReason });
+    const result = await applyStoredResourceCredentialToSub2(request, actor.id, id, input);
+    return adminOk(reply, result);
   });
 
   app.post("/api/admin/resources/:id/test", async (request, reply) => {
@@ -6903,6 +6827,119 @@ function parseResourceSub2AccountId(value: string | null | undefined) {
   }
 
   return accountId;
+}
+
+async function applyStoredResourceCredentialToSub2(
+  request: Parameters<typeof requireRole>[0],
+  actorUserId: string,
+  id: string,
+  input: ApplyResourceCredentialToSub2Input
+) {
+  const resource = await prisma.supplierResource.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      status: true,
+      sub2AccountId: true,
+      lastCheckedAt: true,
+      credential: { select: resourceCredentialPrivateSelect }
+    }
+  });
+  if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+  const accountId = parseResourceSub2AccountId(resource.sub2AccountId);
+  if (!resource.credential) {
+    throw new AppError("resource_credential_missing", "Supplier resource does not have a stored credential", 400);
+  }
+  if (resource.credential.status !== "active") {
+    throw new AppError("resource_credential_not_active", "Supplier resource credential is not active", 400);
+  }
+  if (resource.credential.credentialType !== "openai_refresh_token") {
+    throw new AppError("resource_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
+  }
+  if (!env.API_KEY_ENCRYPTION_SECRET) {
+    throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before reading resource credentials", 500);
+  }
+
+  let refreshToken: string;
+  try {
+    refreshToken = decryptSupplierResourceCredential(resource.credential.encryptedValue, env.API_KEY_ENCRYPTION_SECRET);
+  } catch {
+    throw new AppError("resource_credential_decrypt_failed", "Supplier resource credential could not be decrypted", 500);
+  }
+
+  const result = await sub2Client.applyOpenAiRefreshToken(accountId, {
+    refreshToken,
+    clientId: input.clientId,
+    proxyId: input.proxyId
+  });
+  let testResult: Sub2GatewayAccountTestResult | null = null;
+  let updatedResource: Prisma.SupplierResourceGetPayload<{
+    include: {
+      supplier: { include: { user: true } };
+      credential: { select: typeof resourceCredentialSummarySelect };
+    };
+  }> | null = null;
+  let smokeTest: Sub2ProxySmokeTestResult | null = null;
+  let smokeTestSkippedReason: string | null = null;
+  if (result.ok) {
+    testResult = await testSub2AccountForResourceApply(accountId);
+    updatedResource = await prisma.supplierResource.update({
+      where: { id },
+      data: {
+        status: statusAfterResourceTest(resource.status, testResult.ok),
+        lastCheckedAt: new Date()
+      },
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
+    });
+    if (input.runSmokeTest) {
+      if (testResult.ok) {
+        smokeTest = await runLocalOpenAiProxySmokeTest(input.smokeModel);
+      } else {
+        smokeTestSkippedReason = "sub2_account_test_failed";
+      }
+    }
+  } else if (input.runSmokeTest) {
+    smokeTestSkippedReason = "credential_apply_failed";
+  }
+  const credentialSummary = resourceCredentialAuditPayload(resource.credential);
+  await writeAuditLog(request, actorUserId, "admin.resource.credential_apply_sub2", "supplier_resource", id, {
+    sub2AccountId: resource.sub2AccountId,
+    status: resource.status,
+    lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
+    credential: credentialSummary
+  }, {
+    sub2AccountId: resource.sub2AccountId,
+    accountId,
+    credential: credentialSummary,
+    ok: result.ok,
+    refreshed: result.refreshed,
+    applied: result.applied,
+    error: result.error,
+    test: testResult ? {
+      ok: testResult.ok,
+      statusCode: testResult.statusCode,
+      events: testResult.events.map((event) => event.type ?? event.message ?? "event")
+    } : null,
+    resource: updatedResource ? {
+      status: updatedResource.status,
+      lastCheckedAt: updatedResource.lastCheckedAt?.toISOString() ?? null
+    } : null,
+    smokeTestRequested: input.runSmokeTest,
+    smokeTestSkippedReason,
+    smokeTest: smokeTest ? {
+      ok: smokeTest.ok,
+      model: smokeTest.model,
+      keyDisabled: smokeTest.keyDisabled,
+      localProxy: smokeTest.localProxy,
+      models: smokeTest.models,
+      responses: smokeTest.responses
+    } : null
+  });
+
+  return { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource, smokeTest, smokeTestSkippedReason };
 }
 
 function resourceCredentialAuditPayload(credential: ResourceCredentialSummary | ResourceCredentialPrivate) {

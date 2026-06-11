@@ -1806,7 +1806,13 @@ function App() {
   async function createResource(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const resource = await api<ResourceRow>("/api/admin/resources", {
+    const applyCredentialToSub2 = form.get("applyCredentialToSub2") === "on";
+    const credentialRunSmokeTest = form.get("credentialRunSmokeTest") === "on";
+    const credentialClientId = optionalFormString(form, "credentialClientId");
+    const credentialProxyIdText = String(form.get("credentialProxyId") || "").trim();
+    const credentialSmokeModel = optionalFormString(form, "credentialSmokeModel");
+    if (applyCredentialToSub2 && !confirmAdminAction("确认创建后应用初始凭据到 Sub2？", `供给方：${form.get("supplierEmail")}\n资源类型：${form.get("resourceType")}\nSub2 账号：${optionalFormString(form, "sub2AccountId") ?? "-"}\nClient ID：${credentialClientId ?? "-"}\nProxy ID：${credentialProxyIdText || "-"}\n端到端自检：${credentialRunSmokeTest ? "是" : "否"}\n自检模型：${credentialSmokeModel ?? "-"}`)) return;
+    const resource = await api<ResourceRow & { credentialApply?: Sub2CredentialApplyResult | null }>("/api/admin/resources", {
       method: "POST",
       body: JSON.stringify({
         supplierEmail: form.get("supplierEmail"),
@@ -1821,13 +1827,22 @@ function App() {
         sub2AccountId: optionalFormString(form, "sub2AccountId"),
         credentialType: optionalFormString(form, "credentialType"),
         credentialStatus: optionalFormString(form, "credentialStatus"),
-        credentialSecret: optionalFormString(form, "credentialSecret")
+        credentialSecret: optionalFormString(form, "credentialSecret"),
+        applyCredentialToSub2,
+        credentialClientId,
+        credentialProxyId: credentialProxyIdText ? Number(credentialProxyIdText) : undefined,
+        credentialRunSmokeTest,
+        credentialSmokeModel
       })
     });
     event.currentTarget.reset();
-    setMessage(resource.credential ? "共享资源已创建，初始凭据已保存" : "共享资源已创建");
+    const applyMessage = resource.credentialApply
+      ? `，${credentialApplyMessage(resource.credentialApply, "初始凭据已应用", "初始凭据应用失败")}`
+      : "";
+    setMessage(`${resource.credential ? "共享资源已创建，初始凭据已保存" : "共享资源已创建"}${applyMessage}`);
     await refresh("resources");
     await openResourceDetail(resource.id);
+    if (resource.credentialApply) await refresh("sub2");
   }
 
   async function updateResourceConfig(event: FormEvent<HTMLFormElement>, resourceId: string) {
@@ -1897,13 +1912,7 @@ function App() {
       })
     });
     event.currentTarget.reset();
-    const testMessage = result.test
-      ? `，测试${result.test.ok ? "通过" : "失败"} / HTTP ${result.test.statusCode} / ${testSummary(result.test)}`
-      : "";
-    const smokeMessage = result.smokeTest
-      ? result.smokeTest.ok ? "，端到端通过" : `，端到端失败 / ${smokeSummary(result.smokeTest)}`
-      : result.smokeTestSkippedReason ? `，端到端跳过：${credentialApplySmokeSkipLabel(result.smokeTestSkippedReason)}` : "";
-    setMessage(result.result.ok ? `资源凭据已应用到 Sub2 账号 #${result.accountId}${testMessage}${smokeMessage}` : `资源凭据应用失败：${result.result.error ?? "未知错误"}${smokeMessage}`);
+    setMessage(credentialApplyMessage(result, "资源凭据已应用", "资源凭据应用失败"));
     await refresh("resources");
     await openResourceDetail(resourceId);
     await refresh("sub2");
@@ -4230,6 +4239,11 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
           {resourceCredentialStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
         <input name="credentialSecret" type="password" minLength={8} placeholder="初始凭据，可选" autoComplete="off" />
+        <label className="checkbox-line"><input name="applyCredentialToSub2" type="checkbox" /><span>创建后应用到 Sub2</span></label>
+        <input name="credentialClientId" placeholder="client_id，可选" autoComplete="off" />
+        <input name="credentialProxyId" type="number" min={1} placeholder="proxy_id，可选" />
+        <label className="checkbox-line"><input name="credentialRunSmokeTest" type="checkbox" /><span>应用后端到端自检</span></label>
+        <input name="credentialSmokeModel" placeholder="自检模型，可选" autoComplete="off" />
         <button>创建共享资源</button>
       </form>
       <ListControls
@@ -5210,6 +5224,18 @@ function smokeSummary(result: Sub2ProxySmokeTestResult) {
   }
   if (!result.keyDisabled) return result.cleanupError ?? "临时 Key 清理失败";
   return "-";
+}
+
+function credentialApplyMessage(result: Sub2CredentialApplyResult, successPrefix: string, failurePrefix: string) {
+  const testMessage = result.test
+    ? `，测试${result.test.ok ? "通过" : "失败"} / HTTP ${result.test.statusCode} / ${testSummary(result.test)}`
+    : "";
+  const smokeMessage = result.smokeTest
+    ? result.smokeTest.ok ? "，端到端通过" : `，端到端失败 / ${smokeSummary(result.smokeTest)}`
+    : result.smokeTestSkippedReason ? `，端到端跳过：${credentialApplySmokeSkipLabel(result.smokeTestSkippedReason)}` : "";
+  return result.result.ok
+    ? `${successPrefix}到 Sub2 账号 #${result.accountId}${testMessage}${smokeMessage}`
+    : `${failurePrefix}：${result.result.error ?? "未知错误"}${smokeMessage}`;
 }
 
 function credentialApplySmokeSkipLabel(reason: string) {
