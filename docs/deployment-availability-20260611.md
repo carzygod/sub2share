@@ -2706,3 +2706,77 @@ CORS 复查：
 ### 结论
 
 从“反代状态”页直接应用 OpenAI refresh token 并运行端到端自检后，下一次系统巡检可以直接读取该审计产生的 `/v1/responses` 证据，并保留 Sub2 账号/资源上下文。当前真实可用性仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
+
+## 2026-06-12 05:13 管理后台前端入口覆盖发布与线上复查
+
+### 发布版本
+
+- `ba0e379 feat: verify admin frontend surface coverage`
+
+### 本轮修复
+
+- 新增 `apps/admin/src/app/admin-surfaces.ts`：
+  - 集中声明 Admin 必需管理范围。
+  - 集中声明侧边栏导航项。
+  - 集中声明列表型管理页面。
+  - 标记用户管理、共享资源、余额管理、售出情况、反代状态为目标关键入口。
+- Admin 侧边栏改为从 `adminNavigationItems` 渲染，不再维护独立硬编码按钮清单。
+- 新增 `apps/admin/tests/admin-surfaces.test.ts`，覆盖：
+  - 必需管理范围：`users`、`sharing`、`wallets`、`sales`、`openaiProxy`。
+  - 目标关键入口：用户管理、共享资源、余额管理、售出情况、反代状态、反代请求。
+  - 所有列表型管理页面都能从侧边栏进入。
+- `apps/admin/package.json` 的 `test` 脚本改为真实运行 Admin tests。
+- `scripts/deploy-production.sh` 新增 `pnpm --filter @zyz/admin test`，后续生产部署会把 Admin 入口覆盖纳入门禁。
+- 新增文档：`docs/admin-frontend-surface-coverage.md`。
+- 总需求文档追加 `18.138 管理后台前端入口覆盖纳入发布门禁`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin test`：3/3 通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：72/72 通过。
+- `pnpm.cmd build`：通过。
+- `pnpm.cmd -r test`：通过；Admin tests 已进入 workspace test 流。
+- `git diff --check`：无 whitespace 错误。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=ba0e379`
+  - `deployed_at=20260611T211324Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：72/72 通过。
+  - workspace build：通过。
+- 本次部署启动时仍由旧 release 的部署脚本执行，因此 Admin test 未出现在部署日志中；发布完成后已确认当前 release 的脚本包含：
+  - `pnpm --filter @zyz/admin test`
+- 在当前 release 手动执行 `pnpm --filter @zyz/admin test`：3/3 通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- Admin 静态入口：`GET http://192.168.31.26:3101/` 200。
+- 当前 Admin 生产脚本为 `/assets/index-D4akrjVI.js`。
+
+### 结论
+
+管理员入口现在不仅有后端 API 能力矩阵，也有前端侧边栏入口覆盖测试。用户、共享资源、余额、售出和 Sub2/OpenAI 反代这五个目标核心范围已进入 Admin 测试和后续生产部署门禁。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
