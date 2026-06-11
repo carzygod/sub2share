@@ -46,3 +46,27 @@
 4. 用 `ss -ltnp` 确认 4100、3100、3101 都在监听。
 5. 用 `/proc/<pid>/cwd` 确认三者都运行在 `/opt/zhisuan-yizhan/user` 或其子目录。
 6. 用 `systemctl cat zyz-web.service zyz-admin.service` 确认 Web/Admin 不再使用 `vite preview`。
+
+## 线上复查记录
+
+复查时间：2026-06-12 00:48 CST
+
+- 已部署 release：`fbe64c5`
+- `GET /health` on `4100`：`200`
+- `GET /ready` on `4100`：`200`
+- `GET /` on `3100`：`200`
+- `GET /` on `3101`：`200`
+- `ss -ltnp` 显示 `4100`、`3100`、`3101` 均在监听。
+- cwd：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- systemd：
+  - `zyz-api.service`：`active`
+  - `zyz-web.service`：`active`
+  - `zyz-admin.service`：`active`
+- `systemctl cat zyz-web.service` 的 `ExecStart` 已为 `node scripts/serve-static.mjs apps/web/dist 3100`。
+- `systemctl cat zyz-admin.service` 的 `ExecStart` 已为 `node scripts/serve-static.mjs apps/admin/dist 3101`。
+- 旧 `vite preview --port 3100/3101` 进程复查为空。
+
+结论：Web/Admin 入口已经从临时 Vite preview 切换为 systemd 管理的 Node 静态服务，端口在延迟复查后仍保持可用。

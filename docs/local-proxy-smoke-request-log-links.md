@@ -57,3 +57,20 @@
 2. 管理员登录后台，进入 `反代状态`，运行端到端自检。
 3. 打开 `可用性巡检`，确认 `localProxySmoke` 的问题样本或 latest 证据包含 `requestId`、`proxyRequestLogId` 和代理路径字段。
 4. 点击 `打开反代请求`，确认反代请求列表可定位到本次 smoke 的 `/v1/models` 或 `/v1/responses` 请求。
+
+## 线上复查记录
+
+复查时间：2026-06-12 00:48 CST
+
+- 已部署服务 release：`fbe64c5`
+- 最近一次 smoke 审计：`7d623ca9-251d-40e5-b47e-837b6a5046c6`
+- `localProxySmoke` 状态：`error`
+- 失败路径：`/v1/responses`
+- 失败状态码：`503`
+- 失败错误码：`upstream_http_503`
+- `requestId`：`d5435936-acc1-41fe-88ed-c99850834d22`
+- `proxyRequestLogId`：`efd432c8-1b7e-4830-b4a6-67f216aa82e2`
+- 本次 smoke 代理日志数量：`2`
+- `GET /api/admin/proxy-requests?q=d5435936-acc1-41fe-88ed-c99850834d22&page=1&pageSize=10` 返回 `total=1`，首条记录为 `/v1/responses`、`statusCode=503`、`errorCode=upstream_http_503`。
+
+结论：本地 OpenAI/Codex 反代自检仍被 Sub2/OpenAI 上游失效 token 阻断，但管理员现在可以从系统巡检直接跳到失败的反代请求日志。
