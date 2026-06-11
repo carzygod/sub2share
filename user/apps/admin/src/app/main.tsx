@@ -940,6 +940,7 @@ function App() {
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
+  const [resourceCreateDefaults, setResourceCreateDefaults] = useState<{ resourceType?: string; sub2AccountId?: string }>({});
   const [suppliers, setSuppliers] = useState<SupplierDetailRow[]>([]);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -1054,7 +1055,10 @@ function App() {
       if (nextView === "sub2") await loadSub2View();
       if (nextView === "proxyRequests") await loadPaged("proxyRequests", "/api/admin/proxy-requests", setProxyRequests, queryOverride);
       if (nextView === "suppliers") await loadPaged("suppliers", "/api/admin/suppliers", setSuppliers, queryOverride);
-      if (nextView === "resources") await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
+      if (nextView === "resources") {
+        if (!queryOverride) setResourceCreateDefaults({});
+        await loadPaged("resources", "/api/admin/resources", setResources, queryOverride);
+      }
       if (nextView === "settlements") await loadPaged("settlements", "/api/admin/settlements", setSettlements, queryOverride);
       if (nextView === "withdrawals") await loadWithdrawals(queryOverride);
       if (nextView === "audit") await loadPaged("audit", "/api/admin/audit-logs", setAuditLogs, queryOverride);
@@ -1085,6 +1089,7 @@ function App() {
 
   async function clearListFilters(listView: ManagedListView) {
     const nextQuery = { ...defaultListQuery, pageSize: listQueries[listView].pageSize };
+    if (listView === "resources") setResourceCreateDefaults({});
     setListQueries((current) => ({ ...current, [listView]: nextQuery }));
     await refresh(listView, nextQuery);
   }
@@ -1674,14 +1679,19 @@ function App() {
     await openFilteredListCandidate("products", lookup, "已打开巡检关联商品");
   }
 
-  async function openResourcesCandidate(filter?: { resourceType?: string; status?: string; scope?: string }) {
-    const hasFilter = Boolean(filter?.resourceType || filter?.status || filter?.scope);
+  async function openResourcesCandidate(filter?: { resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) {
+    const hasFilter = Boolean(filter?.resourceType || filter?.status || filter?.scope || filter?.sub2AccountId);
+    const resourceType = resourceTypeOptions.includes(filter?.resourceType ?? "") ? filter!.resourceType! : "";
     const query = {
       ...defaultListQuery,
       action: filter?.scope === "production" ? "production" : "",
-      resourceType: filter?.resourceType ?? "",
+      resourceType,
       status: filter?.status ?? ""
     };
+    setResourceCreateDefaults({
+      resourceType: resourceType || undefined,
+      sub2AccountId: filter?.sub2AccountId
+    });
     setSelectedResource(null);
     setListQueries((current) => ({ ...current, resources: query }));
     await refresh("resources", query);
@@ -2307,6 +2317,7 @@ function App() {
           <ResourcesView
             resources={resources}
             selectedResource={selectedResource}
+            createDefaults={resourceCreateDefaults}
             query={listQueries.resources}
             meta={listMeta.resources}
             onCreate={createResource}
@@ -2449,7 +2460,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
-  onOpenResources: (filter?: { resourceType?: string; status?: string; scope?: string }) => void;
+  onOpenResources: (filter?: { resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
@@ -2533,7 +2544,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(issue.sub2AccountId)}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -4158,9 +4169,10 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, on
   );
 }
 
-function ResourcesView({ resources, selectedResource, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, createDefaults, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
+  createDefaults: { resourceType?: string; sub2AccountId?: string };
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
@@ -4171,13 +4183,15 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
   onDetail: (resourceId: string) => void;
   onCloseDetail: () => void;
 } & ManagedListProps) {
+  const createResourceType = resourceTypeOptions.includes(createDefaults.resourceType ?? "") ? createDefaults.resourceType! : "codex";
+  const createSub2AccountId = createDefaults.sub2AccountId ?? "";
   return (
     <>
-      <form className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
+      <form key={`${createResourceType}:${createSub2AccountId}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
         <span className="eyebrow">Create resource</span>
         <input name="supplierEmail" type="email" placeholder="供给方邮箱" required />
         <input name="displayName" placeholder="供给方显示名，可选" />
-        <select name="resourceType" defaultValue="codex" required>
+        <select name="resourceType" defaultValue={createResourceType} required>
           {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
         </select>
         <select name="status" defaultValue="pending" required>
@@ -4190,7 +4204,7 @@ function ResourcesView({ resources, selectedResource, query, meta, onCreate, onU
         <input name="shareRate" type="number" step="0.01" min={0} max={1} defaultValue={0.7} placeholder="分成" required />
         <input name="reserveRatio" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="保留比例" required />
         <input name="dailyCap" type="number" step="0.01" min={0} placeholder="日上限，可选" />
-        <input name="sub2AccountId" placeholder="Sub2 账号 ID，可选" />
+        <input name="sub2AccountId" defaultValue={createSub2AccountId} placeholder="Sub2 账号 ID，可选" />
         <button>创建共享资源</button>
       </form>
       <ListControls
