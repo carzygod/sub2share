@@ -27,7 +27,7 @@
   - 执行 `pnpm install --frozen-lockfile --prod=false`、Prisma generate/migrate、API/Admin typecheck、API 测试和全量 build。
   - 停止 4100/3100/3101 后切换 `/opt/zhisuan-yizhan/user`；端口停止会先发 `TERM`，再用 `fuser -k` 清理仍占用端口的进程。
   - 直接从 `apps/api`、`apps/web`、`apps/admin` 目录启动服务，避免 `pnpm --filter` 在目录切换后留下旧 cwd。
-  - 对 `/health`、`/ready`、Web、Admin 首页执行 HTTP 复查，并读取 `/proc/<pid>/cwd` 确认三个端口均运行在当前 release。
+  - 对 `/health`、`/ready`、Web、Admin 首页执行 HTTP 复查，并读取 `/proc/<pid>/cwd` 确认三个端口均运行在当前 release；cwd 必须等于当前 release 根目录或其子目录，`user-replaced-*` 与 `user.new-*` 会被显式判为失败。
   - 如果启动后 cwd 复核发现旧 release listener，脚本会自动停止三端口并从当前 release 重启一次，再执行完整 HTTP 与 cwd 复查。
 
 ## 管理价值

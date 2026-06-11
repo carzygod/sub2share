@@ -1101,3 +1101,99 @@ CORS 复查：
 - `payments` warning：生产环境仍启用 `PAYMENT_PROVIDER=mock`。
 
 结论：共享资源 warning 现在可以从巡检页直接进入精确筛选后的资源列表，并继续打开资源详情、补凭据、应用到 Sub2、测试并上线。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
+
+## 2026-06-12 00:09 支付流水筛选与部署 cwd 严格判定
+
+### 发布版本
+
+- `8282b35 fix: filter payment health ledger links`
+- `e2a2d28 fix: detect stale release cwd during deploy`
+
+### 本轮修复
+
+- `payments.detail.issues` 新增 `walletTransactionType=recharge`。
+- 管理后台 `可用性巡检 -> 巡检问题样本 -> 打开余额流水` 会读取该字段，并把余额流水列表筛选到 `status=recharge`。
+- 问题样本对象摘要新增 `walletTransactionType`，便于管理员在巡检页直接看出跳转会定位到充值流水。
+- 修复生产部署脚本 cwd 判定：
+  - `/opt/zhisuan-yizhan/user-replaced-*` 不再会被 `"/opt/zhisuan-yizhan/user"*` 前缀误判为当前 release。
+  - `verify_all_port_cwds` 会汇总 4100、3100、3101 三个端口的失败状态，任一端口失败都会触发重启或部署失败。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：51/51 通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- 服务器临时路径 `bash -n` 校验修复后的 `deploy-production.sh`：通过。
+
+### 服务端发布验证
+
+部署 `8282b35` 时再次暴露 4100 旧 release cwd：
+
+- marker 已切到 `8282b35`。
+- 4100 cwd：`/opt/zhisuan-yizhan/user-replaced-20260611T160439Z-8282b35`
+- 已手动杀掉 4100 stale listener，并从 `/opt/zhisuan-yizhan/user/apps/api` 重启 API。
+
+修复脚本后部署 `e2a2d28`，发布门禁全部通过：
+
+- `pnpm install --frozen-lockfile --prod=false`：通过。
+- `pnpm db:generate`：通过。
+- `pnpm exec prisma migrate deploy`：无待应用迁移。
+- `pnpm --filter @zyz/api run typecheck`：通过。
+- `pnpm --filter @zyz/admin run typecheck`：通过。
+- `pnpm --filter @zyz/api test`：51/51 通过。
+- `pnpm build`：通过。
+- 启动后 HTTP 复查：
+  - `GET /health`：`200`
+  - `GET /ready`：`200`
+  - `GET /` on `3100`：`200`
+  - `GET /` on `3101`：`200`
+- cwd 复查：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101：`/opt/zhisuan-yizhan/user/apps/admin`
+- release marker：
+  - `commit=e2a2d28`
+  - `deployed_at=20260611T160810Z`
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T16:09:16.544Z`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release e2a2d28`
+- commit：`e2a2d28`
+- deployedAt：`20260611T160810Z`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- issues：`[]`
+
+`payments` 当前仍为 warning，但充值流水筛选字段齐全：
+
+- issueType：`production_mock_recharge`
+- walletList：`true`
+- walletTransactionList：`true`
+- walletTransactionType：`recharge`
+
+筛选接口复查：
+
+- `GET /api/admin/wallet-transactions?status=recharge&page=1&pageSize=10`
+- total：`0`
+- count：`0`
+- 说明：当前线上没有充值流水，但接口按筛选参数正常返回分页结构。
+
+剩余阻断仍未变化：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token；候选维修账号仍为 Sub2 account `#2` / `1`。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成失败。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：支付配置 warning 现在能直接定位到充值流水筛选结果，部署脚本也能严格识别旧 release cwd。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。

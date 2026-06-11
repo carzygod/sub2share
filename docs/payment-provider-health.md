@@ -22,10 +22,11 @@
   - `refId=PAYMENT_PROVIDER`
   - `walletList=true`
   - `walletTransactionList=true`
+  - `walletTransactionType=recharge`
   - `actionHint`
   - `message`
   便于管理员在 `可用性巡检` 的问题样本中直接看到需要复查的环境配置和处理边界。
-- 管理后台 `可用性巡检 -> 巡检问题样本` 会识别 `walletList` 和 `walletTransactionList`，提供 `打开余额列表` 与 `打开余额流水` 操作，便于管理员从支付配置 warning 直接复查余额和流水数据。
+- 管理后台 `可用性巡检 -> 巡检问题样本` 会识别 `walletList`、`walletTransactionList` 和 `walletTransactionType`，提供 `打开余额列表` 与 `打开余额流水` 操作；余额流水跳转会自动筛选 `recharge` 类型，便于管理员从支付配置 warning 直接复查充值流水。
 
 ## 管理价值
 
