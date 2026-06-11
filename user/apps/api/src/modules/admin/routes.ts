@@ -2483,7 +2483,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }),
       prisma.auditLog.findMany({
         where: {
-          action: "admin.resource.credential_apply_sub2",
+          action: { in: ["admin.resource.credential_apply_sub2", "admin.sub2.account.save_refresh_token_resource"] },
           objectType: "supplier_resource",
           objectId: id
         },

@@ -4470,10 +4470,10 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
 
 function ResourceCredentialApplyLogTable({ logs = [] }: { logs?: AuditLogRow[] }) {
   return (
-    <MiniTable headers={["时间", "Sub2 账号", "应用", "账号测试", "端到端", "请求"]}>
+    <MiniTable headers={["时间", "来源", "Sub2 账号", "结果", "账号测试", "端到端", "请求"]}>
       {logs.length === 0 && (
         <tr>
-          <td colSpan={6}><small>暂无凭据应用记录</small></td>
+          <td colSpan={7}><small>暂无凭据应用记录</small></td>
         </tr>
       )}
       {logs.map((log) => {
@@ -4486,6 +4486,7 @@ function ResourceCredentialApplyLogTable({ logs = [] }: { logs?: AuditLogRow[] }
               {dateTime(log.createdAt)}
               <small>{log.actor?.email ?? "system"}</small>
             </td>
+            <td><small>{credentialApplyAuditSource(log, after)}</small></td>
             <td>
               <strong>#{textValue(after.accountId) ?? "-"}</strong>
               <small>{textValue(after.sub2AccountId) ?? "-"}</small>
@@ -4959,11 +4960,22 @@ function credentialApplyAuditAfter(log: AuditLogRow) {
 
 function credentialApplyAuditOk(after: Record<string, unknown>) {
   if (typeof after.ok === "boolean") return after.ok;
+  if (after.source === "sub2_direct_refresh_token_apply" && isPlainRecord(after.credential)) return true;
   const result = nestedRecord(after, "result");
   return typeof result?.ok === "boolean" ? result.ok : undefined;
 }
 
+function credentialApplyAuditSource(log: AuditLogRow, after: Record<string, unknown>) {
+  if (log.action === "admin.sub2.account.save_refresh_token_resource") return "Sub2 直接保存";
+  if (after.source === "sub2_direct_refresh_token_apply") return "Sub2 直接保存";
+  return "资源应用";
+}
+
 function credentialApplyAuditApplyMeta(after: Record<string, unknown>) {
+  const credential = nestedRecord(after, "credential");
+  if (after.source === "sub2_direct_refresh_token_apply") {
+    return ["saved", textValue(credential?.status), textValue(credential?.keyFingerprint)].filter(Boolean).join(" / ") || "saved";
+  }
   const parts: string[] = [];
   if (after.refreshed === true) parts.push("refreshed");
   if (after.applied === true) parts.push("applied");

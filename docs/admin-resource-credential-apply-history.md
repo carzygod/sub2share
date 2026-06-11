@@ -13,14 +13,17 @@ OpenAI/Codex 反代恢复依赖有效的 Sub2 OpenAI 上游账号。管理员将
 
 ## 功能
 
-- `GET /api/admin/resources/:id` 现在返回最近 5 条该资源的 `admin.resource.credential_apply_sub2` 审计摘要。
+- `GET /api/admin/resources/:id` 现在返回最近 5 条该资源的凭据相关审计摘要：
+  - `admin.resource.credential_apply_sub2`
+  - `admin.sub2.account.save_refresh_token_resource`
 - 返回字段名为 `credentialApplyLogs`。
 - 该字段只包含审计摘要，不包含 refresh token 明文或密文。
 - Admin 共享资源详情新增“最近凭据应用”区块。
 - 每条记录展示：
   - 应用时间和操作者。
+  - 来源：资源应用或 Sub2 直接保存。
   - Sub2 账号 ID。
-  - 应用结果、`refreshed` / `applied` 状态或错误。
+  - 应用/保存结果、`refreshed` / `applied` 状态、fingerprint 或错误。
   - 账号测试结果和 HTTP 状态。
   - 端到端烟测结果、模型和 `/v1/responses` 错误。
   - 关联代理请求路径、HTTP 状态、错误码和 requestId。
