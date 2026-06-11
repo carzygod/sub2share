@@ -2361,6 +2361,12 @@ function App() {
             meta={listMeta.apiKeys}
             onStatus={setApiKeyStatus}
             onBulkStatus={bulkSetApiKeyStatus}
+            onOpenUser={openUserCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenUsage={openUsageCandidate}
             onDraft={(patch) => updateListDraft("apiKeys", patch)}
             onFilter={(event) => submitListFilters("apiKeys", event)}
             onClear={() => clearListFilters("apiKeys")}
@@ -4033,10 +4039,16 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
   );
 }
 
-function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onOpenUser, onOpenOrder, onOpenRental, onOpenProduct, onOpenProxyRequest, onOpenUsage, onDraft, onFilter, onClear, onPage, onExport }: {
   apiKeys: ApiKeyRow[];
   onStatus: (apiKeyId: string, status: string) => void;
   onBulkStatus: (status: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
 } & ManagedListProps) {
   const filterSummary = [
     `${meta.total} matched`,
@@ -4092,6 +4104,12 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onDraft, on
             </td>
             <td>
               <div className="row-actions">
+                {apiKey.userId && <button type="button" className="secondary mini" onClick={() => onOpenUser(apiKey.userId!)}>用户</button>}
+                {apiKey.rental?.orderId && <button type="button" className="secondary mini" onClick={() => onOpenOrder(apiKey.rental!.orderId!)}>订单</button>}
+                {(apiKey.rental?.id ?? apiKey.rentalId) && <button type="button" className="secondary mini" onClick={() => onOpenRental((apiKey.rental?.id ?? apiKey.rentalId)!)}>租赁</button>}
+                {apiKey.rental?.productId && <button type="button" className="secondary mini" onClick={() => onOpenProduct(apiKey.rental!.productId!)}>商品</button>}
+                <button type="button" className="secondary mini" onClick={() => onOpenProxyRequest(apiKey.id)}>反代</button>
+                {(apiKey.rental?.id ?? apiKey.rentalId) && <button type="button" className="secondary mini" onClick={() => onOpenUsage((apiKey.rental?.id ?? apiKey.rentalId)!)}>用量</button>}
                 <button type="button" className="secondary mini" onClick={() => onStatus(apiKey.id, "active")}>启用</button>
                 <button type="button" className="danger mini" onClick={() => onStatus(apiKey.id, "inactive")}>停用</button>
               </div>
