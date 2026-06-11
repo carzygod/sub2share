@@ -4440,7 +4440,11 @@ async function findSub2BindingIssues() {
       take: sub2BindingReconciliationLimit * 3
     })
   ]);
-  const bindings = nonSmokeSub2Bindings(loadedBindings);
+  const internalBindingRentalIds = await findInternalHealthCheckRentalIds(loadedBindings);
+  const bindings = nonSmokeSub2Bindings(loadedBindings).filter((binding) => {
+    const rentalId = sub2BindingRentalId(binding);
+    return !rentalId || !internalBindingRentalIds.has(rentalId);
+  });
 
   const issues: Sub2BindingIssue[] = [];
   const rentalIds = new Set(rentals.map((rental) => rental.id));
@@ -4555,6 +4559,25 @@ async function findSub2BindingIssues() {
     },
     issues: issues.slice(0, 100)
   };
+}
+
+async function findInternalHealthCheckRentalIds(bindings: Array<{ objectType: string; objectId: string }>) {
+  const rentalIds = [...new Set(bindings.map(sub2BindingRentalId).filter((id): id is string => Boolean(id)))];
+  if (rentalIds.length === 0) return new Set<string>();
+  const rentals = await prisma.rental.findMany({
+    where: {
+      id: { in: rentalIds },
+      user: internalHealthCheckUserWhere()
+    },
+    select: { id: true }
+  });
+  return new Set(rentals.map((rental) => rental.id));
+}
+
+function sub2BindingRentalId(binding: { objectType: string; objectId: string }) {
+  return binding.objectType === "rental_api_key_history"
+    ? binding.objectId.split(":")[0]
+    : binding.objectType === "rental" ? binding.objectId : null;
 }
 
 async function repairSub2Bindings() {
@@ -6124,6 +6147,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
       sub2KeysDisabled: 0,
       sub2DisableFailed: 0,
       sub2DisableSkipped: 0,
+      bindingsDeleted: 0,
       errors: [] as string[]
     };
   }
@@ -6157,6 +6181,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   let sub2KeysDisabled = 0;
   let sub2DisableFailed = 0;
   let sub2DisableSkipped = 0;
+  let bindingsDeleted = 0;
   const errors: string[] = [];
 
   for (const rental of staleRentals) {
@@ -6211,6 +6236,26 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
         sub2DisableFailed += 1;
         errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
       }
+    }
+  }
+
+  const staleRentalIds = staleRentals.map((rental) => rental.id);
+  if (staleRentalIds.length > 0) {
+    try {
+      const deleted = await prisma.sub2Binding.deleteMany({
+        where: {
+          OR: [
+            { objectType: "rental", objectId: { in: staleRentalIds } },
+            ...staleRentalIds.map((rentalId) => ({
+              objectType: "rental_api_key_history",
+              objectId: { startsWith: `${rentalId}:` }
+            }))
+          ]
+        }
+      });
+      bindingsDeleted = deleted.count;
+    } catch (error) {
+      errors.push(redactSensitiveText(error instanceof Error ? error.message : String(error)));
     }
   }
 
@@ -6273,6 +6318,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
     sub2KeysDisabled,
     sub2DisableFailed,
     sub2DisableSkipped,
+    bindingsDeleted,
     errors
   };
 }
