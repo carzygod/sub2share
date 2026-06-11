@@ -25,6 +25,7 @@ import {
   inspectAdminCapabilityRouteCoverage,
   type AdminCapabilityOperation
 } from "./capabilities.js";
+import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
@@ -4404,7 +4405,7 @@ async function buildSalesBreakdown(orderWhere: Prisma.OrderWhereInput) {
 }
 
 async function findSub2BindingIssues() {
-  const [rentals, bindings] = await Promise.all([
+  const [rentals, loadedBindings] = await Promise.all([
     prisma.rental.findMany({
       where: {
         ...nonSmokeRentalWhere(),
@@ -4427,13 +4428,13 @@ async function findSub2BindingIssues() {
     prisma.sub2Binding.findMany({
       where: {
         objectType: { in: ["rental", "rental_api_key_history"] },
-        sub2Type: { in: ["user", "api_key"] },
-        NOT: [localProxySmokeBindingWhere()]
+        sub2Type: { in: ["user", "api_key"] }
       },
       orderBy: { createdAt: "desc" },
       take: sub2BindingReconciliationLimit * 3
     })
   ]);
+  const bindings = nonSmokeSub2Bindings(loadedBindings);
 
   const issues: Sub2BindingIssue[] = [];
   const rentalIds = new Set(rentals.map((rental) => rental.id));
@@ -5552,10 +5553,6 @@ function nonSmokeUsageWhere(): Prisma.UsageRecordWhereInput {
 
 function nonSmokeProductWhere(): Prisma.ProductWhereInput {
   return { name: { not: localProxySmokeProductName } };
-}
-
-function localProxySmokeBindingWhere(): Prisma.Sub2BindingWhereInput {
-  return { meta: { path: ["smokeTest"], equals: true } };
 }
 
 function parseListQuery(raw: unknown): ListQuery {
