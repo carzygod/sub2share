@@ -2164,3 +2164,64 @@ CORS 复查：
 - `localProxySmoke` 仍为 `error`，真实 `/v1/responses` 仍被上游 OpenAI/Sub2 refresh token 无效或不可调度状态阻断。
 
 结论：管理员现在从 `resources` warning 一键进入共享资源页时，生产 Codex 创建表单已经能预填供给方邮箱、资源类型和 Sub2 账号 ID。剩余阻断集中在有效 OpenAI refresh token / Sub2 上游账号修复。
+
+## 2026-06-12 03:54 创建共享资源时保存初始凭据发布
+
+### 发布版本
+
+- `8672724 feat: save initial resource credential`
+
+### 本轮修复
+
+- `POST /api/admin/resources` 新增可选初始凭据字段：
+  - `credentialType`
+  - `credentialStatus`
+  - `credentialSecret`
+- 只有填写 `credentialSecret` 时才会在创建共享资源的同一事务内创建 `SupplierResourceCredential`。
+- 初始凭据复用 `API_KEY_ENCRYPTION_SECRET` 和 `aes-256-gcm:v1` 加密格式；响应和审计日志只包含凭据摘要，不回显明文或密文。
+- Admin `共享资源` 创建表单新增可选初始凭据输入，默认 `openai_refresh_token / active`。
+- 创建成功后如果保存了初始凭据，前端提示“初始凭据已保存”，并打开资源详情继续执行“应用到 Sub2”、账号测试或端到端自检。
+- 新增 `initialResourceCredentialCreateData()` helper 和单元测试，覆盖加密创建数据和空凭据省略。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=8672724`
+  - `deployed_at=20260611T195448Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- 线上 Admin JS 资产包含 `credentialSecret` 和“初始凭据已保存”，确认创建表单与提交逻辑已发布。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resources`：`warning`
+  - issue：`codex_online_resource_missing`
+  - `supplierEmail=admin@zhisuan.local`
+  - `resourceType=codex`
+  - `sub2AccountId=2`
+- `adminCapabilities`：`ok`
+- `resourceCredentials` 与 `localProxySmoke` 仍为 `error`，原因仍是线上尚未提供有效 OpenAI refresh token 并完成 Sub2 应用/自检。
+
+结论：管理员现在可以从 `resources` warning 打开共享资源页，并在同一个创建表单里完成“供给方邮箱 + Codex 类型 + Sub2 账号 #2 + 初始 OpenAI refresh token”的登记。系统仍要求显式应用凭据到 Sub2 并通过 `/v1/responses` 自检后，才能认为真实 OpenAI/Codex 反代恢复。
