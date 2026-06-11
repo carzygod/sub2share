@@ -215,3 +215,73 @@ Sub2API 当前两个 OpenAI OAuth 账号均为 `error`：
 - account `2` / `1`：Token revoked / authentication token invalidated。
 
 结论：本轮已经把本地代码、后台入口、维护任务、历史测试数据和真实运营数据一致性问题收口。完整 OpenAI/Codex 反代闭环仍需要重新授权或补充有效 OpenAI 上游账号；这是当前唯一阻止 `/v1/responses` 真实成功的核心外部依赖。
+
+## 2026-06-11 17:46 管理员维修入口追补
+
+### 发布版本
+
+- `a628055 fix: surface resource credential repair actions`
+
+### 本轮修复
+
+- `resourceCredentials.detail.issues` 增加可被管理后台直接消费的维修字段：
+  - `actionHint`：在巡检问题说明中展示下一步处理建议。
+  - `resourceId`：当存在候选共享资源时，可直接从巡检问题行打开资源详情。
+  - `sub2Status`：当问题与 Sub2/OpenAI 上游调度相关时，可直接打开反代状态页。
+- `resourceCredentials.detail.samples` 增加 `sampleType`，区分：
+  - `applicable`：已有 active refresh token 且绑定了 Sub2 账号 ID，可尝试应用到 Sub2。
+  - `missing_sub2_account`：已有 active refresh token 但缺少 Sub2 账号绑定，需要先补资源配置。
+- Admin `反代状态` 页的 OpenAI 上游账号表新增：
+  - `credentialsStatus`
+  - `schedulable`
+  - `updatedAt`
+  - `rateLimitedAt` / `overloadUntil` / `tempUnschedulableUntil`
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：40/40 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：40/40 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+- 当前 release：`a628055`。
+
+### 线上复查结果
+
+`GET /api/admin/system-health`：
+
+- totalChecks：`25`
+- ok：`20`
+- warning：`2`
+- error：`3`
+
+`resourceCredentials` 当前仍为 error，但问题样本已经具备可操作字段：
+
+- type：`openai_refresh_token_candidate_missing`
+- actionHint：提示创建/更新 Codex shared resource，保存 active OpenAI refresh token 并绑定 Sub2 account id，或在 Sub2 状态页直接粘贴有效 token。
+- sub2Status：`true`
+
+Sub2 账号复查：
+
+- account `2` / `1`：`status=error`，`credentialsStatus=configured(3)`，`schedulable=false`，错误为 OpenAI token revoked / authentication token invalidated。
+- account `1` / `main`：`status=error`，`credentialsStatus=configured(3)`，`schedulable=false`，错误为 OpenAI `token_invalidated`。
+
+剩余阻断保持一致：
+
+- `resourceCredentials` error：本地没有 active 且可应用的 OpenAI refresh token 候选。
+- `sub2` error：OpenAI group `oai` 有 2 个账号，但 active OpenAI accounts 为 `0`。
+- `localProxySmoke` error：最近一次端到端自检失败在 `/v1/responses`。
+- `payments` warning：生产仍为 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：没有 online Codex shared resource。
+
+结论：管理员现在可以从“可用性巡检”直接跳到 Sub2 状态页或共享资源详情完成凭据补录/应用。完整 OpenAI/Codex 反代真实生成仍需要补充一个有效 OpenAI refresh token 或重新授权现有 Sub2 OpenAI OAuth 账号。
