@@ -2225,3 +2225,118 @@ CORS 复查：
 - `resourceCredentials` 与 `localProxySmoke` 仍为 `error`，原因仍是线上尚未提供有效 OpenAI refresh token 并完成 Sub2 应用/自检。
 
 结论：管理员现在可以从 `resources` warning 打开共享资源页，并在同一个创建表单里完成“供给方邮箱 + Codex 类型 + Sub2 账号 #2 + 初始 OpenAI refresh token”的登记。系统仍要求显式应用凭据到 Sub2 并通过 `/v1/responses` 自检后，才能认为真实 OpenAI/Codex 反代恢复。
+## 2026-06-12 04:13 创建后显式应用初始凭据发布与线上复查
+
+### 发布版本
+
+- `8a009d5 feat: apply initial credential during resource creation`
+
+### 本轮修复
+
+- `POST /api/admin/resources` 支持在创建共享资源时显式携带 `applyCredentialToSub2=true`。
+- 创建资源时如果同时提交初始 `openai_refresh_token`，管理员可选择立即应用到绑定的 Sub2 账号。
+- 应用流程复用独立资源详情页的安全逻辑：解密已保存凭据、写入 Sub2、测试账号、可选触发 `/v1/responses` 端到端自检，并写入不含明文凭据的审计记录。
+- Admin 共享资源创建表单新增：
+  - `创建后应用到 Sub2`
+  - `client_id`
+  - `proxy_id`
+  - `应用后端到端自检`
+  - `自检模型`
+- 相关说明已同步到：
+  - `docs/admin-resource-config.md`
+  - `docs/supplier-resource-credential-encryption.md`
+  - `docs/supplier-resource-credential-sub2-apply.md`
+  - `docs/需求文档.md`
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=8a009d5`
+  - `deployed_at=20260611T201042Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- 管理员总览：`GET /api/admin/dashboard` 200。
+- 管理能力矩阵：`GET /api/admin/capabilities` 200。
+  - `requiredAreas=5`
+  - `coveredRequiredAreas=5`
+  - `totalOperations=65`
+  - `registeredOperations=65`
+  - `missingRoutes=0`
+- 生产 Admin JS 资源已包含 `创建后应用到 Sub2` / `applyCredentialToSub2`，确认新创建控件已上线。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+
+### 最新 OpenAI/Codex 反代自检
+
+- 触发入口：`POST /api/admin/sub2/proxy-smoke-test`
+- 模型：`gpt-5.3-codex`
+- 结果：`ok=false`
+- `/v1/models`：
+  - statusCode：`200`
+  - modelCount：`10`
+  - firstModel：`gpt-5.5`
+- `/v1/responses`：
+  - statusCode：`503`
+  - errorType：`api_error`
+  - errorMessage：`Service temporarily unavailable`
+  - proxyRequestLogId：`2732cfa3-9df0-4488-96e2-c5a14df5d9fc`
+  - requestId：`c3c3450f-5b06-4c72-aad4-449af98b6beb`
+- 临时烟测资源清理：
+  - `keyDisabled=true`
+  - `apiKeyDeactivated=true`
+  - `rentalClosed=true`
+  - `orderClosed=true`
+  - `walletReset=true`
+
+### 仍未完成的阻断
+
+- `payments`：warning，生产环境仍为 `PAYMENT_PROVIDER=mock`。
+- `resources`：warning，没有 online 的生产 Codex 共享资源。
+  - `supplierEmail=admin@zhisuan.local`
+  - `sub2AccountId=2`
+  - `accountStatus=error`
+  - `credentialsStatus=configured(3)`
+  - `schedulable=false`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `resourceCredentials`：error，当前没有可应用的 active OpenAI refresh token 资源凭据。
+- `sub2`：error，`openai_group_has_no_active_accounts`。
+  - Sub2 网关可达：`gatewayReachable=true`
+  - 默认 OpenAI group：`2`
+  - OpenAI accounts：`2`
+  - active OpenAI accounts：`0`
+  - 账号 #2：`Token revoked (401): Your authentication token has been invalidated. Please try signing in again.`
+  - 账号 #1：`token_invalidated`
+- `localProxySmoke`：error，最新证据已更新到本次部署后，失败点仍为 `/v1/responses` 上游 503。
+
+### 结论
+
+本轮已把“保存初始凭据”推进为“创建共享资源时可显式立即应用到 Sub2，并可触发账号测试和端到端反代自检”。管理员入口、能力矩阵、资源配置入口和本地 OpenAI/Codex `/v1/*` 反代框架均已在线验证；真实 Codex Responses 生成仍未恢复，原因不是当前部署缺失，而是 Sub2/OpenAI 上游没有 active 账号且现有 OAuth token 已失效。下一步需要在 Admin 共享资源创建页或 Sub2 状态页提交有效 OpenAI refresh token，应用到账号 #2 后重新运行 `/v1/responses` 烟测。
