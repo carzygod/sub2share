@@ -152,3 +152,66 @@
   - 仍有 2 个 withdrawal allocation mismatch 历史账务问题。
 
 结论：本轮已修复可由代码、配置和内部测试数据清理解决的问题；完整 OpenAI/Codex 反代仍被 Sub2API 上游 OpenAI 账号不可用阻塞。
+
+## 2026-06-11 17:35 复查与数据收口
+
+### 发布版本
+
+- `fdfaba2 fix: exclude legacy e2e smoke data`
+- `e0efc8b fix: exclude internal proxy smoke logs`
+
+### 本轮修复
+
+- 将历史 e2e/smoke 数据纳入内部测试口径：
+  - `@example.invalid`
+  - `e2e-*@zhisuan.local`
+  - `Codex Local Proxy Smoke*`
+  - `smoke-payout-*`
+- 维护任务清理旧 e2e/smoke 租约、订单、API Key 和内部绑定。
+- 普通 proxy 运行健康排除内部 smoke/test 请求，避免与 `localProxySmoke` 重复报同一批自检失败。
+- 使用管理员售后入口退款并关闭不可交付的 admin 测试订单 `f8822e5f-fce4-4fd2-b6fe-ac31b2383ba5`，退款 `20`，租约状态转为 `refunded`，本地 API Key 保持 `inactive`。
+
+### 服务端验证
+
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：40/40 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+- 当前 release：`e0efc8b`。
+
+### 维护与复查结果
+
+- Dashboard：
+  - users：`1`
+  - activeRentals：`0`
+  - pendingWithdrawals：`0`
+  - paidOrderCount：`0`
+  - paidOrderAmount：`0`
+  - walletAvailable：`999.99`
+  - totalSpent：`0.01`
+- Sub2Binding reconciliation：`ok=true`，`totalIssues=0`。
+- Billing reconciliation：`ok=true`，`totalIssues=0`。
+- Admin capability coverage：`ok=true`，`65/65` registered operations，`missingRoutes=0`。
+- System health：
+  - totalChecks：`25`
+  - ok：`20`
+  - warning：`2`
+  - error：`3`
+
+### 当前剩余项
+
+- `payments` warning：生产仍为 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：没有 online Codex shared resource。
+- `resourceCredentials` error：没有 active OpenAI refresh token/API credential。
+- `sub2` error：OpenAI group `oai` 可达但 active OpenAI accounts 为 `0`。
+- `localProxySmoke` error：`/v1/models` 成功，`/v1/responses` 仍返回 `503`，与 Sub2 账号状态一致。
+
+Sub2API 当前两个 OpenAI OAuth 账号均为 `error`：
+
+- account `1` / `main`：OpenAI 返回 `token_invalidated`。
+- account `2` / `1`：Token revoked / authentication token invalidated。
+
+结论：本轮已经把本地代码、后台入口、维护任务、历史测试数据和真实运营数据一致性问题收口。完整 OpenAI/Codex 反代闭环仍需要重新授权或补充有效 OpenAI 上游账号；这是当前唯一阻止 `/v1/responses` 真实成功的核心外部依赖。
