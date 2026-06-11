@@ -3599,3 +3599,76 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从租赁交付直接进入用户、订单、商品、API Key、用量、反代请求和结算上下文，`售出订单 -> 租赁交付 -> OpenAI/Codex 反代证据` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 07:26 管理员用量记录横向钻取发布与线上复查
+
+### 发布版本
+
+- `517dc8c feat: add admin usage cross links`
+
+### 本轮修复
+
+- 管理后台 `用量记录` 列表新增 `操作` 列。
+- 每条用量可按已有关联 ID 打开用户、订单、租赁、商品、共享资源、反代请求和结算。
+- `用量记录` 空列表状态补充占位行，避免只有表头时误判页面未加载。
+- 新增文档：`docs/admin-usage-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.149 管理员用量记录支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check` / `git diff --cached --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=517dc8c`
+  - `deployed_at=20260611T232545Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- 生产 Admin 静态产物已更新：
+  - `apps/admin/dist/assets/index-Hs-KwDQB.js`
+  - `apps/admin/dist/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-517dc8c.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/usages?page=1&pageSize=5`：200。
+  - total：`0`。
+  - count：`0`。
+  - 当前线上没有非 smoke 用量样本，因此本轮线上验证覆盖列表加载与空状态路径；真实行内钻取待产生有效用量后可直接复核。
+- `GET /api/admin/proxy-requests?page=1&pageSize=1`：200。
+  - total：`14`。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从单条用量串联用户、售出订单、租赁交付、商品、共享资源、反代请求和结算上下文，`余额扣费/分润争议 -> 用量 -> 反代与交付证据` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
