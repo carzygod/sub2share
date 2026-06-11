@@ -56,6 +56,10 @@ import {
   localProxySmokeFailureSummary,
   type LocalProxySmokeEvidenceIssue
 } from "./local-proxy-smoke-health.js";
+import {
+  internalHealthCheckSupplierResourceWhere,
+  nonSmokeSupplierResourceWhere
+} from "./supplier-resource-health.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash", "encryptedValue"]);
 const userRoles = ["buyer", "supplier", "operator", "admin"] as const;
@@ -515,7 +519,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const [users, activeRentals, onlineResources, pendingWithdrawals, usageAgg, walletAgg, orderAgg, latestSystemHealth] = await Promise.all([
       prisma.user.count({ where: nonSmokeUserWhere() }),
       prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
-      prisma.supplierResource.count({ where: { status: "online" } }),
+      prisma.supplierResource.count({ where: { status: "online", ...nonSmokeSupplierResourceWhere() } }),
       prisma.withdrawal.count({ where: { status: "pending", ...nonSmokeWithdrawalWhere() } }),
       prisma.usageRecord.aggregate({
         where: nonSmokeUsageWhere(),
@@ -3311,7 +3315,7 @@ async function buildSystemHealthReport() {
     }),
     prisma.order.groupBy({ by: ["status"], where: nonSmokeOrderWhere(), _count: true }),
     inspectOrderStatusReadiness(),
-    prisma.supplierResource.groupBy({ by: ["status"], _count: true }),
+    prisma.supplierResource.groupBy({ by: ["status"], where: nonSmokeSupplierResourceWhere(), _count: true }),
     prisma.withdrawal.count({ where: { status: "pending", ...nonSmokeWithdrawalWhere() } }),
     prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
     prisma.proxyRequestLog.count({ where: proxyRequestWhere }),
@@ -4999,15 +5003,23 @@ function paymentProviderHealthCheck() {
 }
 
 async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string, number>) {
-  const [onlineCodexResources, totalCodexResources, samples] = await Promise.all([
+  const codexResourceWhere: Prisma.SupplierResourceWhereInput = {
+    resourceType: "codex",
+    ...nonSmokeSupplierResourceWhere()
+  };
+  const [onlineCodexResources, totalCodexResources, ignoredInternalResources, samples] = await Promise.all([
     prisma.supplierResource.count({
-      where: { resourceType: "codex", status: "online" }
+      where: { ...codexResourceWhere, status: "online" }
     }),
     prisma.supplierResource.count({
-      where: { resourceType: "codex" }
+      where: codexResourceWhere
+    }),
+    prisma.supplierResource.count({
+      where: internalHealthCheckSupplierResourceWhere()
     }),
     prisma.supplierResource.findMany({
       where: {
+        ...nonSmokeSupplierResourceWhere(),
         OR: [
           { status: "abnormal" },
           { resourceType: "codex", status: { not: "online" } }
@@ -5062,20 +5074,20 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
       resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
       supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? null,
       actionHint: totalCodexResources > 0
-        ? "Open an existing Codex shared resource, bind a Sub2 account and active credential, test it, then switch it online."
-        : "Create a Codex shared resource, bind a Sub2 account and active OpenAI credential, test it, then switch it online.",
+        ? "Open an existing production Codex shared resource, bind a Sub2 account and active credential, test it, then switch it online."
+        : "Create a production Codex shared resource, bind a Sub2 account and active OpenAI credential, test it, then switch it online.",
       message: totalCodexResources > 0
-        ? `${totalCodexResources} Codex shared resource(s) exist, but none are online.`
-        : "No Codex shared resource exists for OpenAI/Codex rental delivery."
+        ? `${totalCodexResources} production Codex shared resource(s) exist, but none are online.`
+        : "No production Codex shared resource exists for OpenAI/Codex rental delivery."
     });
   }
 
   const status: SystemHealthStatus = issues.length > 0 ? "warning" : "ok";
   const summary = abnormalResources > 0 && onlineCodexResources === 0
-    ? `${abnormalResources} 个资源异常，且没有 online 的 Codex 共享资源`
+    ? `${abnormalResources} abnormal production resource(s), and no online production Codex shared resource`
     : abnormalResources > 0
-      ? `${abnormalResources} 个资源异常`
-      : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常";
+      ? `${abnormalResources} abnormal production resource(s)`
+      : onlineCodexResources === 0 ? "No online production Codex shared resource" : "Production shared resources are healthy";
 
   return systemHealthCheck(
     "resources",
@@ -5086,6 +5098,7 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
       ...resourcesByStatus,
       totalCodexResources,
       onlineCodexResources,
+      ignoredInternalResources,
       issueSamples: samples.length
     },
     issues.length > 0 || samples.length > 0 ? {
@@ -5698,9 +5711,13 @@ function authTokenConfigHealthCheck() {
 
 async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType<typeof fetchSub2HealthStatus>>) {
   const configured = Boolean(env.API_KEY_ENCRYPTION_SECRET);
+  const codexResourceWhere: Prisma.SupplierResourceWhereInput = {
+    resourceType: "codex",
+    ...nonSmokeSupplierResourceWhere()
+  };
   const openAiRefreshTokenWhere: Prisma.SupplierResourceCredentialWhereInput = {
     credentialType: "openai_refresh_token",
-    supplierResource: { resourceType: "codex" }
+    supplierResource: codexResourceWhere
   };
   const activeOpenAiRefreshTokenWhere: Prisma.SupplierResourceCredentialWhereInput = {
     ...openAiRefreshTokenWhere,
@@ -5709,7 +5726,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
   const activeApplicableWhere: Prisma.SupplierResourceCredentialWhereInput = {
     ...activeOpenAiRefreshTokenWhere,
     supplierResource: {
-      resourceType: "codex",
+      ...codexResourceWhere,
       sub2AccountId: { not: null }
     }
   };
@@ -5724,7 +5741,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
     missingAccountSamples
   ] = await Promise.all([
     prisma.supplierResourceCredential.count({
-      where: { supplierResource: { resourceType: "codex" } }
+      where: { supplierResource: codexResourceWhere }
     }),
     prisma.supplierResourceCredential.count({ where: activeOpenAiRefreshTokenWhere }),
     prisma.supplierResourceCredential.count({ where: activeApplicableWhere }),
@@ -5732,7 +5749,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       where: {
         ...activeOpenAiRefreshTokenWhere,
         supplierResource: {
-          resourceType: "codex",
+          ...codexResourceWhere,
           sub2AccountId: null
         }
       }
@@ -5767,7 +5784,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       where: {
         ...activeOpenAiRefreshTokenWhere,
         supplierResource: {
-          resourceType: "codex",
+          ...codexResourceWhere,
           sub2AccountId: null
         }
       },

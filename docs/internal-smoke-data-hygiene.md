@@ -81,3 +81,18 @@ user/apps/api/src/common/internal-records.ts
 2. 确认 `Sub2 绑定巡检` 的 `rentalsScanned` 不被 smoke 租赁占满。
 3. 确认 `售出情况`、dashboard 订单数、余额汇总不随 smoke 自检增加。
 4. 触发 Sub2 usage 同步后，确认 smoke usage 为 `ignored`，且不产生钱包扣费和供应商结算。
+
+## 2026-06-12 Update: Supplier Resource Health Scope
+
+The admin-disabled internal supplier resource is now identified by:
+
+- `sub2AccountId=admin-disabled-smoke-resource`
+
+Production-facing resource health and dashboard resource counts exclude this record. The admin resource list still shows it, so operators can audit or clean it explicitly, but `GET /api/admin/system-health` no longer treats it as a real Codex resource that should be opened and moved online.
+
+Affected health metrics:
+
+- `resources.metrics.totalCodexResources` counts production Codex resources only.
+- `resources.metrics.onlineCodexResources` counts production online Codex resources only.
+- `resources.metrics.ignoredInternalResources` reports how many internal supplier resources were ignored.
+- `resourceCredentials` only treats credentials on production Codex resources as applicable repair candidates.

@@ -98,6 +98,16 @@
 - 管理后台新增独立 `巡检历史` 入口，可分页查看、按状态筛选、按快照/来源/操作者搜索，并导出 CSV。
 - 管理后台首页会读取最近一条巡检快照作为经营首页风险信号，但不会触发新的巡检或写入新的快照。
 
+## 2026-06-12 Update: Production Resource Scope
+
+`GET /api/admin/system-health` now treats supplier resource availability as a production resource check:
+
+- Internal health-check supplier resources are excluded from `resources` status counts.
+- The current internal supplier resource marker is `sub2AccountId=admin-disabled-smoke-resource`.
+- `resources.metrics.ignoredInternalResources` reports ignored internal supplier resources for operator visibility.
+- `codex_online_resource_missing` now points operators to create or repair production Codex resources instead of opening the internal disabled smoke resource.
+- `resourceCredentials` only counts OpenAI refresh token credentials attached to production Codex resources as repair candidates.
+
 ## 验收记录
 
 | 项目 | 结果 |

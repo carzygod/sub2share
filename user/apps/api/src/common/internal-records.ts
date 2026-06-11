@@ -1,6 +1,7 @@
 export const localProxySmokeBuyerId = "admin-openai-proxy-smoke";
 export const localProxySmokeUserEmail = "admin-openai-proxy-smoke@local.invalid";
 export const localProxySmokeProductName = "Admin OpenAI proxy smoke";
+export const internalHealthCheckSupplierResourceSub2AccountId = "admin-disabled-smoke-resource";
 export const legacyHealthCheckUserEmailPrefix = "codex_health_";
 export const legacyHealthCheckUserEmailDomain = "@example.invalid";
 export const legacyE2eUserEmailPrefix = "e2e-";
