@@ -1268,3 +1268,50 @@ CORS 复查：
 - `payments` warning：生产环境仍为 `PAYMENT_PROVIDER=mock`。
 
 结论：资源健康误报已修复。当前没有真实生产 Codex 共享资源，因此 `resources` warning 保留，但不再误导管理员打开内部 disabled smoke resource。完整 OpenAI/Codex 真实生成仍由上游 OpenAI/Sub2 refresh token 失效阻断。
+
+## 2026-06-12 01:28 Sub2 维修账号预选发布
+
+### 发布版本
+
+- `e21272b fix: preselect sub2 repair account from health`
+
+### 本轮修复
+
+- 管理后台 `可用性巡检` 的问题样本和候选样本会提取 `sub2AccountId`。
+- 点击 `打开反代状态` 时会携带该账号 ID。
+- `反代状态` 页的 `Apply OpenAI Credentials` 表单会优先选中巡检定位的 OpenAI 上游账号，并在选项中标记 `巡检定位`。
+- 没有巡检定位账号时，仍沿用原有自动建议：默认 OpenAI 分组下非 active 或不可调度账号优先，否则回退到任意非 active/不可调度账号，再回退到第一个 OpenAI 账号。
+
+### 本地验证
+
+- `npm.cmd run typecheck` in `user/apps/admin`：通过。
+- `npm.cmd run build` in `user/apps/admin`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=e21272b`
+  - `deployed_at=20260611T172821Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- cwd：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user`
+  - 3101：`/opt/zhisuan-yizhan/user`
+
+### 线上复查
+
+- `resourceCredentials.detail.issues[0].sub2AccountId`：`2`
+- `resourceCredentials.detail.samples[0].sub2AccountId`：`2`
+- `sub2.detail.samples[0].sub2AccountId`：`2`
+- Admin 首页加载 JS 资产：`/assets/index-BvtfW6yT.js`
+- 线上 Admin JS 资产包含 `preferredAccountId` 和 `Opened Sub2/OpenAI proxy status for account #`，确认新预选逻辑已发布。
+
+结论：管理员从巡检页处理 Sub2/OpenAI 上游账号失效时，不再需要手工复制账号 ID；可以一键进入反代状态页并直接向被巡检定位的账号粘贴有效 OpenAI refresh token。真实生成阻断仍取决于提供有效的 OpenAI/Sub2 refresh token 并重新通过账号测试与端到端自检。
