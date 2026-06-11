@@ -833,3 +833,86 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：管理员从 `可用性巡检` 进入 `反代状态` 后，补 OpenAI refresh token 的表单会直接落到最可能需要修复的上游账号。完整 OpenAI/Codex 真实生成仍需要补入有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号后再复查。
+
+## 2026-06-11 19:31 生产部署脚本固化与验收
+
+### 发布版本
+
+- `5b4de01 chore: add production deploy script`
+
+### 本轮修复
+
+- 新增 `user/scripts/deploy-production.sh`，把生产发布流程从临时 SSH 命令固化为可复用脚本。
+- 脚本能力：
+  - 解包 `git archive HEAD:user` 生成的 release 包到 `user.new-*`。
+  - 复制当前 `.env`，并确保 `SUB2_USAGE_SYNC_INTERVAL_MS=300000`、`SUB2_USAGE_SYNC_ON_START=true`。
+  - 执行依赖安装、Prisma generate/migrate、API/Admin typecheck、API 测试和全量 build。
+  - 停止 4100、3100、3101 后切换 release 目录。
+  - 直接从当前 release 的 `apps/api`、`apps/web`、`apps/admin` 目录启动服务。
+  - 对 `/health`、`/ready`、Web、Admin 首页执行 HTTP 复查。
+  - 读取 `/proc/<pid>/cwd`，确认三个端口都运行在 `/opt/zhisuan-yizhan/user/apps/*`，且不是 `user-replaced-*` 或 `user.new-*`。
+- 脚本不保存服务器密码或业务密钥，只通过参数接收 archive、commit、base 和端口。
+
+### 本地/远端脚本验证
+
+- 本地工作树新增脚本后，由于 Windows PowerShell 环境没有 `bash`，未在本机执行 `bash -n`。
+- 已上传脚本到服务器临时目录执行：
+  - `bash -n /tmp/sub2share-deploy-production-syntax.sh`：通过。
+  - `bash /tmp/sub2share-deploy-production-help.sh --help`：通过。
+
+### 服务端发布验证
+
+使用新增脚本部署 `5b4de01`：
+
+- `pnpm install --frozen-lockfile --prod=false`：通过。
+- `pnpm db:generate`：通过。
+- `pnpm exec prisma migrate deploy`：无待应用迁移。
+- `pnpm --filter @zyz/api run typecheck`：通过。
+- `pnpm --filter @zyz/admin run typecheck`：通过。
+- `pnpm --filter @zyz/api test`：51/51 通过。
+- `pnpm build`：通过。
+- 启动后 HTTP 复查：
+  - `GET /health`：`200`
+  - `GET /ready`：`200`
+  - `GET /` on `3100`：`200`
+  - `GET /` on `3101`：`200`
+- cwd 复查：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101：`/opt/zhisuan-yizhan/user/apps/admin`
+- release marker：
+  - `commit=5b4de01`
+  - `deployed_at=20260611T113056Z`
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T11:31:53.311Z`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release 5b4de01`
+- commit：`5b4de01`
+- deployedAt：`20260611T113056Z`
+- releaseRoot：`/opt/zhisuan-yizhan/user`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- markerPresent：`true`
+- runningFromReplacedRelease：`false`
+- runningFromStagingRelease：`false`
+- issues：`[]`
+
+剩余阻断仍未变化：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token；候选维修账号仍为 Sub2 account `#2` / `1`。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成失败，models 阶段成功。
+- `payments` warning：生产环境仍启用 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：生产部署过程现在有仓库内脚本可复用，且真实发布已证明脚本能够避免旧 release cwd 漂移。完整 OpenAI/Codex 真实生成仍取决于有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号。

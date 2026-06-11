@@ -21,15 +21,25 @@
 - 如果进程运行在 `user-replaced-*` 目录，标记 `error`。
 - 如果进程运行在 `user.new-*` staging 目录，标记 `error`。
 - 生产环境缺少 `.release-marker` 时标记 `warning`。
+- 新增 `user/scripts/deploy-production.sh` 作为生产发布脚本，固化以下门禁：
+  - 解包 `git archive HEAD:user` 生成的 release 包到 `user.new-*`。
+  - 复制当前 `.env`，强制开启 Sub2 usage 启动同步与 5 分钟周期同步。
+  - 执行 `pnpm install --frozen-lockfile --prod=false`、Prisma generate/migrate、API/Admin typecheck、API 测试和全量 build。
+  - 停止 4100/3100/3101 后切换 `/opt/zhisuan-yizhan/user`。
+  - 直接从 `apps/api`、`apps/web`、`apps/admin` 目录启动服务，避免 `pnpm --filter` 在目录切换后留下旧 cwd。
+  - 对 `/health`、`/ready`、Web、Admin 首页执行 HTTP 复查，并读取 `/proc/<pid>/cwd` 确认三个端口均运行在当前 release。
 
 ## 管理价值
 
 - 管理员可以在 `可用性巡检` 中直接确认 API 当前运行的 Git commit。
 - 发布后可以从后台确认服务进程是否真的位于 `/opt/zhisuan-yizhan/user` 当前 release，而不是旧备份目录。
 - 后续如果端口被旧进程占用，巡检会给出 `running_from_replaced_release` 或 `running_from_staging_release` 问题样本，提示重启当前 release 服务。
+- 发布人员可以复用同一个脚本执行构建、切换、启动和 cwd 复核，减少临时命令导致的线上漂移。
 
 ## 验收方式
 
+- `bash -n user/scripts/deploy-production.sh`
+- `bash user/scripts/deploy-production.sh --help`
 - `pnpm --filter @zyz/api run typecheck`
 - `pnpm --filter @zyz/api test`
 - `pnpm --filter @zyz/api run build`
