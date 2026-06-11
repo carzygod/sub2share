@@ -1315,3 +1315,61 @@ CORS 复查：
 - 线上 Admin JS 资产包含 `preferredAccountId` 和 `Opened Sub2/OpenAI proxy status for account #`，确认新预选逻辑已发布。
 
 结论：管理员从巡检页处理 Sub2/OpenAI 上游账号失效时，不再需要手工复制账号 ID；可以一键进入反代状态页并直接向被巡检定位的账号粘贴有效 OpenAI refresh token。真实生成阻断仍取决于提供有效的 OpenAI/Sub2 refresh token 并重新通过账号测试与端到端自检。
+
+## 2026-06-12 01:39 直接 Sub2 Token 维修闭环发布
+
+### 发布版本
+
+- `c9bf204 fix: verify direct sub2 token repairs`
+
+### 本轮修复
+
+- `POST /api/admin/sub2/accounts/:id/apply-openai-refresh-token` 新增应用后验证：
+  - `runAccountTest`：默认开启，应用成功后立即测试该 Sub2 OpenAI 账号。
+  - `runSmokeTest`：可选开启，账号测试通过后继续运行本地 OpenAI/Codex 反代端到端自检。
+  - `smokeModel`：可选自检模型。
+  - `proxyId`：可选 Sub2 proxy id。
+- 接口响应现在包含 `accountId`、`result`、`test`、`smokeTest`、`smokeTestSkippedReason`。
+- 审计日志 `admin.sub2.account.apply_openai_refresh_token` 记录账号测试、自检请求、自检结果和跳过原因。
+- 管理后台 `反代状态 -> Apply OpenAI Credentials` 表单新增 `proxy_id`、`应用后测试账号`、`应用后端到端自检` 和 `自检模型` 控件，并会在操作完成后直接展示测试/自检摘要。
+
+### 本地验证
+
+- `npm.cmd run typecheck` in `user/apps/api`：通过。
+- `npm.cmd test` in `user/apps/api`：57/57 通过。
+- `npm.cmd run typecheck` in `user/apps/admin`：通过。
+- `npm.cmd run build` in `user/apps/admin`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=c9bf204`
+  - `deployed_at=20260611T173834Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- cwd：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user`
+  - 3101：`/opt/zhisuan-yizhan/user`
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+  - deploymentRuntime commit：`c9bf204`
+- Admin 首页加载 JS 资产：`/assets/index-lQJPHrrS.js`
+- 线上 Admin JS 资产包含 `runAccountTest`、`runSmokeTest`、`proxyId`，确认新维修表单逻辑已发布。
+- `resourceCredentials` / `sub2` 仍为 error：当前线上 OpenAI/Sub2 refresh token 失效，仍需要管理员提供有效 token。
+
+结论：管理员直接粘贴 OpenAI refresh token 的路径已经从“仅应用凭据”升级为“应用、账号测试、可选端到端自检、审计留痕”的闭环。当前真实生成阻断仍由无有效上游 token 导致，待有效 token 提供后可在同一入口完成恢复验证。
