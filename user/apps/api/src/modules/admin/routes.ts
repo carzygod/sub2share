@@ -146,6 +146,7 @@ interface Sub2UpstreamIssue {
   activeOpenAiAccountCount: number;
   gatewayReachable: boolean;
   error?: string | null;
+  actionHint: string;
   message: string;
 }
 
@@ -5045,6 +5046,7 @@ function buildSub2UpstreamIssues(input: {
     activeOpenAiAccountCount: input.activeOpenAiAccountCount,
     gatewayReachable: input.gatewayReachable,
     error: input.error ?? null,
+    actionHint: sub2UpstreamIssueActionHint(reason),
     message: sub2UpstreamIssueMessage(reason, input)
   }));
 }
@@ -5069,6 +5071,16 @@ function sub2UpstreamIssueMessage(
   if (reason === "openai_group_has_no_active_accounts") return `${group} has ${input.openAiAccountCount} OpenAI account(s), but ${input.activeOpenAiAccountCount} active account(s).`;
   if (reason === "sub2_status_query_failed") return `Sub2API status query failed: ${input.error ?? "unknown error"}.`;
   return `Sub2/OpenAI upstream is blocked by ${reason}.`;
+}
+
+function sub2UpstreamIssueActionHint(reason: string) {
+  if (reason === "sub2api_health_unreachable") return "Check SUB2_BASE_URL, Sub2API service health, firewall, and admin token connectivity before retrying the smoke test.";
+  if (reason === "openai_group_missing") return "Create or configure the default OpenAI group in Sub2API, then refresh Sub2 status.";
+  if (reason === "openai_group_inactive") return "Activate the default OpenAI group in Sub2API or switch the configured default group.";
+  if (reason === "openai_group_has_no_accounts") return "Add an OpenAI account to the default group or apply a stored supplier refresh token to a bound Sub2 account.";
+  if (reason === "openai_group_has_no_active_accounts") return "Refresh/test existing OpenAI accounts or apply a valid refresh token, then run the local end-to-end proxy smoke test.";
+  if (reason === "sub2_status_query_failed") return "Review the redacted error, verify Sub2 admin credentials, and retry the status query.";
+  return "Review Sub2API status and run the local end-to-end proxy smoke test after repair.";
 }
 
 function billingSyncHealthCheck(

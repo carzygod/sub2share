@@ -3830,6 +3830,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
     ? accounts.filter((account) => account.platform === "openai" && account.groupIds.includes(status.defaultGroupId!))
     : [];
   const activeAccounts = groupAccounts.filter((account) => account.status === "active");
+  const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
 
   return (
     <section className="stack">
@@ -3855,6 +3856,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
           <div><span>Endpoint</span><strong>{status?.publicEndpoint ?? "-"}</strong></div>
           <div><span>检查时间</span><strong>{dateTime(status?.checkedAt)}</strong></div>
           <div><span>阻断原因</span><strong>{status?.blockingReasons.length ? status.blockingReasons.join(", ") : "none"}</strong></div>
+          <div><span>维修建议</span><strong>{actionHints.length ? actionHints.join(" / ") : "运行端到端自检确认真实生成"}</strong></div>
         </div>
         {smoke && (
           <div className="diagnostic-grid">
@@ -4562,7 +4564,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       severity: textValue(record.severity) ?? check.status,
       type: textValue(record.type) ?? "-",
       ref: systemHealthIssueRef(record),
-      message: textValue(record.message) ?? compactJson(issue),
+      message: systemHealthIssueMessage(record, issue),
       resourceId: textValue(record.resourceId),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       userId: textValue(record.userId),
@@ -4603,6 +4605,12 @@ function systemHealthIssueRef(issue: Record<string, unknown>) {
   return parts.join(" / ") || textValue(issue.id) || "-";
 }
 
+function systemHealthIssueMessage(record: Record<string, unknown>, raw: unknown) {
+  const message = textValue(record.message) ?? compactJson(raw);
+  const actionHint = textValue(record.actionHint);
+  return actionHint ? `${message} 建议：${actionHint}` : message;
+}
+
 function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string) {
   const directLookup = textValue(issue.requestId) ?? textValue(issue.proxyRequestLogId);
   if (directLookup) return directLookup;
@@ -4640,6 +4648,16 @@ function healthIssueTone(severity: string) {
   if (severity === "warning") return "warning";
   if (severity === "ok") return "active";
   return severity;
+}
+
+function sub2BlockingReasonActionHint(reason: string) {
+  if (reason === "sub2api_health_unreachable") return "检查 Sub2API 地址、服务健康、网络和后台令牌";
+  if (reason === "openai_group_missing") return "在 Sub2API 配置默认 OpenAI 分组";
+  if (reason === "openai_group_inactive") return "启用默认 OpenAI 分组或切换默认分组";
+  if (reason === "openai_group_has_no_accounts") return "向默认分组添加 OpenAI 账号或应用已保存凭据";
+  if (reason === "openai_group_has_no_active_accounts") return "刷新/测试现有账号或应用有效 refresh token，再运行端到端自检";
+  if (reason === "sub2_status_query_failed") return "复查 Sub2 管理凭据与状态查询错误";
+  return "复查 Sub2 状态，修复后运行端到端自检";
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

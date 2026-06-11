@@ -19,8 +19,10 @@
   - `activeOpenAiAccountCount`
   - `gatewayReachable`
   - `error`
+  - `actionHint`
 - 管理后台 `可用性巡检` 的对象摘要会展示 Sub2 阻断字段。
-- 管理后台 `可用性巡检` 的操作列会为 Sub2 上游问题提供 `打开反代状态` 操作。
+- 管理后台 `可用性巡检` 的说明列会展示维修建议，操作列会为 Sub2 上游问题提供 `打开反代状态` 操作。
+- 管理后台 `反代状态` 页会按当前 blocking reason 汇总展示维修建议。
 - `Sub2/OpenAI 上游` 指标新增 OpenAI 账号数和 active OpenAI 账号数。
 
 ## 阻断类型
@@ -35,7 +37,7 @@
 ## 管理员价值
 
 - 管理员在系统巡检页可以直接看到 `/v1/responses` 真实生成失败是否来自上游调度阻断。
-- 当阻断原因为 `openai_group_has_no_active_accounts` 时，管理员可以从同一行跳到反代状态页，继续执行账号刷新、账号测试、端到端自检或凭据应用。
+- 当阻断原因为 `openai_group_has_no_active_accounts` 时，管理员可以从同一行看到“刷新/测试现有账号或应用有效 refresh token，再运行端到端自检”的建议，并跳到反代状态页继续执行账号刷新、账号测试、端到端自检或凭据应用。
 - 问题样本不包含上游凭据、明文 Key 或 refresh token，只展示可排障的聚合状态。
 
 ## 验证方式

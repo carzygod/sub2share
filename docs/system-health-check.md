@@ -34,7 +34,7 @@
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error。
 - 共享资源：检查异常资源和 online Codex 资源数量。
 - 资源凭据：检查 `API_KEY_ENCRYPTION_SECRET` 是否已配置，并统计 active OpenAI refresh token 是否已绑定可应用的 Sub2 账号；当 Sub2 上游无 active OpenAI 账号且没有可应用凭据时标记 error。
-- Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况；若存在阻断原因，会返回结构化问题样本，包含 blocking reason、默认分组、OpenAI 账号数、active 账号数和网关可达性。
+- Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况；若存在阻断原因，会返回结构化问题样本，包含 blocking reason、默认分组、OpenAI 账号数、active 账号数、网关可达性和维修建议。
 - OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露 `x-proxy-request-id`、本地错误类型是否符合 OpenAI 风格分类。
 - OpenAI 反代运行态：统计当前 limiter store、共享作用域、Redis 可达性、活跃并发租约和 RPM/TPM 速率窗口；生产环境显式使用 memory 限流器标记 warning，Redis 不可达标记 error。
 - 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地/上游错误码、客户端中途断开、上游流异常和上游流空闲超时，并返回最近异常反代请求样本；上游 HTTP `>=400` 会以 `upstream_http_<status>` 进入错误码，样本会携带请求模型。
