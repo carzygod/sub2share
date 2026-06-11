@@ -16,6 +16,7 @@ export interface SupplierResourceAvailabilityMetricsInput {
 }
 
 export interface SupplierResourceMissingCodexIssueFieldsInput {
+  supplierEmail?: string | null;
   resourceType?: string | null;
   resourceStatus?: string | null;
   sub2AccountId?: number | string | null;
@@ -49,6 +50,7 @@ export function supplierResourceMissingCodexIssueFields(input: SupplierResourceM
   const hasResourceSub2Account = input.sub2AccountId !== undefined
     && input.sub2AccountId !== null
     && String(input.sub2AccountId).trim().length > 0;
+  const supplierEmail = input.supplierEmail?.trim();
   const repairFields = hasResourceSub2Account
     ? {}
     : resourceCredentialRepairCandidateFields(input.sub2AccountCandidates ?? []);
@@ -59,6 +61,7 @@ export function supplierResourceMissingCodexIssueFields(input: SupplierResourceM
     resourceScope: "production" as const,
     resourceStatus: input.resourceStatus ?? null,
     resourceType: input.resourceType ?? "codex",
+    ...(supplierEmail ? { supplierEmail } : {}),
     ...repairFields,
     sub2AccountId: hasResourceSub2Account ? input.sub2AccountId : repairSub2AccountId ?? null
   };

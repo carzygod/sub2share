@@ -43,6 +43,7 @@ test("separates resource health issues from concrete resource samples", () => {
 
 test("prefills missing Codex resource issues from Sub2 repair candidates", () => {
   assert.deepEqual(supplierResourceMissingCodexIssueFields({
+    supplierEmail: "ops@example.com",
     sub2AccountCandidates: [
       {
         id: "sub2_account:2",
@@ -58,6 +59,7 @@ test("prefills missing Codex resource issues from Sub2 repair candidates", () =>
     resourceScope: "production",
     resourceStatus: null,
     resourceType: "codex",
+    supplierEmail: "ops@example.com",
     sub2AccountId: 2,
     sub2AccountName: "main",
     accountStatus: "error",

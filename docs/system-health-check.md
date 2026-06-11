@@ -106,6 +106,7 @@
 - The current internal supplier resource marker is `sub2AccountId=admin-disabled-smoke-resource`.
 - `resources.metrics.ignoredInternalResources` reports ignored internal supplier resources for operator visibility.
 - `codex_online_resource_missing` now points operators to create or repair production Codex resources instead of opening the internal disabled smoke resource.
+- When no concrete production Codex resource exists and exactly one supplier is tied to an active user, `codex_online_resource_missing` includes that supplier email so the admin create-resource form can be prefilled.
 - `resourceCredentials` only counts OpenAI refresh token credentials attached to production Codex resources as repair candidates.
 - `resources.metrics.issueSamples` reports structured resource health issues; `resources.metrics.resourceSamples` reports concrete resource rows returned as repair candidates.
 

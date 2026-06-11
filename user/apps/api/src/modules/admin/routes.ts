@@ -5053,7 +5053,7 @@ async function resourceAvailabilityHealthCheck(
     resourceType: "codex",
     ...nonSmokeSupplierResourceWhere()
   };
-  const [onlineCodexResources, totalCodexResources, ignoredInternalResources, samples] = await Promise.all([
+  const [onlineCodexResources, totalCodexResources, ignoredInternalResources, samples, supplierCandidates] = await Promise.all([
     prisma.supplierResource.count({
       where: { ...codexResourceWhere, status: "online" }
     }),
@@ -5088,12 +5088,21 @@ async function resourceAvailabilityHealthCheck(
       },
       orderBy: { updatedAt: "desc" },
       take: 10
+    }),
+    prisma.supplier.findMany({
+      where: { user: { status: "active" } },
+      select: {
+        user: { select: { email: true } }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 2
     })
   ]);
   const abnormalResources = resourcesByStatus.abnormal ?? 0;
   const issues: ResourceAvailabilityIssue[] = [];
   const abnormalSample = samples.find((resource) => resource.status === "abnormal");
   const nonOnlineCodexSample = samples.find((resource) => resource.resourceType === "codex" && resource.status !== "online");
+  const supplierEmailCandidate = supplierCandidates.length === 1 ? supplierCandidates[0].user.email : null;
 
   if (abnormalResources > 0) {
     issues.push({
@@ -5117,12 +5126,12 @@ async function resourceAvailabilityHealthCheck(
       severity: "warning",
       resourceId: nonOnlineCodexSample?.id,
       ...supplierResourceMissingCodexIssueFields({
+        supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? supplierEmailCandidate,
         resourceStatus: nonOnlineCodexSample?.status ?? null,
         resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
         sub2AccountId: nonOnlineCodexSample?.sub2AccountId ?? null,
         sub2AccountCandidates
       }),
-      supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? null,
       actionHint: totalCodexResources > 0
         ? "Open an existing production Codex shared resource, bind a Sub2 account and active credential, test it, then switch it online."
         : "Create a production Codex shared resource, bind a Sub2 account and active OpenAI credential, test it, then switch it online.",

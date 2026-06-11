@@ -43,6 +43,7 @@
 - 如果共享资源或资源凭据问题样本带有 `resourceScope=production`，点击“打开共享资源”会写入隐藏筛选 `action=production`，只打开生产资源范围，排除内部 smoke / disabled 自检资源；普通共享资源列表不带该参数时仍可审计内部资源。
 - 如果共享资源或资源凭据问题样本同时带有 `sub2AccountId`，点击“打开共享资源”会把资源创建表单的 Sub2 账号 ID 预填为该值，减少创建生产 Codex 资源时的手工复制。
 - 当 `codex_online_resource_missing` 没有具体资源绑定但 Sub2/OpenAI 上游巡检发现可修复账号时，共享资源问题会继承首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`，创建生产 Codex 资源时可直接预填该账号。
+- 当 `codex_online_resource_missing` 没有具体资源绑定且系统只有一个 active 用户关联的供给方时，共享资源问题会附带该 `supplierEmail`；点击“打开共享资源”会用该邮箱筛选列表，并把创建表单的供给方邮箱预填为该值。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
 - Sub2/OpenAI 上游巡检发现网关不可达、OpenAI 分组缺失、分组非 active、分组无账号或无 active 账号时，管理员可以在统一问题样本中看到阻断原因、分组、OpenAI 账号数量、active 账号数量和维修建议，并一键进入反代状态页继续执行账号刷新、测试、自检或凭据应用。
 - 当 Sub2/OpenAI 上游问题是 `openai_group_has_no_active_accounts` 且巡检已经发现非 active 或不可调度的 OpenAI 账号时，主问题样本会携带首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`；点击 `打开反代状态` 会直接预选该账号。

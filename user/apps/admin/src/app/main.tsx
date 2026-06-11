@@ -176,6 +176,7 @@ interface SystemHealthIssueRow {
   resourceScope?: string;
   resourceType?: string;
   resourceStatus?: string;
+  supplierEmail?: string;
   proxyRequestLookup?: string;
   userId?: string;
   orderId?: string;
@@ -941,7 +942,7 @@ function App() {
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
-  const [resourceCreateDefaults, setResourceCreateDefaults] = useState<{ resourceType?: string; sub2AccountId?: string }>({});
+  const [resourceCreateDefaults, setResourceCreateDefaults] = useState<{ supplierEmail?: string; resourceType?: string; sub2AccountId?: string }>({});
   const [suppliers, setSuppliers] = useState<SupplierDetailRow[]>([]);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -1687,16 +1688,18 @@ function App() {
     await openFilteredListCandidate("products", lookup, "已打开巡检关联商品");
   }
 
-  async function openResourcesCandidate(filter?: { resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) {
-    const hasFilter = Boolean(filter?.resourceType || filter?.status || filter?.scope || filter?.sub2AccountId);
+  async function openResourcesCandidate(filter?: { supplierEmail?: string; resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) {
+    const hasFilter = Boolean(filter?.supplierEmail || filter?.resourceType || filter?.status || filter?.scope || filter?.sub2AccountId);
     const resourceType = resourceTypeOptions.includes(filter?.resourceType ?? "") ? filter!.resourceType! : "";
     const query = {
       ...defaultListQuery,
+      q: filter?.supplierEmail ?? "",
       action: filter?.scope === "production" ? "production" : "",
       resourceType,
       status: filter?.status ?? ""
     };
     setResourceCreateDefaults({
+      supplierEmail: filter?.supplierEmail,
       resourceType: resourceType || undefined,
       sub2AccountId: filter?.sub2AccountId
     });
@@ -2469,7 +2472,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
-  onOpenResources: (filter?: { resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) => void;
+  onOpenResources: (filter?: { supplierEmail?: string; resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
@@ -2554,7 +2557,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(issue.sub2AccountId)}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -4183,7 +4186,7 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, on
 function ResourcesView({ resources, selectedResource, createDefaults, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
-  createDefaults: { resourceType?: string; sub2AccountId?: string };
+  createDefaults: { supplierEmail?: string; resourceType?: string; sub2AccountId?: string };
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
@@ -4196,11 +4199,12 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
 } & ManagedListProps) {
   const createResourceType = resourceTypeOptions.includes(createDefaults.resourceType ?? "") ? createDefaults.resourceType! : "codex";
   const createSub2AccountId = createDefaults.sub2AccountId ?? "";
+  const createSupplierEmail = createDefaults.supplierEmail ?? "";
   return (
     <>
-      <form key={`${createResourceType}:${createSub2AccountId}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
+      <form key={`${createSupplierEmail}:${createResourceType}:${createSub2AccountId}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
         <span className="eyebrow">Create resource</span>
-        <input name="supplierEmail" type="email" placeholder="供给方邮箱" required />
+        <input name="supplierEmail" type="email" defaultValue={createSupplierEmail} placeholder="供给方邮箱" required />
         <input name="displayName" placeholder="供给方显示名，可选" />
         <select name="resourceType" defaultValue={createResourceType} required>
           {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
@@ -4711,6 +4715,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       resourceScope: textValue(record.resourceScope),
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
+      supplierEmail: textValue(record.supplierEmail),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId),
@@ -4752,7 +4757,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
