@@ -1521,3 +1521,70 @@ CORS 复查：
   - `localProxySmoke`：最新 `/v1/responses` 自检失败，代理日志错误码 `upstream_http_503`。
 
 结论：共享资源巡检现在能准确表达“存在资源可用性问题，但线上没有可直接打开的生产资源行”。管理员仍可从 `resourceList=true` / `resourceType=codex` 的问题样本进入共享资源列表创建或修复生产 Codex 资源；真实生成恢复仍需要有效 OpenAI/Sub2 refresh token。
+
+## 2026-06-12 02:10 资源凭据缺失问题共享资源入口发布
+
+### 发布版本
+
+- `298a142 fix: link credential issues to codex resources`
+
+### 本轮修复
+
+- `resourceCredentials.detail.issues` 中的 `openai_refresh_token_candidate_missing` 现在同时携带：
+  - `resourceList=true`
+  - `resourceType=codex`
+  - `resourceStatus=null`
+  - `sub2Status=true`
+- 管理后台 `可用性巡检` 的同一问题行会同时展示 `打开共享资源` 与 `打开反代状态` 操作。
+- 新增单元测试覆盖资源凭据缺失问题的 Codex 资源列表定位字段。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：60/60 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=298a142`
+  - `deployed_at=20260611T181005Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：60/60 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resourceCredentials`：`error`
+  - issue：`openai_refresh_token_candidate_missing`
+  - `sub2Status=true`
+  - `resourceList=true`
+  - `resourceType=codex`
+  - `resourceStatus=null`
+  - `sub2AccountId=2`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `resources`：`warning`
+  - `issueSamples=1`
+  - `resourceSamples=0`
+- `openAiProxyContract`：`ok`
+- `openAiProxyRuntime`：`ok`
+- `adminCapabilities`：`ok`
+
+结论：当 Sub2/OpenAI 上游无 active 账号且本地没有可应用 refresh token 时，管理员不再只能进入反代状态页；同一巡检问题也可以直接打开 Codex 共享资源列表，选择创建生产资源或补齐资源凭据。真实生成恢复仍依赖有效 OpenAI/Sub2 refresh token。
