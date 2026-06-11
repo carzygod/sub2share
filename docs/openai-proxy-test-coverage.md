@@ -19,12 +19,44 @@
   - 非元数据请求 `POST /v1/responses`、`POST /v1/chat/completions`
   - Buffer、字符串、JSON 对象请求体的 token 粗估和字节统计
 
+## 2026-06-11 追补：完整 v1 反代路由契约
+
+- 将本地反代运行路由显式化为共享常量：
+  - `openAiProxyRoutePath = "/v1/*"`
+  - `openAiProxyRouteMethods = GET, HEAD, POST, PUT, PATCH, DELETE`
+- `registerOpenAiProxyRoutes()` 使用同一组常量注册 Fastify 路由，避免健康巡检和真实运行时漂移。
+- `inspectOpenAiProxyContract()` 的健康指标新增：
+  - `routePath`
+  - `routeMethods`
+  - `supportsAllV1ChildPaths`
+  - `supportsReadMethods`
+  - `supportsMutationMethods`
+  - `routesResponsesApi`
+  - `routesResponsesItems`
+  - `routesChatCompletions`
+  - `routesModelMetadata`
+- 新增测试确认以下路径都属于本地 OpenAI/Codex 反代覆盖范围：
+  - `/v1/responses`
+  - `/v1/responses/:id`
+  - `/v1/responses/:id/input_items`
+  - `/v1/chat/completions`
+  - `/v1/models/:id`
+- `/v1` 本身和 `/api/admin/*` 不属于该 catch-all 反代范围。
+
 ## 验收命令
 
 ```bash
 npm --prefix user/apps/api test
 npm --prefix user/apps/api run typecheck
 npm --prefix user/apps/api run build
+```
+
+本轮验证命令：
+
+```bash
+pnpm.cmd --filter @zyz/api run typecheck
+pnpm.cmd --filter @zyz/api test
+pnpm.cmd --filter @zyz/api run build
 ```
 
 ## 管理员价值

@@ -10,6 +10,8 @@ import {
   estimateProxyInputTokens,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
+  openAiProxyRouteMethods,
+  openAiProxyRoutePath,
   proxyBodyByteLength,
   proxyBodyText,
   proxyRequestModel,
@@ -61,8 +63,8 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
     );
 
     proxy.route({
-      method: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
-      url: "/v1/*",
+      method: [...openAiProxyRouteMethods],
+      url: openAiProxyRoutePath,
       bodyLimit: env.OPENAI_PROXY_BODY_LIMIT_BYTES,
       handler: async (request, reply) => {
         const startedAt = Date.now();

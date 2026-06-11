@@ -1,5 +1,7 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
 export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName];
+export const openAiProxyRoutePath = "/v1/*";
+export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
 
@@ -79,6 +81,15 @@ export function inspectOpenAiProxyContract(endpoint: string) {
   const trimmedEndpoint = endpoint.trim();
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
   const issues: OpenAiProxyContractIssue[] = [];
+  const routePath = openAiProxyRoutePath;
+  const routeMethods = [...openAiProxyRouteMethods];
+  const supportsAllV1ChildPaths = routePath === "/v1/*";
+  const supportsReadMethods = ["GET", "HEAD"].every((method) => routeMethods.includes(method as typeof openAiProxyRouteMethods[number]));
+  const supportsMutationMethods = ["POST", "PUT", "PATCH", "DELETE"].every((method) => routeMethods.includes(method as typeof openAiProxyRouteMethods[number]));
+  const routesResponsesApi = isOpenAiProxyRoutedPath("/v1/responses");
+  const routesResponsesItems = isOpenAiProxyRoutedPath("/v1/responses/resp_123");
+  const routesChatCompletions = isOpenAiProxyRoutedPath("/v1/chat/completions");
+  const routesModelMetadata = isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex");
 
   let endpointProtocol: string | null = null;
   try {
@@ -115,6 +126,27 @@ export function inspectOpenAiProxyContract(endpoint: string) {
       message: "CORS must expose x-proxy-request-id for browser clients"
     });
   }
+  if (!supportsAllV1ChildPaths) {
+    issues.push({
+      type: "route_not_v1_wildcard",
+      severity: "error",
+      message: "OpenAI proxy must forward every concrete /v1 child path to Sub2API"
+    });
+  }
+  if (!supportsReadMethods || !supportsMutationMethods) {
+    issues.push({
+      type: "route_methods_incomplete",
+      severity: "error",
+      message: "OpenAI proxy must support GET, HEAD, POST, PUT, PATCH, and DELETE methods"
+    });
+  }
+  if (!routesResponsesApi || !routesResponsesItems || !routesChatCompletions || !routesModelMetadata) {
+    issues.push({
+      type: "core_openai_paths_not_routed",
+      severity: "error",
+      message: "OpenAI proxy route must cover Responses API, response item paths, Chat Completions, and model metadata"
+    });
+  }
 
   const errorTypes = {
     insufficientQuota: openAiProxyErrorPayload(402, "insufficient_balance", "Wallet balance is not enough").error.type,
@@ -149,6 +181,15 @@ export function inspectOpenAiProxyContract(endpoint: string) {
       endpoint: normalizedEndpoint || trimmedEndpoint,
       endpointProtocol,
       endpointEndsWithV1: normalizedEndpoint.endsWith("/v1"),
+      routePath,
+      routeMethods: routeMethods.join(","),
+      supportsAllV1ChildPaths,
+      supportsReadMethods,
+      supportsMutationMethods,
+      routesResponsesApi,
+      routesResponsesItems,
+      routesChatCompletions,
+      routesModelMetadata,
       requestIdHeader: proxyRequestIdHeaderName,
       corsExposesRequestId,
       insufficientQuotaErrorType: errorTypes.insufficientQuota,
@@ -158,6 +199,11 @@ export function inspectOpenAiProxyContract(endpoint: string) {
     errorTypes,
     issues
   };
+}
+
+export function isOpenAiProxyRoutedPath(url: string) {
+  const path = url.split("?")[0]?.replace(/\/+$/, "");
+  return Boolean(path && path.startsWith("/v1/"));
 }
 
 export function inspectOpenAiProxyRuntime(summary: OpenAiProxyRuntimeSummary) {

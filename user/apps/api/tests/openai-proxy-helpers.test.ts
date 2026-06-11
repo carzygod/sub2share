@@ -6,12 +6,15 @@ import {
   estimateProxyInputTokens,
   inspectOpenAiProxyContract,
   inspectOpenAiProxyRuntime,
+  isOpenAiProxyRoutedPath,
   isProxyRateLimitWindowEmpty,
   isMetadataProxyRequest,
   normalizeProxyRequestLookup,
   openAiProxyErrorPayload,
   openAiProxyErrorType,
   openAiProxyCorsExposedHeaders,
+  openAiProxyRouteMethods,
+  openAiProxyRoutePath,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText,
@@ -33,6 +36,18 @@ test("keeps non-metadata OpenAI and Codex calls inside proxy gates", () => {
   assert.equal(isMetadataProxyRequest("GET", "/v1/responses"), false);
   assert.equal(isMetadataProxyRequest("POST", "/v1/responses"), false);
   assert.equal(isMetadataProxyRequest("POST", "/v1/chat/completions"), false);
+});
+
+test("routes every concrete OpenAI v1 child path through the local proxy", () => {
+  assert.equal(openAiProxyRoutePath, "/v1/*");
+  assert.deepEqual([...openAiProxyRouteMethods], ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/responses"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123/input_items?after=item_1"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/chat/completions"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1"), false);
+  assert.equal(isOpenAiProxyRoutedPath("/api/admin/system-health"), false);
 });
 
 test("estimates proxy input tokens from raw request bodies", () => {
@@ -178,6 +193,15 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.ok, true);
   assert.equal(result.summary.endpoint, "https://api.example.com/v1");
   assert.equal(result.summary.endpointEndsWithV1, true);
+  assert.equal(result.summary.routePath, "/v1/*");
+  assert.equal(result.summary.routeMethods, "GET,HEAD,POST,PUT,PATCH,DELETE");
+  assert.equal(result.summary.supportsAllV1ChildPaths, true);
+  assert.equal(result.summary.supportsReadMethods, true);
+  assert.equal(result.summary.supportsMutationMethods, true);
+  assert.equal(result.summary.routesResponsesApi, true);
+  assert.equal(result.summary.routesResponsesItems, true);
+  assert.equal(result.summary.routesChatCompletions, true);
+  assert.equal(result.summary.routesModelMetadata, true);
   assert.equal(result.summary.corsExposesRequestId, true);
   assert.equal(result.summary.insufficientQuotaErrorType, "insufficient_quota");
   assert.equal(result.summary.rateLimitErrorType, "rate_limit_error");
