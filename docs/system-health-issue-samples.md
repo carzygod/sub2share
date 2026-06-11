@@ -43,6 +43,7 @@
 - 如果共享资源或资源凭据问题样本带有 `resourceScope=production`，点击“打开共享资源”会写入隐藏筛选 `action=production`，只打开生产资源范围，排除内部 smoke / disabled 自检资源；普通共享资源列表不带该参数时仍可审计内部资源。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
 - Sub2/OpenAI 上游巡检发现网关不可达、OpenAI 分组缺失、分组非 active、分组无账号或无 active 账号时，管理员可以在统一问题样本中看到阻断原因、分组、OpenAI 账号数量、active 账号数量和维修建议，并一键进入反代状态页继续执行账号刷新、测试、自检或凭据应用。
+- 当 Sub2/OpenAI 上游问题是 `openai_group_has_no_active_accounts` 且巡检已经发现非 active 或不可调度的 OpenAI 账号时，主问题样本会携带首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`；点击 `打开反代状态` 会直接预选该账号。
 - Sub2/OpenAI 上游巡检还会在候选样本中列出非 active 或不可调度的 OpenAI 账号，管理员可以直接看到账号 ID、名称、状态、凭据配置状态、调度状态和错误摘要；点击 `打开反代状态` 时会携带 `sub2AccountId`，反代状态页的凭据应用表单会预选该账号。
 - 本地反代自检巡检发现最近 smoke 失败、跳过、过期或缺失时，管理员可以看到模型、跳过原因、`/v1/models`、`/v1/responses`、本地代理清理、临时 Key 禁用和代理日志数量，并可一键打开对应审计记录和反代状态页；如果 smoke 由资源凭据应用触发，还会带上对应 `resourceId`，便于回到共享资源详情继续处理。
 - 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现、反代状态、审计记录或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。
