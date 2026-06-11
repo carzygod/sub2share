@@ -424,3 +424,56 @@ Sub2 账号复查：
 - `localProxySmoke`：最近一次 `/v1/responses` 失败，与 Sub2 上游账号失效一致。
 
 结论：共享资源告警现在已经能从巡检页直接跳转到共享资源列表和具体资源详情。完整 OpenAI/Codex 反代真实生成仍需要有效 OpenAI 上游凭据。
+
+## 2026-06-11 18:16 支付充值巡检建议补强
+
+### 发布版本
+
+- `6696cd8 fix: add payment health repair hints`
+
+### 本轮修复
+
+- `payments.detail.issues` 增加：
+  - `refId=PAYMENT_PROVIDER`
+  - `actionHint`
+- 生产环境使用 mock 充值时，巡检问题样本会明确提示：
+  - mock recharge 不能作为公开计费依据。
+  - 需要真实对外收费时，应接入真实支付 provider 与 webhook flow。
+  - 否则服务应保持内部使用。
+
+### 验证
+
+- 本地 `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/api test`：41/41 通过。
+- 本地 `pnpm.cmd --filter @zyz/api run build`：通过。
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：41/41 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`payments` 当前仍为 warning：
+
+- summary：`生产环境仍启用 mock 充值`
+- metrics：
+  - provider：`mock`
+  - nodeEnv：`production`
+  - minRechargeAmount：`10`
+  - rechargeEndpointEnabled：`true`
+- issue：
+  - type：`production_mock_recharge`
+  - refId：`PAYMENT_PROVIDER`
+  - actionHint：`Do not rely on mock recharge for public billing; integrate a real payment provider and webhook flow, or keep the service internal until then.`
+
+系统健康总览保持：
+
+- totalChecks：`25`
+- ok：`20`
+- warning：`2`
+- error：`3`
+
+结论：余额充值风险现在已经能在巡检问题样本中明确定位到环境配置和真实支付接入边界。完整 OpenAI/Codex 反代真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
