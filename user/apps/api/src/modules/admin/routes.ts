@@ -2752,6 +2752,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { supplier: { user: { id: containsText(query.q) } } },
           { supplier: { user: { email: containsText(query.q) } } },
           { supplier: { user: { displayName: containsText(query.q) } } },
+          { settlements: { some: { id: containsText(query.q) } } },
+          { settlements: { some: { settlementRecordId: containsText(query.q) } } },
           ...(oneOf(withdrawalStatuses, query.q) ? [{ status: oneOf(withdrawalStatuses, query.q) }] : [])
         ]
       } : {})

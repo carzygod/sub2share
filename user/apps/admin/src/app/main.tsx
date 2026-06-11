@@ -669,6 +669,8 @@ interface UserDetailRow extends UserRow {
 
 interface SettlementRow {
   id: string;
+  supplierResourceId?: string;
+  usageRecordId?: string | null;
   amount: string;
   reservedAmount?: string;
   withdrawnAmount?: string;
@@ -2461,6 +2463,10 @@ function App() {
             query={listQueries.settlements}
             meta={listMeta.settlements}
             onReleaseAvailable={releaseAvailableSettlements}
+            onOpenUser={openUserCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
             onDraft={(patch) => updateListDraft("settlements", patch)}
             onFilter={(event) => submitListFilters("settlements", event)}
             onClear={() => clearListFilters("settlements")}
@@ -2476,6 +2482,10 @@ function App() {
             meta={listMeta.withdrawals}
             onCreate={createWithdrawal}
             onStatus={setWithdrawalStatus}
+            onOpenUser={openUserCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenSettlement={openSettlementCandidate}
             onDraft={(patch) => updateListDraft("withdrawals", patch)}
             onFilter={(event) => submitListFilters("withdrawals", event)}
             onClear={() => clearListFilters("withdrawals")}
@@ -4967,9 +4977,13 @@ function ResourceCredentialApplyLogTable({ logs = [], onOpenProxyRequest, onOpen
   );
 }
 
-function SettlementsView({ settlements, query, meta, onReleaseAvailable, onDraft, onFilter, onClear, onPage, onExport }: {
+function SettlementsView({ settlements, query, meta, onReleaseAvailable, onOpenUser, onOpenResource, onOpenUsage, onOpenWithdrawal, onDraft, onFilter, onClear, onPage, onExport }: {
   settlements: SettlementRow[];
   onReleaseAvailable: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -4988,7 +5002,7 @@ function SettlementsView({ settlements, query, meta, onReleaseAvailable, onDraft
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="供给方结算" count={meta.total} headers={["供给方", "金额", "占用/已提", "状态", "分成", "可用时间", "创建时间"]}>
+      <TablePanel title="供给方结算" count={meta.total} headers={["供给方", "金额", "占用/已提", "状态", "分成", "可用时间", "创建时间", "操作"]}>
         {settlements.map((settlement) => (
           <tr key={settlement.id}>
             <td><strong>{settlement.supplierResource?.supplier?.user?.email ?? "-"}</strong><small>{settlement.supplierResource?.resourceType ?? settlement.id}</small></td>
@@ -4998,18 +5012,33 @@ function SettlementsView({ settlements, query, meta, onReleaseAvailable, onDraft
             <td>{settlement.shareRate}</td>
             <td>{dateTime(settlement.availableAt)}</td>
             <td>{dateTime(settlement.createdAt)}</td>
+            <td>
+              <div className="row-actions">
+                {settlement.supplierResource?.supplier?.user?.id && <button className="secondary mini" onClick={() => onOpenUser(settlement.supplierResource!.supplier!.user!.id)}>用户</button>}
+                {(settlement.supplierResource?.id ?? settlement.supplierResourceId) && <button className="secondary mini" onClick={() => onOpenResource((settlement.supplierResource?.id ?? settlement.supplierResourceId)!)}>资源</button>}
+                {(settlement.usageRecord?.id ?? settlement.usageRecordId) && <button className="secondary mini" onClick={() => onOpenUsage((settlement.usageRecord?.id ?? settlement.usageRecordId)!)}>用量</button>}
+                <button className="secondary mini" onClick={() => onOpenWithdrawal(settlement.id)}>提现</button>
+              </div>
+            </td>
           </tr>
         ))}
+        {settlements.length === 0 && (
+          <tr><td colSpan={8}><small>当前筛选没有匹配的结算记录。</small></td></tr>
+        )}
       </TablePanel>
     </>
   );
 }
 
-function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus, onOpenUser, onOpenResource, onOpenUsage, onOpenSettlement, onDraft, onFilter, onClear, onPage, onExport }: {
   withdrawals: WithdrawalRow[];
   summary: AggregateSummary | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onStatus: (withdrawalId: string, status: string, payoutRef?: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
 } & ManagedListProps) {
   function changeWithdrawalStatus(withdrawal: WithdrawalRow, status: string) {
     let payoutRef: string | undefined;
@@ -5054,35 +5083,44 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
         onExport={onExport}
       />
       <TablePanel title="提现管理" count={meta.total} headers={["供给方", "金额", "状态", "结算分配", "打款引用", "备注", "时间", "操作"]}>
-        {withdrawals.map((withdrawal) => (
-          <tr key={withdrawal.id}>
-            <td><strong>{withdrawal.supplier?.user?.email ?? withdrawal.supplierId}</strong><small>{withdrawal.id}</small></td>
-            <td>{money(withdrawal.amount)} {withdrawal.currency ?? "USD"}</td>
-            <td><StatusPill status={withdrawal.status} /></td>
-            <td><strong>{money(allocationAmount(withdrawal.settlements))}</strong><small>{withdrawal.settlements?.length ?? 0} records</small></td>
-            <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
-            <td><small>{withdrawal.note ?? "-"}</small></td>
-            <td>{dateTime(withdrawal.createdAt)}</td>
-            <td>
-              <div className="row-actions">
-                {withdrawal.status === "pending" && (
-                  <>
-                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "approved")}>通过</button>
-                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "rejected")}>驳回</button>
-                    <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
-                  </>
-                )}
-                {withdrawal.status === "approved" && (
-                  <>
-                    <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "paid")}>打款</button>
-                    <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
-                  </>
-                )}
-                {!["pending", "approved"].includes(withdrawal.status) && <small>-</small>}
-              </div>
-            </td>
-          </tr>
-        ))}
+        {withdrawals.map((withdrawal) => {
+          const firstSettlement = (withdrawal.settlements ?? [])[0]?.settlementRecord;
+          return (
+            <tr key={withdrawal.id}>
+              <td><strong>{withdrawal.supplier?.user?.email ?? withdrawal.supplierId}</strong><small>{withdrawal.id}</small></td>
+              <td>{money(withdrawal.amount)} {withdrawal.currency ?? "USD"}</td>
+              <td><StatusPill status={withdrawal.status} /></td>
+              <td><strong>{money(allocationAmount(withdrawal.settlements))}</strong><small>{withdrawal.settlements?.length ?? 0} records</small></td>
+              <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
+              <td><small>{withdrawal.note ?? "-"}</small></td>
+              <td>{dateTime(withdrawal.createdAt)}</td>
+              <td>
+                <div className="row-actions">
+                  {withdrawal.supplier?.user?.id && <button type="button" className="secondary mini" onClick={() => onOpenUser(withdrawal.supplier!.user!.id)}>用户</button>}
+                  {firstSettlement?.supplierResourceId && <button type="button" className="secondary mini" onClick={() => onOpenResource(firstSettlement.supplierResourceId!)}>资源</button>}
+                  {firstSettlement?.usageRecordId && <button type="button" className="secondary mini" onClick={() => onOpenUsage(firstSettlement.usageRecordId!)}>用量</button>}
+                  {firstSettlement?.id && <button type="button" className="secondary mini" onClick={() => onOpenSettlement(firstSettlement.id)}>结算</button>}
+                  {withdrawal.status === "pending" && (
+                    <>
+                      <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "approved")}>通过</button>
+                      <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "rejected")}>驳回</button>
+                      <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
+                    </>
+                  )}
+                  {withdrawal.status === "approved" && (
+                    <>
+                      <button type="button" className="secondary mini" onClick={() => changeWithdrawalStatus(withdrawal, "paid")}>打款</button>
+                      <button type="button" className="danger mini" onClick={() => changeWithdrawalStatus(withdrawal, "cancelled")}>取消</button>
+                    </>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+        {withdrawals.length === 0 && (
+          <tr><td colSpan={8}><small>当前筛选没有匹配的提现记录。</small></td></tr>
+        )}
       </TablePanel>
     </section>
   );
