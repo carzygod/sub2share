@@ -1894,3 +1894,70 @@ CORS 复查：
 - `sub2` 与 `resourceCredentials` 仍指向同一个修复账号 `sub2AccountId=2`。
 
 结论：本地 `/v1/responses` 自检失败、Sub2 上游无 active 账号、资源凭据缺失三条巡检问题现在都指向同一个优先修复账号。管理员可以从任意一条问题进入反代状态页并预选账号 #2；真实生成仍需要补充有效 refresh token 并重新运行账号测试和端到端自检。
+
+## 2026-06-12 03:15 巡检共享资源创建预填发布
+
+### 发布版本
+
+- `3982fd8 fix: prefill resource creation from health issues`
+
+### 本轮修复
+
+- Admin `可用性巡检 -> 打开共享资源` 现在会把问题样本中的 `sub2AccountId` 传入共享资源页。
+- 共享资源创建表单会根据巡检上下文预填：
+  - `resourceType`
+  - `sub2AccountId`
+- 普通进入共享资源页或清空资源筛选时，会清空巡检预填并恢复默认创建表单。
+- 资源列表查询仍保留生产范围筛选：`resourceScope=production -> action=production`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=3982fd8`
+  - `deployed_at=20260611T191501Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：67/67 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resourceCredentials`：`error`
+  - issue：`openai_refresh_token_candidate_missing`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+  - `sub2Status=true`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `resources`：`warning`
+  - issue：`codex_online_resource_missing`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+- `localProxySmoke` 与 `sub2` 仍指向同一个修复账号 `sub2AccountId=2`。
+
+结论：资源凭据巡检已经能把账号 #2 同时用于反代状态页预选和共享资源创建表单预填。管理员创建生产 Codex 资源时不再需要从巡检对象摘要里手工复制 Sub2 账号 ID；真实 `/v1/responses` 仍等待有效 refresh token。
