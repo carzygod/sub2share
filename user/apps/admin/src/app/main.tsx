@@ -2394,6 +2394,10 @@ function App() {
             query={listQueries.suppliers}
             meta={listMeta.suppliers}
             onUpdate={updateSupplierConfig}
+            onOpenUser={openUserCandidate}
+            onOpenResources={openResourcesCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
             onDraft={(patch) => updateListDraft("suppliers", patch)}
             onFilter={(event) => submitListFilters("suppliers", event)}
             onClear={() => clearListFilters("suppliers")}
@@ -2417,6 +2421,13 @@ function App() {
             onTest={testResource}
             onDetail={openResourceDetail}
             onCloseDetail={() => setSelectedResource(null)}
+            onOpenUser={openUserCandidate}
+            onOpenSub2Status={openSub2StatusCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenSettlement={openSettlementCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
             onDraft={(patch) => updateListDraft("resources", patch)}
             onFilter={(event) => submitListFilters("resources", event)}
             onClear={() => clearListFilters("resources")}
@@ -4409,9 +4420,13 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
   );
 }
 
-function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, onClear, onPage, onExport }: {
+function SuppliersView({ suppliers, query, meta, onUpdate, onOpenUser, onOpenResources, onOpenResource, onOpenWithdrawal, onDraft, onFilter, onClear, onPage, onExport }: {
   suppliers: SupplierDetailRow[];
   onUpdate: (event: FormEvent<HTMLFormElement>, supplierId: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenResources: (filter?: { supplierEmail?: string; resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -4427,39 +4442,50 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onDraft, onFilter, on
         onExport={onExport}
       />
       <TablePanel title="供给方管理" count={meta.total} headers={["供给方", "状态", "默认分成", "资源 / 提现", "最近资源", "配置"]}>
-        {suppliers.map((supplier) => (
-          <tr key={supplier.id}>
-            <td>
-              <strong>{supplier.user?.email ?? supplier.userId ?? "-"}</strong>
-              <small>{supplier.displayName ?? supplier.user?.displayName ?? supplier.id}</small>
-            </td>
-            <td><StatusPill status={supplier.status} /></td>
-            <td>{supplier.defaultShareRate}</td>
-            <td>{supplier._count?.resources ?? supplier.resources?.length ?? 0} / {supplier._count?.withdrawals ?? supplier.withdrawals?.length ?? 0}</td>
-            <td>
-              {(supplier.resources ?? []).slice(0, 3).map((resource) => (
-                <small key={resource.id}>{resource.resourceType} / {resource.status} / {resource.sub2AccountId ?? "-"}</small>
-              ))}
-              {(supplier.resources ?? []).length === 0 && <small>-</small>}
-            </td>
-            <td>
-              <form className="limits-form" key={`${supplier.id}-${supplier.updatedAt ?? ""}`} onSubmit={(event) => onUpdate(event, supplier.id)}>
-                <input name="displayName" defaultValue={supplier.displayName ?? ""} placeholder="显示名，留空清除" />
-                <select name="status" defaultValue={supplier.status} required>
-                  {supplierStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
-                </select>
-                <input name="defaultShareRate" type="number" step="0.01" min={0} max={1} defaultValue={supplier.defaultShareRate} placeholder="默认分成" required />
-                <button type="submit" className="secondary mini">保存供给方</button>
-              </form>
-            </td>
-          </tr>
-        ))}
+        {suppliers.map((supplier) => {
+          const supplierEmail = supplier.user?.email;
+          return (
+            <tr key={supplier.id}>
+              <td>
+                <strong>{supplierEmail ?? supplier.userId ?? "-"}</strong>
+                <small>{supplier.displayName ?? supplier.user?.displayName ?? supplier.id}</small>
+              </td>
+              <td><StatusPill status={supplier.status} /></td>
+              <td>{supplier.defaultShareRate}</td>
+              <td>{supplier._count?.resources ?? supplier.resources?.length ?? 0} / {supplier._count?.withdrawals ?? supplier.withdrawals?.length ?? 0}</td>
+              <td>
+                {(supplier.resources ?? []).slice(0, 3).map((resource) => (
+                  <small key={resource.id}>
+                    {resource.resourceType} / {resource.status} / {resource.sub2AccountId ?? "-"}
+                    <button className="secondary mini inline-action" type="button" onClick={() => onOpenResource(resource.id)}>打开</button>
+                  </small>
+                ))}
+                {(supplier.resources ?? []).length === 0 && <small>-</small>}
+              </td>
+              <td>
+                <div className="row-actions">
+                  {supplier.userId && <button type="button" className="secondary mini" onClick={() => onOpenUser(supplier.userId!)}>用户</button>}
+                  <button type="button" className="secondary mini" onClick={() => onOpenResources({ supplierEmail })}>资源</button>
+                  <button type="button" className="secondary mini" onClick={() => onOpenWithdrawal(supplierEmail ?? supplier.id)}>提现</button>
+                </div>
+                <form className="limits-form" key={`${supplier.id}-${supplier.updatedAt ?? ""}`} onSubmit={(event) => onUpdate(event, supplier.id)}>
+                  <input name="displayName" defaultValue={supplier.displayName ?? ""} placeholder="显示名，留空清除" />
+                  <select name="status" defaultValue={supplier.status} required>
+                    {supplierStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+                  </select>
+                  <input name="defaultShareRate" type="number" step="0.01" min={0} max={1} defaultValue={supplier.defaultShareRate} placeholder="默认分成" required />
+                  <button type="submit" className="secondary mini">保存供给方</button>
+                </form>
+              </td>
+            </tr>
+          );
+        })}
       </TablePanel>
     </>
   );
 }
 
-function ResourcesView({ resources, selectedResource, createDefaults, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function ResourcesView({ resources, selectedResource, createDefaults, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onOpenUser, onOpenSub2Status, onOpenUsage, onOpenSettlement, onOpenWithdrawal, onOpenRental, onOpenProxyRequest, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
   createDefaults: { supplierEmail?: string; resourceType?: string; sub2AccountId?: string };
@@ -4472,6 +4498,13 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
   onTest: (resourceId: string) => void;
   onDetail: (resourceId: string) => void;
   onCloseDetail: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
 } & ManagedListProps) {
   const createResourceType = resourceTypeOptions.includes(createDefaults.resourceType ?? "") ? createDefaults.resourceType! : "codex";
   const createSub2AccountId = createDefaults.sub2AccountId ?? "";
@@ -4523,43 +4556,88 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
         onExport={onExport}
       />
       <TablePanel title="共享资源池" count={meta.total} headers={["供给方", "资源", "状态", "等级", "分成 / 日限额", "Sub2 / 凭据", "操作"]}>
-        {resources.map((resource) => (
-          <tr key={resource.id}>
-            <td><strong>{resource.supplier?.user?.email ?? "-"}</strong><small>{resource.id}</small></td>
-            <td>{resource.resourceType} / 并发 {resource.maxConcurrency}</td>
-            <td><StatusPill status={resource.status} /></td>
-            <td>{resource.level}</td>
-            <td><strong>{resource.shareRate ?? "-"}</strong><small>{resource.reserveRatio ?? "-"} / {money(resource.dailyCap)}</small></td>
-            <td><strong>{resource.sub2AccountId ?? "-"}</strong><small>{resource.credential ? `${resource.credential.credentialType} / ${resource.credential.status}` : "无凭据"}</small></td>
-            <td>
-              <div className="row-actions">
-                <button className="secondary mini" onClick={() => onDetail(resource.id)}>详情</button>
-                <button className="secondary mini" onClick={() => onTest(resource.id)}>测试</button>
-                <button className="secondary mini" onClick={() => onStatus(resource.id, "online")}>上线</button>
-                <button className="secondary mini" onClick={() => onStatus(resource.id, "paused")}>暂停</button>
-                <button className="danger mini" onClick={() => onStatus(resource.id, "disabled")}>禁用</button>
-              </div>
-            </td>
-          </tr>
-        ))}
+        {resources.map((resource) => {
+          const supplierUserId = resource.supplier?.user?.id;
+          const supplierEmail = resource.supplier?.user?.email;
+          return (
+            <tr key={resource.id}>
+              <td><strong>{supplierEmail ?? "-"}</strong><small>{resource.id}</small></td>
+              <td>{resource.resourceType} / 并发 {resource.maxConcurrency}</td>
+              <td><StatusPill status={resource.status} /></td>
+              <td>{resource.level}</td>
+              <td><strong>{resource.shareRate ?? "-"}</strong><small>{resource.reserveRatio ?? "-"} / {money(resource.dailyCap)}</small></td>
+              <td><strong>{resource.sub2AccountId ?? "-"}</strong><small>{resource.credential ? `${resource.credential.credentialType} / ${resource.credential.status}` : "无凭据"}</small></td>
+              <td>
+                <div className="row-actions">
+                  <button className="secondary mini" onClick={() => onDetail(resource.id)}>详情</button>
+                  {supplierUserId && <button className="secondary mini" onClick={() => onOpenUser(supplierUserId)}>供给方</button>}
+                  {resource.sub2AccountId && (
+                    <button className="secondary mini" onClick={() => onOpenSub2Status(resourceRepairContext(resource, supplierEmail))}>反代</button>
+                  )}
+                  <button className="secondary mini" onClick={() => onOpenUsage(resource.id)}>用量</button>
+                  <button className="secondary mini" onClick={() => onOpenSettlement(resource.id)}>结算</button>
+                  <button className="secondary mini" onClick={() => onTest(resource.id)}>测试</button>
+                  <button className="secondary mini" onClick={() => onStatus(resource.id, "online")}>上线</button>
+                  <button className="secondary mini" onClick={() => onStatus(resource.id, "paused")}>暂停</button>
+                  <button className="danger mini" onClick={() => onStatus(resource.id, "disabled")}>禁用</button>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </TablePanel>
-      {selectedResource && <ResourceDetailPanel resource={selectedResource} onUpdate={onUpdate} onCredential={onCredential} onDeleteCredential={onDeleteCredential} onApplyCredentialToSub2={onApplyCredentialToSub2} onClose={onCloseDetail} />}
+      {selectedResource && (
+        <ResourceDetailPanel
+          resource={selectedResource}
+          onUpdate={onUpdate}
+          onCredential={onCredential}
+          onDeleteCredential={onDeleteCredential}
+          onApplyCredentialToSub2={onApplyCredentialToSub2}
+          onClose={onCloseDetail}
+          onOpenUser={onOpenUser}
+          onOpenSub2Status={onOpenSub2Status}
+          onOpenUsage={onOpenUsage}
+          onOpenSettlement={onOpenSettlement}
+          onOpenWithdrawal={onOpenWithdrawal}
+          onOpenRental={onOpenRental}
+          onOpenProxyRequest={onOpenProxyRequest}
+        />
+      )}
     </>
   );
 }
 
-function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onClose }: {
+function resourceRepairContext(resource: ResourceRow, supplierEmail?: string): Sub2RepairContext {
+  return {
+    accountId: resource.sub2AccountId,
+    resourceId: resource.id,
+    resourceType: resource.resourceType,
+    resourceStatus: resource.status,
+    supplierEmail
+  };
+}
+
+function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onClose, onOpenUser, onOpenSub2Status, onOpenUsage, onOpenSettlement, onOpenWithdrawal, onOpenRental, onOpenProxyRequest }: {
   resource: ResourceDetailRow;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onDeleteCredential: (resourceId: string) => void;
   onApplyCredentialToSub2: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onClose: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
 }) {
   const usages = resource.usages ?? [];
   const settlements = resource.settlements ?? [];
   const usageCount = resource.usageSummary?._count ?? usages.length;
   const settlementCount = resource.settlementSummary?._count ?? settlements.length;
+  const supplierUserId = resource.supplier?.user?.id;
+  const supplierEmail = resource.supplier?.user?.email;
 
   return (
     <section className="panel glass-panel wide detail-panel">
@@ -4570,6 +4648,13 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
         </div>
         <div className="row-actions">
           <StatusPill status={resource.status} />
+          {supplierUserId && <button className="secondary mini" onClick={() => onOpenUser(supplierUserId)}>打开供给方</button>}
+          {resource.sub2AccountId && (
+            <button className="secondary mini" onClick={() => onOpenSub2Status(resourceRepairContext(resource, supplierEmail))}>打开反代状态</button>
+          )}
+          <button className="secondary mini" onClick={() => onOpenUsage(resource.id)}>打开用量</button>
+          <button className="secondary mini" onClick={() => onOpenSettlement(resource.id)}>打开结算</button>
+          <button className="secondary mini" onClick={() => onOpenWithdrawal(supplierEmail ?? resource.supplier?.id ?? resource.id)}>打开提现</button>
           <button className="secondary mini" onClick={onClose}>关闭</button>
         </div>
       </div>
@@ -4651,7 +4736,7 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
         </DetailBlock>
 
         <DetailBlock title="最近凭据应用">
-          <ResourceCredentialApplyLogTable logs={resource.credentialApplyLogs} />
+          <ResourceCredentialApplyLogTable logs={resource.credentialApplyLogs} onOpenProxyRequest={onOpenProxyRequest} onOpenSub2Status={onOpenSub2Status} />
         </DetailBlock>
 
         <DetailBlock title="供给方">
@@ -4660,11 +4745,20 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
             <tr><td>显示名</td><td>{resource.supplier?.displayName ?? resource.supplier?.user?.displayName ?? "-"}</td></tr>
             <tr><td>状态</td><td>{resource.supplier?.status ?? "-"}</td></tr>
             <tr><td>默认分成</td><td>{resource.supplier?.defaultShareRate ?? "-"}</td></tr>
+            <tr>
+              <td>操作</td>
+              <td>
+                <div className="row-actions">
+                  {supplierUserId && <button className="secondary mini" onClick={() => onOpenUser(supplierUserId)}>打开用户</button>}
+                  <button className="secondary mini" onClick={() => onOpenWithdrawal(supplierEmail ?? resource.supplier?.id ?? resource.id)}>打开提现</button>
+                </div>
+              </td>
+            </tr>
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="最近用量">
-          <MiniTable headers={["请求", "用户", "模型", "状态", "买家计费", "供给收入", "时间"]}>
+          <MiniTable headers={["请求", "用户", "模型", "状态", "买家计费", "供给收入", "时间", "操作"]}>
             {usages.slice(0, 10).map((usage) => (
               <tr key={usage.id}>
                 <td><small>{usage.sub2RequestId}</small></td>
@@ -4674,13 +4768,21 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
                 <td>{money(usage.buyerCharge)}</td>
                 <td>{money(usage.supplierIncome)}</td>
                 <td>{dateTime(usage.occurredAt)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="secondary mini" onClick={() => onOpenUsage(usage.id)}>用量</button>
+                    {usage.userId && <button className="secondary mini" onClick={() => onOpenUser(usage.userId)}>用户</button>}
+                    {usage.rentalId && <button className="secondary mini" onClick={() => onOpenRental(usage.rentalId)}>租赁</button>}
+                    <button className="secondary mini" onClick={() => onOpenProxyRequest(usage.sub2RequestId)}>反代</button>
+                  </div>
+                </td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="最近结算">
-          <MiniTable headers={["结算", "状态", "金额", "分成", "可用时间", "创建"]}>
+          <MiniTable headers={["结算", "状态", "金额", "分成", "可用时间", "创建", "操作"]}>
             {settlements.slice(0, 10).map((settlement) => (
               <tr key={settlement.id}>
                 <td><small>{settlement.id}</small></td>
@@ -4689,6 +4791,12 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
                 <td>{settlement.shareRate}</td>
                 <td>{dateTime(settlement.availableAt)}</td>
                 <td>{dateTime(settlement.createdAt)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="secondary mini" onClick={() => onOpenSettlement(settlement.id)}>结算</button>
+                    {settlement.usageRecord?.id && <button className="secondary mini" onClick={() => onOpenUsage(settlement.usageRecord!.id)}>用量</button>}
+                  </div>
+                </td>
               </tr>
             ))}
           </MiniTable>
@@ -4698,18 +4806,23 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
   );
 }
 
-function ResourceCredentialApplyLogTable({ logs = [] }: { logs?: AuditLogRow[] }) {
+function ResourceCredentialApplyLogTable({ logs = [], onOpenProxyRequest, onOpenSub2Status }: {
+  logs?: AuditLogRow[];
+  onOpenProxyRequest: (lookup: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
+}) {
   return (
-    <MiniTable headers={["时间", "来源", "Sub2 账号", "结果", "账号测试", "端到端", "请求"]}>
+    <MiniTable headers={["时间", "来源", "Sub2 账号", "结果", "账号测试", "端到端", "请求", "操作"]}>
       {logs.length === 0 && (
         <tr>
-          <td colSpan={7}><small>暂无凭据应用记录</small></td>
+          <td colSpan={8}><small>暂无凭据应用记录</small></td>
         </tr>
       )}
       {logs.map((log) => {
         const after = credentialApplyAuditAfter(log);
         const ok = credentialApplyAuditOk(after);
         const request = credentialApplyAuditProxyRequest(after);
+        const accountId = textValue(after.accountId) ?? textValue(after.sub2AccountId);
         return (
           <tr key={log.id}>
             <td>
@@ -4730,6 +4843,12 @@ function ResourceCredentialApplyLogTable({ logs = [] }: { logs?: AuditLogRow[] }
             <td>
               <small>{request.summary}</small>
               {request.requestId && <small>{request.requestId}</small>}
+            </td>
+            <td>
+              <div className="row-actions">
+                {accountId && <button className="secondary mini" onClick={() => onOpenSub2Status(accountId)}>反代</button>}
+                {request.requestId && <button className="secondary mini" onClick={() => onOpenProxyRequest(request.requestId!)}>请求</button>}
+              </div>
             </td>
           </tr>
         );
