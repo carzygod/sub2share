@@ -1818,11 +1818,14 @@ function App() {
         shareRate: form.get("shareRate"),
         reserveRatio: form.get("reserveRatio"),
         dailyCap: optionalFormString(form, "dailyCap"),
-        sub2AccountId: optionalFormString(form, "sub2AccountId")
+        sub2AccountId: optionalFormString(form, "sub2AccountId"),
+        credentialType: optionalFormString(form, "credentialType"),
+        credentialStatus: optionalFormString(form, "credentialStatus"),
+        credentialSecret: optionalFormString(form, "credentialSecret")
       })
     });
     event.currentTarget.reset();
-    setMessage("共享资源已创建");
+    setMessage(resource.credential ? "共享资源已创建，初始凭据已保存" : "共享资源已创建");
     await refresh("resources");
     await openResourceDetail(resource.id);
   }
@@ -4220,6 +4223,13 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
         <input name="reserveRatio" type="number" step="0.01" min={0} max={1} defaultValue={0.2} placeholder="保留比例" required />
         <input name="dailyCap" type="number" step="0.01" min={0} placeholder="日上限，可选" />
         <input name="sub2AccountId" defaultValue={createSub2AccountId} placeholder="Sub2 账号 ID，可选" />
+        <select name="credentialType" defaultValue="openai_refresh_token">
+          {resourceCredentialTypeOptions.map((credentialType) => <option key={credentialType} value={credentialType}>{credentialType}</option>)}
+        </select>
+        <select name="credentialStatus" defaultValue="active">
+          {resourceCredentialStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
+        </select>
+        <input name="credentialSecret" type="password" minLength={8} placeholder="初始凭据，可选" autoComplete="off" />
         <button>创建共享资源</button>
       </form>
       <ListControls

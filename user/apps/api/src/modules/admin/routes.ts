@@ -38,6 +38,7 @@ import {
   type AdminCapabilityOperation
 } from "./capabilities.js";
 import { inspectCurrentDeploymentRuntime } from "./deployment-runtime.js";
+import { initialResourceCredentialCreateData } from "./resource-credential-create.js";
 import {
   resourceCredentialCodexResourceListFields,
   resourceCredentialRepairCandidateFields,
@@ -439,7 +440,10 @@ const createResourceSchema = z.object({
   shareRate: z.coerce.number().min(0).max(1).default(0.7),
   reserveRatio: z.coerce.number().min(0).max(1).default(0.2),
   dailyCap: z.coerce.number().positive().optional(),
-  sub2AccountId: z.string().trim().min(1).optional()
+  sub2AccountId: z.string().trim().min(1).optional(),
+  credentialType: z.enum(resourceCredentialTypes).optional(),
+  credentialStatus: z.enum(resourceCredentialStatuses).optional(),
+  credentialSecret: z.string().trim().min(8).max(20_000).optional()
 });
 
 const upsertResourceCredentialSchema = z.object({
@@ -2361,6 +2365,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const input = createResourceSchema.parse(request.body);
     const email = input.supplierEmail.toLowerCase();
+    if (input.credentialSecret && !env.API_KEY_ENCRYPTION_SECRET) {
+      throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
+    }
+    const initialCredential = input.credentialSecret
+      ? initialResourceCredentialCreateData({
+        credentialType: input.credentialType,
+        credentialStatus: input.credentialStatus,
+        credentialSecret: input.credentialSecret
+      }, env.API_KEY_ENCRYPTION_SECRET!)
+      : null;
     const resource = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user) throw new AppError("supplier_user_not_found", "Supplier user not found", 404);
@@ -2384,7 +2398,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           shareRate: new Prisma.Decimal(input.shareRate),
           reserveRatio: new Prisma.Decimal(input.reserveRatio),
           dailyCap: input.dailyCap === undefined ? undefined : new Prisma.Decimal(input.dailyCap),
-          sub2AccountId: input.sub2AccountId
+          sub2AccountId: input.sub2AccountId,
+          ...(initialCredential ? { credential: { create: initialCredential } } : {})
         },
         include: {
           supplier: { include: { user: true } },
@@ -2398,7 +2413,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       status: resource.status,
       level: resource.level,
       maxConcurrency: resource.maxConcurrency,
-      sub2AccountId: resource.sub2AccountId
+      sub2AccountId: resource.sub2AccountId,
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null
     });
     return adminOk(reply, resource);
   });
