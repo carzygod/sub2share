@@ -90,6 +90,10 @@ log() {
   printf '[deploy:%s] %s\n' "$commit" "$*"
 }
 
+systemd_available() {
+  command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]
+}
+
 upsert_env() {
   local file="$1"
   local key="$2"
@@ -150,10 +154,19 @@ stop_port() {
 
 stop_ports() {
   log "stopping ports $api_port, $web_port, $admin_port"
+  stop_systemd_services
   stop_port "$api_port"
   stop_port "$web_port"
   stop_port "$admin_port"
   stop_legacy_preview_processes
+}
+
+stop_systemd_services() {
+  if ! systemd_available; then
+    return 0
+  fi
+  systemctl stop zyz-api.service zyz-web.service zyz-admin.service 2>/dev/null || true
+  systemctl reset-failed zyz-api.service zyz-web.service zyz-admin.service 2>/dev/null || true
 }
 
 stop_legacy_preview_processes() {
@@ -169,9 +182,74 @@ start_services() {
   source_release_env "$current"
   mkdir -p "$current/logs"
 
+  if systemd_available; then
+    install_systemd_units
+    systemctl daemon-reload
+    systemctl enable zyz-api.service zyz-web.service zyz-admin.service >/dev/null
+    systemctl restart zyz-api.service zyz-web.service zyz-admin.service
+    return 0
+  fi
+
   ( cd -P "$current/apps/api" && nohup node dist/main.js > "$current/logs/api.log" 2>&1 & )
   ( cd -P "$current" && nohup node scripts/serve-static.mjs apps/web/dist "$web_port" > "$current/logs/web.log" 2>&1 & )
   ( cd -P "$current" && nohup node scripts/serve-static.mjs apps/admin/dist "$admin_port" > "$current/logs/admin.log" 2>&1 & )
+}
+
+install_systemd_units() {
+  local node_bin
+  node_bin="$(command -v node)"
+
+  cat > /etc/systemd/system/zyz-api.service <<UNIT
+[Unit]
+Description=Zhisuan Yizhan User API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$current/apps/api
+EnvironmentFile=-$current/.env
+Environment=NODE_ENV=production
+ExecStart=$node_bin dist/main.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  cat > /etc/systemd/system/zyz-web.service <<UNIT
+[Unit]
+Description=Zhisuan Yizhan Web
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$current
+Environment=NODE_ENV=production
+ExecStart=$node_bin scripts/serve-static.mjs apps/web/dist $web_port
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+  cat > /etc/systemd/system/zyz-admin.service <<UNIT
+[Unit]
+Description=Zhisuan Yizhan Admin
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$current
+Environment=NODE_ENV=production
+ExecStart=$node_bin scripts/serve-static.mjs apps/admin/dist $admin_port
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 }
 
 wait_http() {

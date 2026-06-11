@@ -20,6 +20,9 @@
   - 对 `index.html` 返回 `no-cache`。
   - 不依赖 Vite preview 常驻行为。
 - 更新 `user/scripts/deploy-production.sh`：
+  - 部署时先停止 `zyz-api.service`、`zyz-web.service`、`zyz-admin.service`，避免 systemd 旧单元在端口释放后自动拉起旧进程。
+  - 部署时重写上述三个 systemd unit，并执行 `systemctl daemon-reload`、`enable`、`restart`。
+  - API 单元运行 `node dist/main.js`。
   - Web 启动为 `node scripts/serve-static.mjs apps/web/dist 3100`。
   - Admin 启动为 `node scripts/serve-static.mjs apps/admin/dist 3101`。
   - `stop_ports()` 会额外清理旧的 `vite preview` / `pnpm @zyz/web` / `pnpm @zyz/admin` 残留进程。
@@ -42,3 +45,4 @@
    - `http://192.168.31.26:3101/` 返回 `200`
 4. 用 `ss -ltnp` 确认 4100、3100、3101 都在监听。
 5. 用 `/proc/<pid>/cwd` 确认三者都运行在 `/opt/zhisuan-yizhan/user` 或其子目录。
+6. 用 `systemctl cat zyz-web.service zyz-admin.service` 确认 Web/Admin 不再使用 `vite preview`。
