@@ -2564,3 +2564,67 @@ CORS 复查：
 ### 结论
 
 管理员现在从系统健康页任一 OpenAI/Sub2 上游修复问题进入“反代状态”页时，表单会预选账号 #2 并预填供给方 `admin@zhisuan.local`，同时默认勾选保存为共享资源凭据。拿到有效 OpenAI refresh token 后，管理员只需粘贴 token 并确认，即可同时修复 Sub2 账号、沉淀平台 Codex 资源凭据并运行账号/端到端自检。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token。
+
+## 2026-06-12 04:55 资源凭据历史纳入 Sub2 直接保存记录发布与线上复查
+
+### 发布版本
+
+- `e085323 feat: include direct token sync in resource history`
+
+### 本轮修复
+
+- `GET /api/admin/resources/:id` 的 `credentialApplyLogs` 现在同时返回两类脱敏审计摘要：
+  - `admin.resource.credential_apply_sub2`
+  - `admin.sub2.account.save_refresh_token_resource`
+- Admin 共享资源详情“最近凭据应用”表格新增“来源”列，用于区分：
+  - 资源应用
+  - Sub2 直接保存
+- 对 Sub2 直接保存记录，前端会展示 `saved`、凭据状态和 fingerprint，不显示 refresh token 明文或密文。
+- `docs/admin-resource-credential-apply-history.md` 与总需求文档已同步更新。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- `git diff --check`：无 whitespace 错误。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=e085323`
+  - `deployed_at=20260611T205546Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/resources?page=1&pageSize=5`：200，当前返回 1 条资源。
+- `GET /api/admin/resources/:id`：200，响应包含 `credentialApplyLogs` 数组字段；当前线上该资源暂无最近凭据应用/保存记录。
+- Admin 生产 JS 资源包含 `admin.sub2.account.save_refresh_token_resource`，确认新审计 action 已进入前端包。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+
+### 结论
+
+共享资源详情现在能同时覆盖“从资源应用到 Sub2”和“从反代状态页直接保存到资源”两条凭据修复路径的审计历史。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
