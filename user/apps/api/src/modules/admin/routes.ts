@@ -4776,7 +4776,14 @@ function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredA
 }
 
 function paymentProviderHealthCheck() {
-  const issues: Array<{ id: string; type: string; severity: "warning" | "error"; message: string }> = [];
+  const issues: Array<{
+    id: string;
+    type: string;
+    severity: "warning" | "error";
+    refId: string;
+    actionHint: string;
+    message: string;
+  }> = [];
   let status: SystemHealthStatus = "ok";
   let summary = "充值配置可用";
 
@@ -4787,6 +4794,8 @@ function paymentProviderHealthCheck() {
       id: "payment_provider_disabled",
       type: "payment_provider_disabled",
       severity: "error",
+      refId: "PAYMENT_PROVIDER",
+      actionHint: "Enable a supported recharge provider only after the wallet recharge flow is intentionally available to users.",
       message: "PAYMENT_PROVIDER=disabled, user wallet recharge endpoint returns 503."
     });
   } else if (env.PAYMENT_PROVIDER === "mock" && env.NODE_ENV === "production") {
@@ -4796,6 +4805,8 @@ function paymentProviderHealthCheck() {
       id: "production_mock_recharge",
       type: "production_mock_recharge",
       severity: "warning",
+      refId: "PAYMENT_PROVIDER",
+      actionHint: "Do not rely on mock recharge for public billing; integrate a real payment provider and webhook flow, or keep the service internal until then.",
       message: "Production is using mock wallet recharge. Replace with a real payment provider before public billing."
     });
   }
