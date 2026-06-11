@@ -3405,6 +3405,7 @@ async function buildSystemHealthReport() {
   const resourceCredentialReadiness = await inspectResourceCredentialReadiness(sub2Status);
   const localProxySmokeEvidenceWithRepair = attachLocalProxySmokeIssueRepairCandidate(localProxySmokeEvidence, sub2Status.accountSamples);
   const apiCorsPolicy = apiCorsPolicyHealthCheck();
+  const repairSupplierEmailCandidate = await activeSupplierEmailRepairCandidate();
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
@@ -3606,20 +3607,65 @@ async function buildSystemHealthReport() {
     )
   ];
 
+  const enrichedChecks = enrichSub2RepairContextChecks(checks, repairSupplierEmailCandidate);
+
   return {
     checkedAt: checkedAt.toISOString(),
-    status: aggregateHealthStatus(checks),
+    status: aggregateHealthStatus(enrichedChecks),
     summary: {
-      totalChecks: checks.length,
-      ok: checks.filter((check) => check.status === "ok").length,
-      warning: checks.filter((check) => check.status === "warning").length,
-      error: checks.filter((check) => check.status === "error").length
+      totalChecks: enrichedChecks.length,
+      ok: enrichedChecks.filter((check) => check.status === "ok").length,
+      warning: enrichedChecks.filter((check) => check.status === "warning").length,
+      error: enrichedChecks.filter((check) => check.status === "error").length
     },
-    checks
+    checks: enrichedChecks
   };
 }
 
 type SystemHealthReport = Awaited<ReturnType<typeof buildSystemHealthReport>>;
+
+async function activeSupplierEmailRepairCandidate() {
+  const suppliers = await prisma.supplier.findMany({
+    where: { user: { status: "active" } },
+    select: { user: { select: { email: true } } },
+    orderBy: { updatedAt: "desc" },
+    take: 2
+  });
+  return suppliers.length === 1 ? suppliers[0].user.email : null;
+}
+
+function enrichSub2RepairContextChecks(checks: SystemHealthCheck[], supplierEmail: string | null) {
+  if (!supplierEmail) return checks;
+
+  return checks.map((check) => {
+    const detail = jsonObject(check.detail);
+    if (!detail) return check;
+
+    let changed = false;
+    const nextDetail: Record<string, unknown> = { ...detail };
+    for (const key of ["issues", "samples"] as const) {
+      const rows = nextDetail[key];
+      if (!Array.isArray(rows)) continue;
+      const nextRows = rows.map((row) => {
+        const record = jsonObject(row);
+        if (!record || record.supplierEmail || record.repairAction !== "apply_openai_refresh_token_to_sub2_account") return row;
+        changed = true;
+        return {
+          ...record,
+          supplierEmail,
+          resourceType: record.resourceType ?? "codex"
+        };
+      });
+      nextDetail[key] = nextRows;
+    }
+
+    return changed ? { ...check, detail: nextDetail } : check;
+  });
+}
+
+function jsonObject(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
 
 async function recordSystemHealthSnapshot(report: SystemHealthReport, source: string, actorUserId?: string) {
   await prisma.systemHealthSnapshot.create({

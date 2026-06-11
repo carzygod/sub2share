@@ -13,6 +13,7 @@
   - `resourceType`
   - `resourceStatus`
 - 系统健康 sample 行也会读取并携带同类字段。
+- 当某条 Sub2 修复问题缺少 `supplierEmail`，但系统内恰好只有一个 active 供给方时，健康报告会把该供给方邮箱作为修复候选补入问题上下文。
 - Admin “反代状态”页会使用该上下文：
   - 自动预选 Sub2 OpenAI 账号。
   - 自动预填目标共享资源 ID。
