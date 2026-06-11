@@ -1373,3 +1373,83 @@ CORS 复查：
 - `resourceCredentials` / `sub2` 仍为 error：当前线上 OpenAI/Sub2 refresh token 失效，仍需要管理员提供有效 token。
 
 结论：管理员直接粘贴 OpenAI refresh token 的路径已经从“仅应用凭据”升级为“应用、账号测试、可选端到端自检、审计留痕”的闭环。当前真实生成阻断仍由无有效上游 token 导致，待有效 token 提供后可在同一入口完成恢复验证。
+
+## 2026-06-12 01:54 OpenAI 反代运行契约巡检发布
+
+### 发布版本
+
+- `68b6828 fix: expose openai proxy runtime contract`
+
+### 本轮修复
+
+- `GET /api/admin/system-health` 的 `openAiProxyContract` 巡检新增生产运行契约指标：
+  - `requestBodyMode=raw-buffer`
+  - `parsesAllContentTypesAsBuffer=true`
+  - `forwardsOriginalBodyBytes=true`
+  - `bodyLimitBytes=52428800`
+  - `upstreamTimeoutMs=300000`
+  - `streamIdleTimeoutMs=300000`
+  - `upstreamAcceptEncoding=identity`
+  - `stripsInboundAuthorization=true`
+  - `reinjectsLocalBearerToSub2=true`
+  - `hasStreamIdleTimeout=true`
+- 非正整数的 `bodyLimitBytes`、`upstreamTimeoutMs` 或 `streamIdleTimeoutMs` 会让 `openAiProxyContract` 标记 `error`。
+- 更新 `docs/system-health-check.md`、`docs/openai-proxy-test-coverage.md` 与 `docs/需求文档.md`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：58/58 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=68b6828`
+  - `deployed_at=20260611T175446Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：58/58 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `openAiProxyContract`：`ok`
+  - endpoint：`http://192.168.31.26:4100/v1`
+  - routePath：`/v1/*`
+  - routeMethods：`GET,HEAD,POST,PUT,PATCH,DELETE`
+  - requestBodyMode：`raw-buffer`
+  - bodyLimitBytes：`52428800`
+  - upstreamTimeoutMs：`300000`
+  - streamIdleTimeoutMs：`300000`
+  - upstreamAcceptEncoding：`identity`
+  - issueCount：`0`
+- `openAiProxyRuntime`：`ok`
+  - `storeMode=redis`
+  - `limiterScope=redis`
+  - `redisReachable=true`
+- 剩余 warnings：
+  - `payments`：生产环境仍启用 mock 充值。
+  - `resources`：当前没有 online production Codex shared resource。
+- 剩余 errors：
+  - `resourceCredentials`：没有 active OpenAI refresh token 可应用凭据。
+  - `sub2`：`openai_group_has_no_active_accounts`，两个 OpenAI OAuth 账号均为 token invalidated/revoked。
+  - `localProxySmoke`：最新端到端自检在 `/v1/responses` 失败，代理日志错误码 `upstream_http_503`。
+
+结论：本地 OpenAI/Codex 反代的接口契约、原始请求体转发策略、Sub2API 上游转发策略、Redis limiter 运行态和流式超时日志策略已经能在管理员巡检中直接证明。当前真实生成不可用仍由外部 OpenAI/Sub2 上游 token 失效导致，需要管理员在 `反代状态` 页粘贴有效 refresh token 后重新运行账号测试与端到端自检。
