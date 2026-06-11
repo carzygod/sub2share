@@ -1951,20 +1951,36 @@ function App() {
     const form = new FormData(event.currentTarget);
     const accountId = String(form.get("accountId") || "");
     const clientId = String(form.get("clientId") || "").trim();
+    const proxyIdText = String(form.get("proxyId") || "").trim();
     const refreshToken = String(form.get("refreshToken") || "");
-    if (!confirmAdminAction("确认应用 OpenAI Refresh Token？", `Sub2 账号 ID：${accountId}\nClient ID：${clientId || "-"}`)) return;
-    const result = await api<{ ok: boolean; error?: string | null }>(
+    const runAccountTest = form.get("runAccountTest") === "on";
+    const runSmokeTest = form.get("runSmokeTest") === "on";
+    const smokeModel = optionalFormString(form, "smokeModel");
+    if (!confirmAdminAction("确认应用 OpenAI Refresh Token？", `Sub2 账号 ID：${accountId}\nClient ID：${clientId || "-"}\nProxy ID：${proxyIdText || "-"}\n应用后测试账号：${runAccountTest ? "是" : "否"}\n端到端自检：${runSmokeTest ? "是" : "否"}\n自检模型：${smokeModel ?? "-"}`)) return;
+    const result = await api<Sub2CredentialApplyResult>(
       `/api/admin/sub2/accounts/${accountId}/apply-openai-refresh-token`,
       {
         method: "POST",
         body: JSON.stringify({
           refreshToken,
-          clientId: clientId || undefined
+          clientId: clientId || undefined,
+          proxyId: proxyIdText ? Number(proxyIdText) : undefined,
+          runAccountTest,
+          runSmokeTest,
+          smokeModel
         })
       }
     );
     event.currentTarget.reset();
-    setMessage(result.ok ? "OpenAI 上游凭据已应用" : `凭据应用失败：${result.error ?? "未知错误"}`);
+    if (result.test) setSub2Tests((current) => ({ ...current, [result.accountId]: result.test! }));
+    if (result.smokeTest) setSub2Smoke(result.smokeTest);
+    const testMessage = result.test
+      ? `，测试${result.test.ok ? "通过" : "失败"} / HTTP ${result.test.statusCode} / ${testSummary(result.test)}`
+      : "";
+    const smokeMessage = result.smokeTest
+      ? result.smokeTest.ok ? "，端到端通过" : `，端到端失败 / ${smokeSummary(result.smokeTest)}`
+      : result.smokeTestSkippedReason ? `，端到端跳过：${credentialApplySmokeSkipLabel(result.smokeTestSkippedReason)}` : "";
+    setMessage(result.result.ok ? `OpenAI 上游凭据已应用到账号 #${result.accountId}${testMessage}${smokeMessage}` : `凭据应用失败：${result.result.error ?? "未知错误"}${smokeMessage}`);
     await refresh("sub2");
   }
 
@@ -3990,6 +4006,16 @@ function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, on
         </select>
         <input name="refreshToken" type="password" placeholder="OpenAI refresh token" autoComplete="off" required />
         <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
+        <input name="proxyId" type="number" min={1} placeholder="proxy_id，可选" />
+        <label className="checkbox-line">
+          <input name="runAccountTest" type="checkbox" defaultChecked />
+          <span>应用后测试账号</span>
+        </label>
+        <label className="checkbox-line">
+          <input name="runSmokeTest" type="checkbox" />
+          <span>应用后端到端自检</span>
+        </label>
+        <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
         <button>应用凭据</button>
       </form>
       <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "凭据 / 调度", "并发", "最近错误 / 测试结果", "操作"]}>

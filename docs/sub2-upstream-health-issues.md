@@ -51,6 +51,7 @@
 - 管理员在系统巡检页可以直接看到 `/v1/responses` 真实生成失败是否来自上游调度阻断。
 - 当阻断原因为 `openai_group_has_no_active_accounts` 时，管理员可以从同一行看到“刷新/测试现有账号或应用有效 refresh token，再运行端到端自检”的建议，并跳到反代状态页继续执行账号刷新、账号测试、端到端自检或凭据应用。
 - 管理员可以在候选样本中直接看到具体失效账号，例如账号 ID、名称、凭据配置状态、是否可调度和 OpenAI 返回的 token invalidated/token revoked 摘要，减少进入 Sub2 状态页前的二次排查。
+- 管理员在反代状态页直接粘贴 OpenAI refresh token 时，系统会默认在应用成功后测试账号；勾选 `应用后端到端自检` 后，还会继续验证本地 `/v1/models` 与 `/v1/responses` 反代链路。
 - 问题样本不包含上游凭据、明文 Key 或 refresh token，只展示可排障的聚合状态。
 
 ## 验证方式

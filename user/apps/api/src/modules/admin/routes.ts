@@ -469,7 +469,10 @@ const sub2SmokeTestSchema = z.object({
 const sub2OpenAiRefreshTokenSchema = z.object({
   refreshToken: z.string().trim().min(10),
   clientId: z.string().trim().min(1).max(240).optional(),
-  proxyId: z.coerce.number().int().positive().optional()
+  proxyId: z.coerce.number().int().positive().optional(),
+  runAccountTest: z.boolean().default(true),
+  runSmokeTest: z.boolean().default(false),
+  smokeModel: z.string().trim().min(1).max(160).optional()
 });
 
 const usageSyncSchema = z.object({
@@ -3015,13 +3018,50 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const { id } = sub2AccountParamsSchema.parse(request.params);
     const input = sub2OpenAiRefreshTokenSchema.parse(request.body ?? {});
     const result = await sub2Client.applyOpenAiRefreshToken(id, input);
+    let testResult: Sub2GatewayAccountTestResult | null = null;
+    let smokeTest: Sub2ProxySmokeTestResult | null = null;
+    let smokeTestSkippedReason: string | null = null;
+    if (result.ok && input.runAccountTest) {
+      testResult = await testSub2AccountForResourceApply(id);
+    }
+    if (input.runSmokeTest) {
+      if (!result.ok) {
+        smokeTestSkippedReason = "credential_apply_failed";
+      } else if (testResult && !testResult.ok) {
+        smokeTestSkippedReason = "sub2_account_test_failed";
+      } else {
+        smokeTest = await runLocalOpenAiProxySmokeTest(input.smokeModel);
+      }
+    }
     await writeAuditLog(request, actor.id, "admin.sub2.account.apply_openai_refresh_token", "sub2_account", String(id), null, {
       ok: result.ok,
       refreshed: result.refreshed,
       applied: result.applied,
-      error: result.error
+      error: result.error,
+      testRequested: input.runAccountTest,
+      test: testResult ? {
+        ok: testResult.ok,
+        statusCode: testResult.statusCode,
+        events: testResult.events.map((event) => event.type ?? event.message ?? "event")
+      } : null,
+      smokeTestRequested: input.runSmokeTest,
+      smokeTestSkippedReason,
+      smokeTest: smokeTest ? {
+        ok: smokeTest.ok,
+        model: smokeTest.model,
+        keyDisabled: smokeTest.keyDisabled,
+        localProxy: smokeTest.localProxy,
+        models: smokeTest.models,
+        responses: smokeTest.responses
+      } : null
     });
-    return adminOk(reply, result);
+    return adminOk(reply, {
+      accountId: id,
+      result,
+      test: testResult,
+      smokeTest,
+      smokeTestSkippedReason
+    });
   });
 
   adminCapabilityRouteExists = (operation) => app.hasRoute({
