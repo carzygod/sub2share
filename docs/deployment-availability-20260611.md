@@ -675,3 +675,78 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：本轮把发布过程中的“进程是否真的运行在当前 release”纳入后台巡检证据。完整 OpenAI/Codex 反代真实生成仍取决于有效 OpenAI 上游凭据补录或重新授权。
+
+## 2026-06-11 19:09 资源凭据维修账号候选补强
+
+### 发布版本
+
+- `5714885 fix: surface credential repair account candidates`
+
+### 本轮修复
+
+- `resourceCredentials.detail.issues` 在 `openai_refresh_token_candidate_missing` 场景下新增 Sub2 账号维修候选字段：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `resourceCredentials.detail.samples` 新增 `sampleType=sub2_account_repair_candidate`，直接列出可优先补 OpenAI refresh token 的 Sub2 账号候选。
+- 新增 `resource-credential-health.ts` 纯函数和 `admin-resource-credential-health.test.ts`，覆盖账号候选字段映射、空候选处理和样本生成。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：51/51 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/admin run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：51/51 通过。
+- 服务端 `pnpm build`：通过。
+- 发布脚本启动后校验：
+  - 4100 cwd：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100 cwd：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101 cwd：`/opt/zhisuan-yizhan/user/apps/admin`
+- 当前 release marker：`commit=5714885`，`deployed_at=20260611T110759Z`。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+
+`deploymentRuntime` 当前为 ok：
+
+- commit：`5714885`
+
+`resourceCredentials` 当前仍为 error，但已带出维修账号候选：
+
+- issueType：`openai_refresh_token_candidate_missing`
+- sub2Status：`true`
+- sub2AccountId：`2`
+- sub2AccountName：`1`
+- accountStatus：`error`
+- credentialsStatus：`configured(3)`
+- schedulable：`false`
+- repairAction：`apply_openai_refresh_token_to_sub2_account`
+- repairSampleCount：`2`
+- firstRepairSample.message：`Token revoked (401): Your authentication token has been invalidated. Please try signing in again.`
+
+剩余阻塞仍未变化：
+
+- Sub2/OpenAI 上游账号凭据失效，需要管理员补入有效 OpenAI refresh token 或重新授权。
+- 本地 `/v1/*` 反代契约、限流、CORS、部署运行态和管理员入口均继续正常。
+
+结论：管理员现在可以在统一巡检页直接看到应优先修复的 Sub2 OpenAI 账号，而不是只看到“缺少 active refresh token”。这进一步缩短了从巡检发现到反代状态页补 token、测试账号、重跑端到端自检的路径。
