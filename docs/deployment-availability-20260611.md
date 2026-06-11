@@ -285,3 +285,68 @@ Sub2 账号复查：
 - `resources` warning：没有 online Codex shared resource。
 
 结论：管理员现在可以从“可用性巡检”直接跳到 Sub2 状态页或共享资源详情完成凭据补录/应用。完整 OpenAI/Codex 反代真实生成仍需要补充一个有效 OpenAI refresh token 或重新授权现有 Sub2 OpenAI OAuth 账号。
+
+## 2026-06-11 17:58 OpenAI/Codex 反代路由契约复查
+
+### 发布版本
+
+- `8cfc216 test: assert openai proxy route contract`
+
+### 本轮修复
+
+- 将本地 OpenAI/Codex 反代运行路由抽为共享契约：
+  - `openAiProxyRoutePath=/v1/*`
+  - `openAiProxyRouteMethods=GET,HEAD,POST,PUT,PATCH,DELETE`
+- `registerOpenAiProxyRoutes()` 使用该契约注册真实 Fastify 路由。
+- `inspectOpenAiProxyContract()` 新增路由覆盖指标，用于系统健康巡检：
+  - `supportsAllV1ChildPaths`
+  - `supportsReadMethods`
+  - `supportsMutationMethods`
+  - `routesResponsesApi`
+  - `routesResponsesItems`
+  - `routesChatCompletions`
+  - `routesModelMetadata`
+- API 测试新增“every concrete OpenAI v1 child path”用例，覆盖 `/v1/responses`、`/v1/responses/:id/input_items`、`/v1/chat/completions`、`/v1/models/:id`。
+
+### 验证
+
+- 本地 `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/api test`：41/41 通过。
+- 本地 `pnpm.cmd --filter @zyz/api run build`：通过。
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：41/41 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`openAiProxyContract` 当前为 `ok`，关键指标：
+
+- endpoint：`http://192.168.31.26:4100/v1`
+- routePath：`/v1/*`
+- routeMethods：`GET,HEAD,POST,PUT,PATCH,DELETE`
+- supportsAllV1ChildPaths：`true`
+- supportsReadMethods：`true`
+- supportsMutationMethods：`true`
+- routesResponsesApi：`true`
+- routesResponsesItems：`true`
+- routesChatCompletions：`true`
+- routesModelMetadata：`true`
+
+系统健康总览保持：
+
+- totalChecks：`25`
+- ok：`20`
+- warning：`2`
+- error：`3`
+
+剩余阻断仍为外部上游凭据问题：
+
+- `sub2`：`openai_group_has_no_active_accounts`。
+- `resourceCredentials`：没有 active 且可应用的 OpenAI refresh token 候选。
+- `localProxySmoke`：最近一次失败仍位于 `/v1/responses`。
+
+结论：本地反代内核已经明确以 Sub2API 为上游覆盖完整 OpenAI `/v1/*` 子路径和 Codex 常用 Responses API；真实生成仍需补齐有效 OpenAI 上游账号凭据。
