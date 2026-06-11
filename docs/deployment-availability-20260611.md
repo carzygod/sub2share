@@ -1197,3 +1197,74 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：支付配置 warning 现在能直接定位到充值流水筛选结果，部署脚本也能严格识别旧 release cwd。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
+
+## 2026-06-12 01:19 生产资源健康口径复查
+
+### 发布版本
+
+- `e1eaf6e fix: exclude internal supplier resources from health`
+
+### 本轮修复
+
+- `resources` 系统健康检查现在排除内部禁用 smoke 资源 `sub2AccountId=admin-disabled-smoke-resource`。
+- dashboard 在线资源数量、资源状态分组、Codex resource 总量和 online 数量均按生产资源口径统计。
+- `resources.metrics.ignoredInternalResources` 新增内部资源忽略数量，便于管理员理解数据库中仍存在内部记录。
+- `resourceCredentials` 只把生产 Codex 资源上的 OpenAI refresh token 凭据视为可应用候选。
+- 后台资源列表保持不变，仍可审计或清理内部资源。
+
+### 本地验证
+
+- `npm.cmd test` in `user/apps/api`：57/57 通过。
+- `npm.cmd run typecheck` in `user/apps/api`：通过。
+- `npm.cmd run build` in `user/apps/api`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=e1eaf6e`
+  - `deployed_at=20260611T171718Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- cwd：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user`
+  - 3101：`/opt/zhisuan-yizhan/user`
+
+### 线上系统健康复查
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`28`
+- ok：`23`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T17:19:42.913Z`
+
+`resources` 当前仍为 warning，但已经不再指向内部禁用资源：
+
+- summary：`No online production Codex shared resource`
+- totalCodexResources：`0`
+- onlineCodexResources：`0`
+- ignoredInternalResources：`1`
+- issueSamples：`0`
+- issueType：`codex_online_resource_missing`
+- resourceId：未返回
+- resourceStatus：`null`
+- samples：`[]`
+
+剩余阻断：
+
+- `resourceCredentials` error：没有生产 Codex 资源上的 active 且可应用 OpenAI refresh token；Sub2 account `#2` / `1` 仍报告 token invalidated。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成失败，request id `d5435936-acc1-41fe-88ed-c99850834d22`，proxy request log id `efd432c8-1b7e-4830-b4a6-67f216aa82e2`。
+- `payments` warning：生产环境仍为 `PAYMENT_PROVIDER=mock`。
+
+结论：资源健康误报已修复。当前没有真实生产 Codex 共享资源，因此 `resources` warning 保留，但不再误导管理员打开内部 disabled smoke resource。完整 OpenAI/Codex 真实生成仍由上游 OpenAI/Sub2 refresh token 失效阻断。
