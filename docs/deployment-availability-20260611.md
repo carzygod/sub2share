@@ -2411,3 +2411,78 @@ CORS 复查：
 ### 结论
 
 管理员共享资源详情现在可以直接展示“最近凭据应用到 Sub2”的历史证据。当前线上没有凭据应用审计记录，因此字段为空数组；一旦管理员提交有效 OpenAI refresh token 并应用到 Sub2，资源详情页会保留应用、账号测试、端到端烟测和 requestId 摘要。真实 `/v1/responses` 生成仍未恢复，剩余阻断仍是 Sub2/OpenAI 上游无 active 账号和生产支付 mock warning。
+## 2026-06-12 04:37 Sub2 直接 Token 应用同步共享资源发布与线上复查
+
+### 发布版本
+
+- `b0e2733 feat: sync direct sub2 token apply to resources`
+
+### 本轮修复
+
+- `POST /api/admin/sub2/accounts/:id/apply-openai-refresh-token` 新增显式资源同步字段：
+  - `saveToResource`
+  - `resourceId`
+  - `supplierEmail`
+- 默认不保存 refresh token；只有管理员显式启用 `saveToResource` 时才同步保存。
+- 如果填写 `resourceId`，系统会更新该 Codex 共享资源的 `sub2AccountId`、状态、`lastCheckedAt` 和加密凭据。
+- 如果未填写 `resourceId`，但填写 `supplierEmail`，系统会为该供给方新建 Codex 共享资源并保存加密凭据。
+- 只有 Sub2 应用成功后才保存本地资源凭据；Sub2 应用失败时返回 `resourceCredentialSync.saved=false`。
+- 保存动作写入 `admin.sub2.account.save_refresh_token_resource` 审计日志。
+- Admin “反代状态”页 Apply OpenAI Credentials 表单新增：
+  - `保存为共享资源凭据`
+  - `目标资源 ID`
+  - `供给方邮箱，新建资源时必填`
+- 新增文档：`docs/sub2-direct-token-resource-sync.md`。
+- 总需求文档追加 `18.135 Sub2 直接应用 Token 后同步共享资源凭据`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=b0e2733`
+  - `deployed_at=20260611T203717Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- Admin 生产 JS 资源包含：
+  - `saveToResource`
+  - `resourceCredentialSync`
+- 本地预检验证：
+  - 请求：`POST /api/admin/sub2/accounts/2/apply-openai-refresh-token`
+  - body：`saveToResource=true`，但未提供 `resourceId` 和 `supplierEmail`
+  - 结果：HTTP `400`
+  - error code：`supplier_email_required`
+  - 结论：保存目标参数缺失时会在本地预检阶段拦截，不会先调用 Sub2 或写入本地资源凭据。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+
+### 结论
+
+管理员现在可以从“反代状态”页直接完成“应用 OpenAI refresh token 到 Sub2 + 显式同步保存平台共享资源凭据”的闭环。该能力不会默认保存 token，必须由管理员勾选并通过二次确认；保存前会校验目标资源或供给方邮箱。真实 `/v1/responses` 仍未恢复，因为线上仍缺少有效 OpenAI refresh token / active Sub2 OpenAI 账号。
