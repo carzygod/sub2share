@@ -1,8 +1,8 @@
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import Fastify from "fastify";
-import { env } from "./config/env.js";
-import { apiCorsOptions } from "./common/cors.js";
+import { env, openAiProxyPublicEndpoint } from "./config/env.js";
+import { buildApiCorsOptions } from "./common/cors.js";
 import { sendError } from "./common/errors.js";
 import { ok } from "./common/response.js";
 import { prisma } from "./common/prisma.js";
@@ -27,7 +27,14 @@ export async function buildServer() {
     genReqId: () => crypto.randomUUID()
   });
 
-  await app.register(cors, apiCorsOptions);
+  await app.register(cors, buildApiCorsOptions({
+    nodeEnv: env.NODE_ENV,
+    appPublicUrl: env.APP_PUBLIC_URL,
+    adminPublicUrl: env.ADMIN_PUBLIC_URL,
+    apiPublicUrl: env.API_PUBLIC_URL,
+    openAiProxyPublicEndpoint,
+    corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
+  }));
   await app.register(jwt, { secret: env.JWT_ACCESS_SECRET });
 
   app.setErrorHandler((error, _request, reply) => sendError(reply, error));

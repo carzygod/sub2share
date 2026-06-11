@@ -19,6 +19,7 @@ import {
 } from "../../common/internal-records.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
+import { inspectApiCorsPolicy } from "../../common/cors.js";
 import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
 import { sub2Client, type Sub2GatewayAccountStatus, type Sub2GatewayAccountTestResult, type Sub2KeyResult, type Sub2ProxySmokeTestResult } from "../../integrations/sub2/client.js";
 import { expireOverdueRentals } from "../../jobs/expire-overdue-rentals.js";
@@ -3344,6 +3345,7 @@ async function buildSystemHealthReport() {
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
   const openAiProxyRuntime = await inspectOpenAiProxyRuntimeState(checkedAt.getTime());
   const resourceCredentialReadiness = await inspectResourceCredentialReadiness(sub2Status);
+  const apiCorsPolicy = apiCorsPolicyHealthCheck();
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
@@ -3432,6 +3434,7 @@ async function buildSystemHealthReport() {
       oauthStateStore.issues.length > 0 ? { issues: oauthStateStore.issues } : undefined
     ),
     authTokenConfigHealthCheck(),
+    apiCorsPolicy,
     paymentProviderHealthCheck(),
     resourceAvailability,
     resourceCredentialReadiness,
@@ -4773,6 +4776,39 @@ function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredA
       : `${result.issues.length} 个管理员入口覆盖问题`,
     result.summary,
     result.issues.length > 0 ? { issues: result.issues } : undefined
+  );
+}
+
+function apiCorsPolicyHealthCheck() {
+  const result = inspectApiCorsPolicy({
+    nodeEnv: env.NODE_ENV,
+    appPublicUrl: env.APP_PUBLIC_URL,
+    adminPublicUrl: env.ADMIN_PUBLIC_URL,
+    apiPublicUrl: env.API_PUBLIC_URL,
+    openAiProxyPublicEndpoint,
+    corsAllowedOrigins: env.CORS_ALLOWED_ORIGINS
+  });
+  return systemHealthCheck(
+    "corsPolicy",
+    "CORS 白名单",
+    result.ok ? "ok" : "error",
+    result.summary.enforced
+      ? result.ok
+        ? `生产 CORS 已限制为 ${result.summary.allowedOriginCount} 个 origin`
+        : `${result.issues.length} 个 CORS 白名单配置问题`
+      : "非生产环境允许任意 origin",
+    {
+      nodeEnv: result.summary.nodeEnv,
+      enforced: result.summary.enforced,
+      allowedOriginCount: result.summary.allowedOriginCount,
+      configuredOriginCount: result.summary.configuredOriginCount,
+      invalidOriginCount: result.summary.invalidOriginCount,
+      exposesHeaders: result.summary.exposesHeaders
+    },
+    {
+      allowedOrigins: result.summary.allowedOrigins,
+      issues: result.issues
+    }
   );
 }
 
