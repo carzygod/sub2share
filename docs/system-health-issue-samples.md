@@ -17,7 +17,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`areaId`、`view`、`resourceId`、`resourceType`、`resourceStatus`、`resourceScope`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`walletTransactionType`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`upstreamRequestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`areaId`、`view`、`resourceId`、`resourceType`、`resourceStatus`、`resourceScope`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`walletTransactionType`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON；如果后端返回 `actionHint`，页面会追加展示维修建议。
   - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持共享资源列表、资源详情、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
@@ -34,7 +34,7 @@
 - 用量同步调度巡检发现生产环境禁用自动同步、间隔过长或启动后不立即同步时，管理员可以直接看到配置风险。
 - Pending 用量账务巡检发现待恢复扣费 usage 时，管理员可以直接看到 usage、租赁、用户、待扣金额、待结算金额和积压时长。
 - 支付充值配置巡检发现生产 mock 充值或禁用充值时，管理员可以一键打开余额列表、余额流水和售出情况；如果 issue 带 `walletTransactionType=recharge`，余额流水会直接筛选充值类型。
-- 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、错误码、模型、路径、耗时和关联租赁/Key。
+- 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、上游 request id、错误码、模型、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 资源凭据巡检发现没有 active 可应用 refresh token 时，会从 Sub2/OpenAI 巡检结果中暴露 `sub2_account_repair_candidate`，让管理员直接看到可优先补 token 的 Sub2 账号 ID、名称、状态、凭据状态和调度状态。
 - 资源凭据巡检的 `openai_refresh_token_candidate_missing` 问题会同时暴露 `resourceList=true`、`resourceScope=production`、`resourceType=codex` 和 `sub2Status=true`，管理员可以在同一行进入生产共享资源列表创建/补凭据，或进入反代状态页直接应用 fresh token。

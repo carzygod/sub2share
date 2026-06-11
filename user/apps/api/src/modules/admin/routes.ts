@@ -2917,6 +2917,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { rentalId: containsText(proxyRequestLookup) },
           { apiKeyId: containsText(proxyRequestLookup) },
           { apiKeyPrefix: containsText(proxyRequestLookup) },
+          { upstreamRequestId: containsText(proxyRequestLookup) },
           { method: containsText(proxyRequestLookup) },
           { path: containsText(proxyRequestLookup) },
           { model: containsText(proxyRequestLookup) },
@@ -3388,6 +3389,7 @@ async function buildSystemHealthReport() {
         model: true,
         statusCode: true,
         upstreamStatusCode: true,
+        upstreamRequestId: true,
         errorCode: true,
         durationMs: true,
         createdAt: true
@@ -3583,10 +3585,11 @@ async function buildSystemHealthReport() {
           apiKeyPrefix: log.apiKeyPrefix,
           statusCode: log.statusCode,
           upstreamStatusCode: log.upstreamStatusCode,
+          upstreamRequestId: log.upstreamRequestId,
           errorCode: log.errorCode,
           model: log.model,
           path: log.path,
-          message: `${log.method} ${log.path} / model ${log.model ?? "-"} / HTTP ${log.statusCode ?? "-"} / upstream ${log.upstreamStatusCode ?? "-"} / ${log.errorCode ?? "-"} / ${log.durationMs}ms`,
+          message: `${log.method} ${log.path} / model ${log.model ?? "-"} / HTTP ${log.statusCode ?? "-"} / upstream ${log.upstreamStatusCode ?? "-"} / upstream request ${log.upstreamRequestId ?? "-"} / ${log.errorCode ?? "-"} / ${log.durationMs}ms`,
           createdAt: log.createdAt.toISOString()
         }))
       } : undefined

@@ -16,13 +16,15 @@
 - 429 请求量、RPM/TPM 和并发限制返回 `rate_limit_error`。
 - 502/504 上游不可用或超时返回 `api_error`。
 - Sub2API/OpenAI 上游实际返回 HTTP `>=400` 时，本地不改写客户端响应，但会在 `ProxyRequestLog.errorCode` 中记录 `upstream_http_<status>`，例如 `upstream_http_429` 或 `upstream_http_500`。
+- Sub2API/OpenAI 上游响应中若包含 `x-request-id`、`openai-request-id`、`x-openai-request-id` 或 `request-id`，本地会将其保存为 `ProxyRequestLog.upstreamRequestId`，用于跨 Sub2API/上游排障。
+- CORS 暴露头除 `x-proxy-request-id` 外，也暴露常见上游 request id 响应头，便于浏览器客户端把本地和上游诊断 ID 一并提交给管理员。
 - 新增 Node test 覆盖类型映射和 payload 结构，避免后续网关错误格式回归。
 - `GET /api/admin/system-health` 新增 `openAiProxyContract` 检查项，会验证公开 endpoint、CORS 请求 ID 暴露头和关键本地错误类型映射。
 
 ## 管理员价值
 
 - 用户侧 SDK 或集成方可以按 `error.type` 区分余额问题、限流问题和上游可用性问题。
-- 管理员排障时仍可依赖原有 `error.code`、HTTP 状态码和 `x-proxy-request-id` 精确定位。
+- 管理员排障时仍可依赖原有 `error.code`、HTTP 状态码和 `x-proxy-request-id` 精确定位；如果上游返回 request id，也可以用 `upstreamRequestId` 串联 Sub2API 或 OpenAI 上游侧日志。
 - 管理员可以在 `可用性巡检` 中提前发现反代契约配置或本地错误结构回归。
 - 该能力提升 OpenAI/Codex 反代入口对通用 OpenAI 客户端的兼容性，同时不改变已有业务错误码。
 

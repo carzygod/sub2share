@@ -8,6 +8,7 @@ import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 import {
   attachProxyRequestIdHeader,
   estimateProxyInputTokens,
+  extractUpstreamRequestId,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   openAiProxyRouteMethods,
@@ -45,6 +46,7 @@ interface ProxyRequestLogEntry {
   errorCode?: string | null;
   estimatedInputTokens?: number;
   model?: string | null;
+  upstreamRequestId?: string | null;
 }
 
 interface ForwardedUpstream {
@@ -199,6 +201,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           ...logContext,
           statusCode: upstreamResponse.status,
           upstreamStatusCode: upstreamResponse.status,
+          upstreamRequestId: extractUpstreamRequestId(upstreamResponse.headers),
           errorCode: upstreamHttpProxyErrorCode(upstreamResponse.status),
           estimatedInputTokens: rateLimitCheck.estimatedTokens
         });
@@ -317,6 +320,7 @@ async function writeProxyRequestLog(
         model: entry.model ?? proxyRequestModel(request.body),
         statusCode: entry.statusCode,
         upstreamStatusCode: entry.upstreamStatusCode ?? null,
+        upstreamRequestId: entry.upstreamRequestId ?? null,
         errorCode: entry.errorCode ?? null,
         durationMs: Math.max(0, Date.now() - startedAt),
         requestBytes: requestBodyByteLength(request),

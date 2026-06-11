@@ -1,5 +1,6 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
-export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName];
+export const upstreamRequestIdHeaderNames = ["x-request-id", "openai-request-id", "x-openai-request-id", "request-id"] as const;
+export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames];
 export const openAiProxyRoutePath = "/v1/*";
 export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
@@ -27,6 +28,7 @@ export const openAiProxyForwardingContract = {
   stripsInboundAcceptEncoding: true,
   reinjectsLocalBearerToSub2: true,
   forwardsRequestId: true,
+  capturesUpstreamRequestId: true,
   forwardsForwardedHostAndProto: true,
   abortsUpstreamOnClientClose: true,
   logsStreamCompletion: true,
@@ -100,6 +102,15 @@ export function upstreamHttpProxyErrorCode(statusCode: number | null | undefined
   return `upstream_http_${statusCode}`;
 }
 
+export function extractUpstreamRequestId(headers: Pick<Headers, "get">) {
+  for (const headerName of upstreamRequestIdHeaderNames) {
+    const value = headers.get(headerName);
+    const normalized = normalizeHeaderValue(value);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: OpenAiProxyContractRuntimeOptions = {}) {
   const trimmedEndpoint = endpoint.trim();
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
@@ -142,11 +153,19 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   }
 
   const corsExposesRequestId = openAiProxyCorsExposedHeaders.includes(proxyRequestIdHeaderName);
+  const corsExposesUpstreamRequestIds = upstreamRequestIdHeaderNames.every((headerName) => openAiProxyCorsExposedHeaders.includes(headerName));
   if (!corsExposesRequestId) {
     issues.push({
       type: "request_id_header_not_exposed",
       severity: "error",
       message: "CORS must expose x-proxy-request-id for browser clients"
+    });
+  }
+  if (!corsExposesUpstreamRequestIds) {
+    issues.push({
+      type: "upstream_request_id_headers_not_exposed",
+      severity: "error",
+      message: "CORS must expose upstream request id headers for browser-side OpenAI proxy diagnostics"
     });
   }
   if (!supportsAllV1ChildPaths) {
@@ -218,7 +237,9 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesChatCompletions,
       routesModelMetadata,
       requestIdHeader: proxyRequestIdHeaderName,
+      upstreamRequestIdHeaders: upstreamRequestIdHeaderNames.join(","),
       corsExposesRequestId,
+      corsExposesUpstreamRequestIds,
       requestBodyMode: openAiProxyForwardingContract.requestBodyMode,
       parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,
       forwardsOriginalBodyBytes: openAiProxyForwardingContract.forwardsOriginalBodyBytes,
@@ -231,6 +252,7 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       stripsInboundAcceptEncoding: openAiProxyForwardingContract.stripsInboundAcceptEncoding,
       reinjectsLocalBearerToSub2: openAiProxyForwardingContract.reinjectsLocalBearerToSub2,
       forwardsRequestId: openAiProxyForwardingContract.forwardsRequestId,
+      capturesUpstreamRequestId: openAiProxyForwardingContract.capturesUpstreamRequestId,
       forwardsForwardedHostAndProto: openAiProxyForwardingContract.forwardsForwardedHostAndProto,
       abortsUpstreamOnClientClose: openAiProxyForwardingContract.abortsUpstreamOnClientClose,
       logsStreamCompletion: openAiProxyForwardingContract.logsStreamCompletion,
@@ -243,6 +265,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
     errorTypes,
     issues
   };
+}
+
+function normalizeHeaderValue(value: string | null | undefined) {
+  const normalized = value?.replace(/[\r\n]/g, " ").trim() ?? "";
+  return normalized ? normalized.slice(0, 240) : null;
 }
 
 function validatePositiveIntegerRuntimeOption(

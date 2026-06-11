@@ -3,9 +3,9 @@ import test from "node:test";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { apiCorsOptions, buildApiCorsOptions, inspectApiCorsPolicy } from "../src/common/cors.js";
-import { proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
+import { openAiProxyCorsExposedHeaders, proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
 
-test("api cors exposes the proxy request id header on browser requests", async () => {
+test("api cors exposes local and upstream proxy request id headers on browser requests", async () => {
   const app = Fastify({ logger: false });
   try {
     await app.register(cors, apiCorsOptions);
@@ -24,7 +24,7 @@ test("api cors exposes the proxy request id header on browser requests", async (
 
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers["access-control-allow-origin"], "https://app.example.test");
-    assert.equal(response.headers["access-control-expose-headers"], proxyRequestIdHeaderName);
+    assert.equal(response.headers["access-control-expose-headers"], openAiProxyCorsExposedHeaders.join(", "));
     assert.equal(response.headers[proxyRequestIdHeaderName], "req-browser");
   } finally {
     await app.close();

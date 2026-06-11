@@ -632,6 +632,7 @@ interface ProxyRequestLogRow {
   model?: string | null;
   statusCode?: number | null;
   upstreamStatusCode?: number | null;
+  upstreamRequestId?: string | null;
   errorCode?: string | null;
   durationMs: number;
   requestBytes: number;
@@ -4140,7 +4141,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
       <ListControls
         query={query}
         meta={meta}
-        searchPlaceholder="x-proxy-request-id / user / rental / key / model / path"
+        searchPlaceholder="request id / upstream id / user / rental / key / model / path"
         statusOptions={proxyStatusOptions}
         actionPlaceholder="error code contains"
         onDraft={onDraft}
@@ -4155,6 +4156,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
             <td>
               <strong>{log.requestId}</strong>
               <button className="secondary mini" type="button" title="复制请求 ID" onClick={() => onCopyRequestId(log.requestId)}><Copy size={14} /></button>
+              {log.upstreamRequestId && <small>upstream {log.upstreamRequestId}</small>}
             </td>
             <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.user?.displayName ?? log.user?.id ?? "-"}</small></td>
             <td>
@@ -4867,7 +4869,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "upstreamRequestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -4881,7 +4883,7 @@ function systemHealthIssueMessage(record: Record<string, unknown>, raw: unknown)
 }
 
 function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string) {
-  const directLookup = textValue(issue.requestId) ?? textValue(issue.proxyRequestLogId);
+  const directLookup = textValue(issue.requestId) ?? textValue(issue.proxyRequestLogId) ?? textValue(issue.upstreamRequestId);
   if (directLookup) return directLookup;
   if (checkId !== "proxy") return undefined;
   return textValue(issue.rentalId) ?? textValue(issue.apiKeyId) ?? textValue(issue.apiKeyPrefix);
@@ -5363,9 +5365,10 @@ function exportAuditLogsCsv(rows: AuditLogRow[], scope = "current-page") {
 }
 
 function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-page") {
-  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "upstreamRequestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.requestId,
+    log.upstreamRequestId,
     log.user?.email,
     log.rentalId,
     log.apiKey?.keyPrefix ?? log.apiKeyPrefix,

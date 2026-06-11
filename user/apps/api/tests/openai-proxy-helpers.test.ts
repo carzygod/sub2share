@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   attachProxyRequestIdHeader,
   evaluateProxyRateLimitWindow,
+  extractUpstreamRequestId,
   estimateProxyInputTokens,
   inspectOpenAiProxyContract,
   inspectOpenAiProxyRuntime,
@@ -21,6 +22,7 @@ import {
   proxyRequestModel,
   pruneProxyRateLimitWindow,
   upstreamHttpProxyErrorCode,
+  upstreamRequestIdHeaderNames,
   type ProxyRateLimitWindow
 } from "../src/modules/openai-proxy/helpers.js";
 
@@ -151,8 +153,16 @@ test("normalizes copied proxy request id headers for admin search", () => {
   assert.equal(normalizeProxyRequestLookup("   "), "");
 });
 
-test("exposes the proxy request id header to browser clients", () => {
-  assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName]);
+test("exposes local and upstream request id headers to browser clients", () => {
+  assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames]);
+});
+
+test("extracts upstream request ids from common OpenAI and gateway headers", () => {
+  assert.equal(extractUpstreamRequestId(new Headers({ "openai-request-id": "req_openai" })), "req_openai");
+  assert.equal(extractUpstreamRequestId(new Headers({ "x-openai-request-id": " req_x_openai " })), "req_x_openai");
+  assert.equal(extractUpstreamRequestId({ get: (name) => name === "request-id" ? "req_generic\r\nignored" : null }), "req_generic  ignored");
+  assert.equal(extractUpstreamRequestId(new Headers({ "x-request-id": "sub2_req", "openai-request-id": "req_openai" })), "sub2_req");
+  assert.equal(extractUpstreamRequestId(new Headers({ "content-type": "application/json" })), null);
 });
 
 test("maps local proxy errors to OpenAI-compatible error types", () => {
@@ -206,7 +216,9 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesResponsesItems, true);
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
+  assert.equal(result.summary.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(result.summary.corsExposesRequestId, true);
+  assert.equal(result.summary.corsExposesUpstreamRequestIds, true);
   assert.equal(result.summary.requestBodyMode, "raw-buffer");
   assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
   assert.equal(result.summary.forwardsOriginalBodyBytes, true);
@@ -219,6 +231,7 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.stripsInboundAcceptEncoding, true);
   assert.equal(result.summary.reinjectsLocalBearerToSub2, true);
   assert.equal(result.summary.forwardsRequestId, true);
+  assert.equal(result.summary.capturesUpstreamRequestId, true);
   assert.equal(result.summary.forwardsForwardedHostAndProto, true);
   assert.equal(result.summary.abortsUpstreamOnClientClose, true);
   assert.equal(result.summary.logsStreamCompletion, true);

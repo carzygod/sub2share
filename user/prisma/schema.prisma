@@ -359,6 +359,7 @@ model ProxyRequestLog {
   model                String?
   statusCode           Int?
   upstreamStatusCode   Int?
+  upstreamRequestId    String?
   errorCode            String?
   durationMs           Int
   requestBytes         Int      @default(0)
@@ -376,6 +377,7 @@ model ProxyRequestLog {
   @@index([rentalId, createdAt])
   @@index([apiKeyId, createdAt])
   @@index([model, createdAt])
+  @@index([upstreamRequestId, createdAt])
   @@index([statusCode, createdAt])
   @@index([errorCode, createdAt])
 }

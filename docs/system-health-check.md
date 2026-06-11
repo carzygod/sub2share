@@ -35,12 +35,12 @@
 - 前端入口：检查 Web/Admin 静态入口是否可访问，并确认返回 HTML。
 - 管理员后端能力覆盖：检查用户、共享资源、余额、售出和 OpenAI/Codex 反代相关管理员 API 路由是否按能力矩阵注册。
 - 管理前端入口：检查 Admin 侧边栏是否覆盖用户、共享资源、余额、售出和 OpenAI/Codex 反代核心范围，所有列表型管理页面是否可达，以及 view 是否重复。
-- CORS 白名单：检查生产环境 API CORS 是否收敛到明确 origin，是否误用 `*`，以及是否继续暴露 `x-proxy-request-id`。
+- CORS 白名单：检查生产环境 API CORS 是否收敛到明确 origin，是否误用 `*`，以及是否继续暴露本地和上游 request id 诊断响应头。
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error，并返回最近 5 条充值流水候选样本。
 - 共享资源：检查异常资源、Codex 资源总数和 online Codex 资源数量；当没有 online Codex 共享资源或存在异常资源时返回问题样本和候选资源样本。
 - 资源凭据：检查 `API_KEY_ENCRYPTION_SECRET` 是否已配置，并统计 active OpenAI refresh token 是否已绑定可应用的 Sub2 账号；当 Sub2 上游无 active OpenAI 账号且没有可应用凭据时标记 error。
 - Sub2/OpenAI 上游：读取 Sub2API 网关状态和 OpenAI 分组可调度情况；若存在阻断原因，会返回结构化问题样本，包含 blocking reason、默认分组、OpenAI 账号数、active 账号数、网关可达性和维修建议。
-- OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露 `x-proxy-request-id`、本地错误类型是否符合 OpenAI 风格分类。
+- OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露本地/上游 request id、本地错误类型是否符合 OpenAI 风格分类。
 - OpenAI 反代运行态：统计当前 limiter store、共享作用域、Redis 可达性、活跃并发租约和 RPM/TPM 速率窗口；生产环境显式使用 memory 限流器标记 warning，Redis 不可达标记 error。
 - 本地反代自检：读取最近审计日志中的 OpenAI/Codex 端到端 smoke test 结果，包括直接 smoke、资源凭据应用 smoke 和 Sub2 直接应用 refresh token smoke；最近失败标记 error，超过 24 小时或缺少证据标记 warning，不会在巡检时主动发起真实 OpenAI 请求。
 - 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地/上游错误码、客户端中途断开、上游流异常和上游流空闲超时，并返回最近异常反代请求样本；上游 HTTP `>=400` 会以 `upstream_http_<status>` 进入错误码，样本会携带请求模型。
@@ -80,7 +80,7 @@
 - 管理后台问题样本表默认只展示后端返回的 issue 样本，候选样本表只展示后端返回的 samples 样本，前端每类最多聚合 100 条，避免巡检页因大量问题产生过重渲染。
 - 巡检问题样本的操作按钮只使用后端返回的定位字段做列表筛选、详情打开或跳转到反代状态页，不会绕过对应管理页面的权限、分页和脱敏边界。
 - 订单状态巡检默认返回最近 50 条 failed/refunding 订单问题样本，只做定位和重试可行性提示，不自动执行订单重试、退款或账务调整。
-- 反代请求巡检默认只返回最近 20 条异常样本，且只包含 request id、日志 id、租赁、Key 元数据、模型、HTTP 状态、错误码、路径、耗时和时间，不返回请求体或明文 Key；上游 HTTP 错误样本可通过 `upstream_http_<status>` 区分。
+- 反代请求巡检默认只返回最近 20 条异常样本，且只包含 request id、上游 request id、日志 id、租赁、Key 元数据、模型、HTTP 状态、错误码、路径、耗时和时间，不返回请求体或明文 Key；上游 HTTP 错误样本可通过 `upstream_http_<status>` 区分。
 - 用量同步调度巡检只读环境配置，不会启动或停止后台同步任务。
 - Pending 用量账务巡检只读，不自动扣费；真正的恢复扣费仍由 Sub2 usage 同步任务执行。
 - OAuth State 巡检只判断 state 存储模式和 Redis 连通性，不会发起真实第三方 OAuth 登录。
@@ -128,7 +128,7 @@
 
 `openAiProxyContract` 巡检从静态接口契约扩展为“接口契约 + 运行契约”：
 
-- 继续检查公开 endpoint 是否指向 `/v1`、`/v1/*` 路由覆盖、GET/HEAD/POST/PUT/PATCH/DELETE 方法、核心 OpenAI/Codex 路径、CORS `x-proxy-request-id` 暴露和 OpenAI 风格错误类型。
+- 继续检查公开 endpoint 是否指向 `/v1`、`/v1/*` 路由覆盖、GET/HEAD/POST/PUT/PATCH/DELETE 方法、核心 OpenAI/Codex 路径、CORS 本地/上游 request id 暴露和 OpenAI 风格错误类型。
 - 新增运行指标：
   - `requestBodyMode=raw-buffer`
   - `parsesAllContentTypesAsBuffer=true`
@@ -142,6 +142,8 @@
   - `reinjectsLocalBearerToSub2=true`
   - `stripsInboundAcceptEncoding=true`
   - `forwardsRequestId=true`
+  - `capturesUpstreamRequestId=true`
+  - `upstreamRequestIdHeaders=x-request-id,openai-request-id,x-openai-request-id,request-id`
   - `abortsUpstreamOnClientClose=true`
   - `logsStreamCompletion=true`
   - `logsStreamErrors=true`

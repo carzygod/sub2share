@@ -24,3 +24,10 @@
 - 管理员无需手工裁剪响应头，可以直接粘贴搜索并复制日志中的请求 ID。
 - 本地拦截和上游失败都能进入同一排查方式，减少售后排障时反复询问 Key、时间和路径的成本。
 - 该能力补齐 OpenAI/Codex 反代链路的可观测性闭环。
+
+## 2026-06-12 扩展
+
+- `ProxyRequestLog` 新增 `upstreamRequestId`，用于保存 Sub2API/OpenAI 响应头中的上游 request id。
+- 管理员 `反代请求` 搜索、列表和 CSV 导出支持上游 request id。
+- API CORS 暴露头除 `x-proxy-request-id` 外，也暴露 `x-request-id`、`openai-request-id`、`x-openai-request-id` 和 `request-id`。
+- 详细说明见 `docs/proxy-request-upstream-request-id.md`。

@@ -40,3 +40,9 @@ user/prisma/migrations/0014_proxy_request_log_model/migration.sql
 
 - 只保存模型名，不保存 prompt、input、messages、tool 调用参数或响应内容。
 - 模型字段来自客户端请求体，仅作为排障线索；最终账务仍以 Sub2 usage 同步记录为准。
+
+## 2026-06-12 相关扩展
+
+- `ProxyRequestLog` 新增 `upstreamRequestId`，用于保存 Sub2API/OpenAI 响应头中的上游 request id。
+- 管理员 `反代请求` 列表、CSV 和系统健康异常样本会展示该字段。
+- 详细说明见 `docs/proxy-request-upstream-request-id.md`。

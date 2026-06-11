@@ -18,6 +18,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - `model`：客户端请求体顶层 `model` 字段；无效 JSON、缺失字段或非 JSON 请求为空。
 - `statusCode`：最终返回给客户端的状态码。
 - `upstreamStatusCode`：Sub2API 上游状态码，本地拦截时为空。
+- `upstreamRequestId`：Sub2API/OpenAI 响应头中的上游 request id，本地拦截或上游未返回时为空。
 - `errorCode`：本地拦截、上游不可用或流式响应异常的错误码。
 - `durationMs`：非流式请求记录完整处理耗时；流式请求会先在上游响应头返回时落库，并在响应流结束、错误或客户端断开后回写完整持续时间。
 - `requestBytes`：请求体字节数。
@@ -41,13 +42,14 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
   - Sub2API 上游超时或不可用。
   - Sub2API 正常返回，包括 2xx、4xx、5xx。
 - Sub2API/OpenAI 上游返回 HTTP `>=400` 时，日志会写入 `errorCode=upstream_http_<status>`，例如 `upstream_http_429` 或 `upstream_http_500`，便于后台按错误码筛选。
+- Sub2API/OpenAI 上游返回常见 request id 响应头时，日志会写入 `upstreamRequestId`，便于跨系统关联上游日志。
 - 流式响应结束后会回写同一条日志的 `durationMs`。
 - 客户端在流式响应中途断开时，同一条日志会写入 `errorCode=client_disconnected`。
 - 日志写入失败不会阻断用户请求，只记录服务端 warning。
 - 新增管理员接口：`GET /api/admin/proxy-requests`
 - 权限要求：`operator` 或 `admin`
 - 支持分页、状态码过滤、错误码过滤和关键词搜索。
-- 关键词搜索支持模型名。
+- 关键词搜索支持模型名和 `upstreamRequestId`。
 - 关键词搜索支持直接粘贴 `x-proxy-request-id: <requestId>` 或 `x-request-id=<requestId>` 形式的响应头。
 
 ## 管理员入口
@@ -56,8 +58,8 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 
 列表展示：
 
-- 用户邮箱与请求 ID。
-- 请求 ID 单独成列，并提供复制按钮。
+- 用户邮箱、本地请求 ID 与上游 request id。
+- 请求 ID 单独成列，并提供复制按钮；如果存在上游 request id，会在同一列展示。
 - 租赁或商品信息。
 - API Key 名称或前缀。
 - HTTP 方法与路径。
@@ -69,7 +71,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 
 页面支持按当前筛选条件导出全部 CSV，便于线上排障时交叉比对服务日志、Sub2API 状态和用户反馈。
 
-CSV 导出包含 `model` 列，便于管理员按模型聚合上游错误、限流和请求体积。
+CSV 导出包含 `model` 和 `upstreamRequestId` 列，便于管理员按模型、上游错误和上游 request id 交叉排查。
 
 管理员拿到用户反馈的 `x-proxy-request-id` 后，可以直接粘贴完整响应头行到搜索框定位日志。
 
