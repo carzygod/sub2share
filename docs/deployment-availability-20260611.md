@@ -750,3 +750,86 @@ CORS 复查：
 - 本地 `/v1/*` 反代契约、限流、CORS、部署运行态和管理员入口均继续正常。
 
 结论：管理员现在可以在统一巡检页直接看到应优先修复的 Sub2 OpenAI 账号，而不是只看到“缺少 active refresh token”。这进一步缩短了从巡检发现到反代状态页补 token、测试账号、重跑端到端自检的路径。
+
+## 2026-06-11 19:21 反代状态页维修预选部署
+
+### 发布版本
+
+- `fd0babe fix: preselect sub2 repair account`
+
+### 本轮修复
+
+- 管理后台 `反代状态` 页复用已加载的 Sub2/OpenAI 账号状态，计算优先维修账号：
+  - 优先选择默认 OpenAI 分组下非 active 或不可调度账号。
+  - 默认分组无候选时，回退到任意非 active 或不可调度的 OpenAI 账号。
+  - 仍无候选时，回退到第一个 OpenAI 账号。
+- `Apply OpenAI Credentials` 下拉框默认选中该维修账号，并在对应选项上标记 `建议修复`。
+- 该改动只影响管理员操作入口的默认选择和提示，不自动应用凭据，也不改变 Sub2API 账号状态。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- 服务端部署门禁：
+  - `pnpm install --frozen-lockfile --prod=false`：通过。
+  - `pnpm db:generate`：通过。
+  - `pnpm exec prisma migrate deploy`：无待应用迁移。
+  - `pnpm --filter @zyz/api run typecheck`：通过。
+  - `pnpm --filter @zyz/admin run typecheck`：通过。
+  - `pnpm --filter @zyz/api test`：51/51 通过。
+  - `pnpm build`：通过。
+- 发布脚本首次切换后发现 4100 API 进程仍运行在 `user-replaced-20260611T111821Z-fd0babe`，cwd 复核按预期中止。
+- 已纠正重启三端口，并直接从当前 release 的应用目录启动：
+  - 4100 cwd：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100 cwd：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101 cwd：`/opt/zhisuan-yizhan/user/apps/admin`
+- 当前 release marker：
+  - `commit=fd0babe`
+  - `deployed_at=20260611T111821Z`
+- 启动后 HTTP 复查：
+  - `GET /health`：`200`
+  - `GET /ready`：`200`
+  - `GET /` on `3100`：`200`
+  - `GET /` on `3101`：`200`
+- 管理后台构建产物已切换为 `apps/admin/dist/assets/index-B9hJepAO.js`，且包含 `Apply OpenAI Credentials` 与维修提示相关片段。
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T11:21:28.882Z`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release fd0babe`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- markerPath：`/opt/zhisuan-yizhan/user/.release-marker`
+- issues：`[]`
+
+`resourceCredentials` 仍为 error，但维修候选字段保持可用：
+
+- issueType：`openai_refresh_token_candidate_missing`
+- sub2Status：`true`
+- sub2AccountId：`2`
+- sub2AccountName：`1`
+- accountStatus：`error`
+- credentialsStatus：`configured(3)`
+- schedulable：`false`
+- repairAction：`apply_openai_refresh_token_to_sub2_account`
+
+剩余阻断仍未变化：
+
+- `sub2` error：默认 OpenAI 分组 `oai` 下没有 active OpenAI 上游账号。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成仍失败。
+- `payments` warning：生产环境仍启用 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：管理员从 `可用性巡检` 进入 `反代状态` 后，补 OpenAI refresh token 的表单会直接落到最可能需要修复的上游账号。完整 OpenAI/Codex 真实生成仍需要补入有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号后再复查。
