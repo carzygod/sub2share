@@ -27,6 +27,8 @@ export interface LocalProxySmokeEvidenceIssue {
   severity: "warning" | "error";
   auditLogId?: string;
   auditAction?: string;
+  resourceId?: string | null;
+  sub2Status?: true;
   model?: string | null;
   modelsOk?: boolean | null;
   responsesOk?: boolean | null;
@@ -111,6 +113,8 @@ export function localProxySmokeEvidenceIssue(
     severity,
     auditLogId: smoke.auditLogId,
     auditAction: smoke.action,
+    resourceId: smoke.action === "admin.resource.credential_apply_sub2" ? smoke.objectId ?? null : null,
+    sub2Status: true,
     model: smoke.model ?? null,
     modelsOk: smoke.modelsOk,
     responsesOk: smoke.responsesOk,
