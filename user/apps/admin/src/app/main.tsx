@@ -2271,6 +2271,13 @@ function App() {
             query={listQueries.usages}
             meta={listMeta.usages}
             onSync={syncSub2Usages}
+            onOpenUser={openUserCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenSettlement={openSettlementCandidate}
             onDraft={(patch) => updateListDraft("usages", patch)}
             onFilter={(event) => submitListFilters("usages", event)}
             onClear={() => clearListFilters("usages")}
@@ -3423,11 +3430,18 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
   );
 }
 
-function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, onFilter, onClear, onPage, onExport }: {
+function UsagesView({ usages, summary, syncState, query, meta, onSync, onOpenUser, onOpenOrder, onOpenRental, onOpenProduct, onOpenResource, onOpenProxyRequest, onOpenSettlement, onDraft, onFilter, onClear, onPage, onExport }: {
   usages: UsageRecordRow[];
   summary: AggregateSummary | null;
   syncState: UsageSyncStateResult | null;
   onSync: (event: FormEvent<HTMLFormElement>) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
 } & ManagedListProps) {
   const state = syncState?.state;
   const runs = syncState?.runs ?? [];
@@ -3485,7 +3499,7 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, 
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="用量记录" count={meta.total} headers={["用户", "模型", "状态", "Tokens", "计费", "供给方", "时间"]}>
+      <TablePanel title="用量记录" count={meta.total} headers={["用户", "模型", "状态", "Tokens", "计费", "供给方", "时间", "操作"]}>
         {usages.map((usage) => (
           <tr key={usage.id}>
             <td>
@@ -3507,8 +3521,22 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onDraft, 
               <small>{usage.supplierResource?.supplier?.user?.email ?? usage.supplierResource?.sub2AccountId ?? "-"}</small>
             </td>
             <td>{dateTime(usage.occurredAt)}</td>
+            <td>
+              <div className="row-actions">
+                {usage.userId && <button className="secondary mini" onClick={() => onOpenUser(usage.userId)}>用户</button>}
+                {usage.rental?.orderId && <button className="secondary mini" onClick={() => onOpenOrder(usage.rental!.orderId!)}>订单</button>}
+                {usage.rentalId && <button className="secondary mini" onClick={() => onOpenRental(usage.rentalId)}>租赁</button>}
+                {usage.rental?.productId && <button className="secondary mini" onClick={() => onOpenProduct(usage.rental!.productId!)}>商品</button>}
+                {usage.supplierResource?.id && <button className="secondary mini" onClick={() => onOpenResource(usage.supplierResource!.id)}>资源</button>}
+                <button className="secondary mini" onClick={() => onOpenProxyRequest(usage.sub2RequestId)}>反代</button>
+                {(usage.settlements ?? [])[0]?.id && <button className="secondary mini" onClick={() => onOpenSettlement((usage.settlements ?? [])[0]!.id)}>结算</button>}
+              </div>
+            </td>
           </tr>
         ))}
+        {usages.length === 0 && (
+          <tr><td colSpan={8}><small>暂无用量记录。</small></td></tr>
+        )}
       </TablePanel>
     </section>
   );
