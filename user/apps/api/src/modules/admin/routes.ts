@@ -2466,17 +2466,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
     });
     if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
-    const usageSummary = await prisma.usageRecord.aggregate({
-      where: { supplierResourceId: id },
-      _count: true,
-      _sum: { buyerCharge: true, supplierIncome: true, inputUnits: true, outputUnits: true }
-    });
-    const settlementSummary = await prisma.settlementRecord.aggregate({
-      where: { supplierResourceId: id },
-      _count: true,
-      _sum: { amount: true }
-    });
-    return adminOk(reply, { ...resource, usageSummary, settlementSummary });
+    const [usageSummary, settlementSummary, credentialApplyLogs] = await Promise.all([
+      prisma.usageRecord.aggregate({
+        where: { supplierResourceId: id },
+        _count: true,
+        _sum: { buyerCharge: true, supplierIncome: true, inputUnits: true, outputUnits: true }
+      }),
+      prisma.settlementRecord.aggregate({
+        where: { supplierResourceId: id },
+        _count: true,
+        _sum: { amount: true }
+      }),
+      prisma.auditLog.findMany({
+        where: {
+          action: "admin.resource.credential_apply_sub2",
+          objectType: "supplier_resource",
+          objectId: id
+        },
+        select: {
+          id: true,
+          action: true,
+          objectType: true,
+          objectId: true,
+          after: true,
+          ipAddress: true,
+          userAgent: true,
+          createdAt: true,
+          actor: { select: { id: true, email: true, displayName: true } }
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5
+      })
+    ]);
+    return adminOk(reply, { ...resource, usageSummary, settlementSummary, credentialApplyLogs });
   });
 
   app.patch("/api/admin/resources/:id", async (request, reply) => {

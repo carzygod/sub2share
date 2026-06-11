@@ -687,6 +687,7 @@ interface ResourceDetailRow extends ResourceRow {
   settlements?: SettlementRow[];
   usageSummary?: AggregateSummary;
   settlementSummary?: AggregateSummary;
+  credentialApplyLogs?: AuditLogRow[];
 }
 
 interface SalesData extends PageMeta {
@@ -4386,6 +4387,10 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
           )}
         </DetailBlock>
 
+        <DetailBlock title="最近凭据应用">
+          <ResourceCredentialApplyLogTable logs={resource.credentialApplyLogs} />
+        </DetailBlock>
+
         <DetailBlock title="供给方">
           <MiniTable headers={["字段", "值"]}>
             <tr><td>邮箱</td><td>{resource.supplier?.user?.email ?? "-"}</td></tr>
@@ -4427,6 +4432,45 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
         </DetailBlock>
       </section>
     </section>
+  );
+}
+
+function ResourceCredentialApplyLogTable({ logs = [] }: { logs?: AuditLogRow[] }) {
+  return (
+    <MiniTable headers={["时间", "Sub2 账号", "应用", "账号测试", "端到端", "请求"]}>
+      {logs.length === 0 && (
+        <tr>
+          <td colSpan={6}><small>暂无凭据应用记录</small></td>
+        </tr>
+      )}
+      {logs.map((log) => {
+        const after = credentialApplyAuditAfter(log);
+        const ok = credentialApplyAuditOk(after);
+        const request = credentialApplyAuditProxyRequest(after);
+        return (
+          <tr key={log.id}>
+            <td>
+              {dateTime(log.createdAt)}
+              <small>{log.actor?.email ?? "system"}</small>
+            </td>
+            <td>
+              <strong>#{textValue(after.accountId) ?? "-"}</strong>
+              <small>{textValue(after.sub2AccountId) ?? "-"}</small>
+            </td>
+            <td>
+              <strong>{ok === undefined ? "-" : ok ? "通过" : "失败"}</strong>
+              <small>{credentialApplyAuditApplyMeta(after)}</small>
+            </td>
+            <td><small>{credentialApplyAuditTestSummary(after)}</small></td>
+            <td><small>{credentialApplyAuditSmokeSummary(after)}</small></td>
+            <td>
+              <small>{request.summary}</small>
+              {request.requestId && <small>{request.requestId}</small>}
+            </td>
+          </tr>
+        );
+      })}
+    </MiniTable>
   );
 }
 
@@ -4866,6 +4910,76 @@ function compactJson(value: unknown) {
   } catch {
     return "-";
   }
+}
+
+function nestedRecord(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return isPlainRecord(value) ? value : null;
+}
+
+function credentialApplyAuditAfter(log: AuditLogRow) {
+  return isPlainRecord(log.after) ? log.after : {};
+}
+
+function credentialApplyAuditOk(after: Record<string, unknown>) {
+  if (typeof after.ok === "boolean") return after.ok;
+  const result = nestedRecord(after, "result");
+  return typeof result?.ok === "boolean" ? result.ok : undefined;
+}
+
+function credentialApplyAuditApplyMeta(after: Record<string, unknown>) {
+  const parts: string[] = [];
+  if (after.refreshed === true) parts.push("refreshed");
+  if (after.applied === true) parts.push("applied");
+  const error = textValue(after.error);
+  if (error) parts.push(error);
+  return parts.join(" / ") || "-";
+}
+
+function credentialApplyAuditTestSummary(after: Record<string, unknown>) {
+  const test = nestedRecord(after, "test");
+  if (!test) return "-";
+  const ok = test.ok === true ? "通过" : "失败";
+  const status = textValue(test.statusCode);
+  const events = Array.isArray(test.events) ? test.events.map((event) => textValue(event) ?? compactJson(event)).filter(Boolean).slice(0, 2) : [];
+  return `${ok}${status ? ` / HTTP ${status}` : ""}${events.length ? ` / ${events.join(" / ")}` : ""}`;
+}
+
+function credentialApplyAuditSmokeSummary(after: Record<string, unknown>) {
+  const skippedReason = textValue(after.smokeTestSkippedReason);
+  if (skippedReason) return `跳过 / ${credentialApplySmokeSkipLabel(skippedReason)}`;
+  const smokeTest = nestedRecord(after, "smokeTest");
+  if (!smokeTest) return "-";
+  const ok = smokeTest.ok === true;
+  const model = textValue(smokeTest.model);
+  const responses = nestedRecord(smokeTest, "responses");
+  const responseStatus = textValue(responses?.statusCode);
+  const responseError = textValue(responses?.errorMessage) ?? textValue(responses?.errorType);
+  const detail = ok ? undefined : responseError ?? (responseStatus ? `Responses HTTP ${responseStatus}` : undefined);
+  return `${ok ? "通过" : "失败"}${model ? ` / ${model}` : ""}${detail ? ` / ${detail}` : ""}`;
+}
+
+function credentialApplyAuditProxyRequest(after: Record<string, unknown>) {
+  const smokeTest = nestedRecord(after, "smokeTest");
+  const localProxy = smokeTest ? nestedRecord(smokeTest, "localProxy") : null;
+  const logsValue = localProxy?.proxyRequestLogs;
+  const logs = Array.isArray(logsValue) ? logsValue.filter(isPlainRecord) : [];
+  const failed = logs.find((log) => {
+    const status = Number(textValue(log.statusCode) ?? 0);
+    return status >= 400 || Boolean(textValue(log.errorCode));
+  }) ?? logs[0];
+  if (!failed) return { summary: "-", requestId: undefined };
+  const path = textValue(failed.path) ?? "-";
+  const status = textValue(failed.statusCode);
+  const upstreamStatus = textValue(failed.upstreamStatusCode);
+  const error = textValue(failed.errorCode);
+  const statusText = status ? ` / HTTP ${status}` : "";
+  const upstreamText = upstreamStatus && upstreamStatus !== status ? ` / upstream ${upstreamStatus}` : "";
+  const errorText = error ? ` / ${error}` : "";
+  return {
+    summary: `${path}${statusText}${upstreamText}${errorText}`,
+    requestId: textValue(failed.requestId)
+  };
 }
 
 function titleFor(view: View) {
