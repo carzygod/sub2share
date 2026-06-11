@@ -1453,3 +1453,71 @@ CORS 复查：
   - `localProxySmoke`：最新端到端自检在 `/v1/responses` 失败，代理日志错误码 `upstream_http_503`。
 
 结论：本地 OpenAI/Codex 反代的接口契约、原始请求体转发策略、Sub2API 上游转发策略、Redis limiter 运行态和流式超时日志策略已经能在管理员巡检中直接证明。当前真实生成不可用仍由外部 OpenAI/Sub2 上游 token 失效导致，需要管理员在 `反代状态` 页粘贴有效 refresh token 后重新运行账号测试与端到端自检。
+
+## 2026-06-12 02:03 共享资源巡检指标修正发布
+
+### 发布版本
+
+- `81c0384 fix: separate resource health issue metrics`
+
+### 本轮修复
+
+- `resources.metrics.issueSamples` 改为结构化资源健康 issue 数量。
+- 新增 `resources.metrics.resourceSamples` 表示实际返回的资源候选样本数量。
+- 当没有任何生产 Codex 资源时，巡检现在显示：
+  - `issueSamples=1`
+  - `resourceSamples=0`
+- 新增单元测试覆盖“有 `codex_online_resource_missing` 问题，但没有具体资源行”的线上场景。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：59/59 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=81c0384`
+  - `deployed_at=20260611T180304Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：59/59 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resources`：`warning`
+  - summary：`No online production Codex shared resource`
+  - `totalCodexResources=0`
+  - `onlineCodexResources=0`
+  - `ignoredInternalResources=1`
+  - `issueSamples=1`
+  - `resourceSamples=0`
+  - issue：`codex_online_resource_missing`
+  - actionHint：创建生产 Codex 共享资源，绑定 Sub2 账号和 active OpenAI 凭据，测试后切换 online。
+- `openAiProxyContract`：`ok`
+- `openAiProxyRuntime`：`ok`
+- `adminCapabilities`：`ok`，覆盖 5/5 个核心管理范围。
+- 剩余 errors：
+  - `resourceCredentials`：没有 active OpenAI refresh token 可应用凭据。
+  - `sub2`：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke`：最新 `/v1/responses` 自检失败，代理日志错误码 `upstream_http_503`。
+
+结论：共享资源巡检现在能准确表达“存在资源可用性问题，但线上没有可直接打开的生产资源行”。管理员仍可从 `resourceList=true` / `resourceType=codex` 的问题样本进入共享资源列表创建或修复生产 Codex 资源；真实生成恢复仍需要有效 OpenAI/Sub2 refresh token。
