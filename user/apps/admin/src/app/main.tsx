@@ -3841,10 +3841,14 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
   onApplyRefreshToken: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const accounts = status?.accounts ?? [];
+  const openAiAccounts = accounts.filter((account) => account.platform === "openai");
   const groupAccounts = status?.defaultGroupId
-    ? accounts.filter((account) => account.platform === "openai" && account.groupIds.includes(status.defaultGroupId!))
+    ? openAiAccounts.filter((account) => account.groupIds.includes(status.defaultGroupId!))
     : [];
   const activeAccounts = groupAccounts.filter((account) => account.status === "active");
+  const repairAccount = groupAccounts.find((account) => account.status !== "active" || account.schedulable === false)
+    ?? openAiAccounts.find((account) => account.status !== "active" || account.schedulable === false)
+    ?? openAiAccounts[0];
   const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
 
   return (
@@ -3923,10 +3927,10 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
       </div>
       <form className="panel glass-panel inline-form credential-form" onSubmit={onApplyRefreshToken}>
         <span className="eyebrow">Apply OpenAI Credentials</span>
-        <select name="accountId" required>
+        <select key={repairAccount?.id ?? "none"} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
           <option value="">选择上游账号</option>
-          {accounts.filter((account) => account.platform === "openai").map((account) => (
-            <option key={account.id} value={account.id}>#{account.id} {account.name}</option>
+          {openAiAccounts.map((account) => (
+            <option key={account.id} value={account.id}>#{account.id} {account.name}{repairAccount?.id === account.id ? " · 建议修复" : ""}</option>
           ))}
         </select>
         <input name="refreshToken" type="password" placeholder="OpenAI refresh token" autoComplete="off" required />
