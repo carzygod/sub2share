@@ -149,6 +149,7 @@ export interface Sub2ProxySmokeRequestLogSummary {
   model?: string | null;
   statusCode?: number | null;
   upstreamStatusCode?: number | null;
+  upstreamRequestId?: string | null;
   errorCode?: string | null;
   createdAt: string;
 }

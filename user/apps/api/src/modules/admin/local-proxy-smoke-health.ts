@@ -26,6 +26,7 @@ export interface LocalProxySmokeEvidence {
   proxyRequestLogs: LocalProxySmokeProxyRequestEvidence[];
   proxyRequestLogId?: string | null;
   requestId?: string | null;
+  upstreamRequestId?: string | null;
   proxyRequestPath?: string | null;
   proxyRequestStatusCode?: number | null;
   proxyRequestErrorCode?: string | null;
@@ -38,6 +39,7 @@ export interface LocalProxySmokeProxyRequestEvidence {
   model?: string | null;
   statusCode?: number | null;
   upstreamStatusCode?: number | null;
+  upstreamRequestId?: string | null;
   errorCode?: string | null;
   createdAt?: string | null;
 }
@@ -65,6 +67,7 @@ export interface LocalProxySmokeEvidenceIssue {
   proxyRequestLogCount?: number | null;
   proxyRequestLogId?: string | null;
   requestId?: string | null;
+  upstreamRequestId?: string | null;
   proxyRequestPath?: string | null;
   proxyRequestStatusCode?: number | null;
   proxyRequestErrorCode?: string | null;
@@ -119,6 +122,7 @@ export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): 
     proxyRequestLogs,
     proxyRequestLogId: primaryProxyRequest?.proxyRequestLogId ?? null,
     requestId: primaryProxyRequest?.requestId ?? null,
+    upstreamRequestId: primaryProxyRequest?.upstreamRequestId ?? null,
     proxyRequestPath: primaryProxyRequest?.path ?? null,
     proxyRequestStatusCode: primaryProxyRequest?.statusCode ?? null,
     proxyRequestErrorCode: primaryProxyRequest?.errorCode ?? null
@@ -146,6 +150,7 @@ export function localProxySmokeEvidenceSummary(smoke: LocalProxySmokeEvidence, a
     proxyRequestLogs: smoke.proxyRequestLogs,
     proxyRequestLogId: smoke.proxyRequestLogId ?? null,
     requestId: smoke.requestId ?? null,
+    upstreamRequestId: smoke.upstreamRequestId ?? null,
     proxyRequestPath: smoke.proxyRequestPath ?? null,
     proxyRequestStatusCode: smoke.proxyRequestStatusCode ?? null,
     proxyRequestErrorCode: smoke.proxyRequestErrorCode ?? null
@@ -178,6 +183,7 @@ export function localProxySmokeEvidenceIssue(
     proxyRequestLogCount: smoke.proxyRequestLogCount,
     proxyRequestLogId: smoke.proxyRequestLogId ?? null,
     requestId: smoke.requestId ?? null,
+    upstreamRequestId: smoke.upstreamRequestId ?? null,
     proxyRequestPath: smoke.proxyRequestPath ?? null,
     proxyRequestStatusCode: smoke.proxyRequestStatusCode ?? null,
     proxyRequestErrorCode: smoke.proxyRequestErrorCode ?? null,
@@ -251,6 +257,7 @@ function normalizeProxyRequestLogEvidence(value: unknown): LocalProxySmokeProxyR
     model: jsonText(record.model),
     statusCode: jsonNumber(record.statusCode),
     upstreamStatusCode: jsonNumber(record.upstreamStatusCode),
+    upstreamRequestId: jsonText(record.upstreamRequestId),
     errorCode: jsonText(record.errorCode),
     createdAt: jsonText(record.createdAt)
   };

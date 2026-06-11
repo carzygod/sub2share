@@ -25,7 +25,7 @@ test("normalizes direct local proxy smoke audit evidence", () => {
         ok: true,
         proxyRequestLogCount: 2,
         proxyRequestLogs: [
-          { id: "proxy-2", requestId: "req-responses", path: "/v1/responses", statusCode: 200 },
+          { id: "proxy-2", requestId: "req-responses", upstreamRequestId: "upstream-responses", path: "/v1/responses", statusCode: 200 },
           { id: "proxy-1", requestId: "req-models", path: "/v1/models", statusCode: 200 }
         ]
       }
@@ -46,6 +46,8 @@ test("normalizes direct local proxy smoke audit evidence", () => {
   assert.equal(evidence.proxyRequestLogs.length, 2);
   assert.equal(evidence.proxyRequestLogId, "proxy-2");
   assert.equal(evidence.requestId, "req-responses");
+  assert.equal(evidence.upstreamRequestId, "upstream-responses");
+  assert.equal(evidence.proxyRequestLogs[0].upstreamRequestId, "upstream-responses");
   assert.equal(evidence.proxyRequestPath, "/v1/responses");
   assert.equal(evidence.proxyRequestStatusCode, 200);
   assert.equal(evidence.smokeTestSkippedReason, null);
@@ -76,7 +78,7 @@ test("normalizes direct refresh token apply smoke evidence", () => {
           ok: false,
           proxyRequestLogCount: 1,
           proxyRequestLogs: [
-            { id: "direct-apply-proxy", requestId: "direct-apply-req", path: "/v1/responses", statusCode: 401, errorCode: "upstream_http_401" }
+            { id: "direct-apply-proxy", requestId: "direct-apply-req", upstreamRequestId: "upstream-direct-apply", path: "/v1/responses", statusCode: 401, errorCode: "upstream_http_401" }
           ]
         }
       }
@@ -92,6 +94,7 @@ test("normalizes direct refresh token apply smoke evidence", () => {
   assert.equal(evidence.responsesOk, false);
   assert.equal(evidence.proxyRequestLogId, "direct-apply-proxy");
   assert.equal(evidence.requestId, "direct-apply-req");
+  assert.equal(evidence.upstreamRequestId, "upstream-direct-apply");
   assert.equal(localProxySmokeFailureSummary(evidence), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
 });
 
@@ -205,7 +208,7 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
         proxyRequestLogCount: 2,
         proxyRequestLogs: [
           { id: "proxy-models", requestId: "req-models", path: "/v1/models", statusCode: 200 },
-          { id: "proxy-responses", requestId: "req-responses", path: "/v1/responses", statusCode: 503, errorCode: "upstream_server_error" }
+          { id: "proxy-responses", requestId: "req-responses", upstreamRequestId: "upstream-failed", path: "/v1/responses", statusCode: 503, errorCode: "upstream_server_error" }
         ]
       }
     }
@@ -226,6 +229,7 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
   assert.equal(directIssue.auditLogId, "direct-failed");
   assert.equal(directIssue.proxyRequestLogId, "proxy-responses");
   assert.equal(directIssue.requestId, "req-responses");
+  assert.equal(directIssue.upstreamRequestId, "upstream-failed");
   assert.equal(directIssue.proxyRequestPath, "/v1/responses");
   assert.equal(directIssue.proxyRequestStatusCode, 503);
   assert.equal(directIssue.proxyRequestErrorCode, "upstream_server_error");

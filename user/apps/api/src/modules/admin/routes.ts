@@ -6623,6 +6623,7 @@ async function listLocalProxySmokeLogs(rentalId: string) {
         model: true,
         statusCode: true,
         upstreamStatusCode: true,
+        upstreamRequestId: true,
         errorCode: true,
         createdAt: true
       },
@@ -6636,6 +6637,7 @@ async function listLocalProxySmokeLogs(rentalId: string) {
       model: log.model,
       statusCode: log.statusCode,
       upstreamStatusCode: log.upstreamStatusCode,
+      upstreamRequestId: log.upstreamRequestId,
       errorCode: log.errorCode,
       createdAt: log.createdAt.toISOString()
     }));

@@ -18,6 +18,7 @@
   - `model`
   - `statusCode`
   - `upstreamStatusCode`
+  - `upstreamRequestId`
   - `errorCode`
   - `createdAt`
 - 审计日志 `admin.sub2.proxy_smoke_test` 和资源凭据应用审计中的 `smokeTest.localProxy` 会保留上述摘要。
@@ -25,6 +26,7 @@
   - `proxyRequestLogs`
   - `proxyRequestLogId`
   - `requestId`
+  - `upstreamRequestId`
   - `proxyRequestPath`
   - `proxyRequestStatusCode`
   - `proxyRequestErrorCode`
@@ -33,11 +35,11 @@
   - 优先选择带 `errorCode` 或 `statusCode >= 400` 的代理日志。
   - 如果没有失败日志，则选择最近一条 smoke 代理日志。
 - 管理后台 `可用性巡检 -> 巡检问题样本` 已有通用 `requestId` / `proxyRequestLogId` 跳转逻辑；因此 smoke 问题现在可以一键打开对应反代请求日志。
-- 问题样本的对象摘要新增 `proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`，管理员点开前即可看到失败路径和状态码。
+- 问题样本的对象摘要新增 `proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode` 和 `upstreamRequestId`，管理员点开前即可看到失败路径、状态码和上游诊断 ID。
 
 ## 管理员价值
 
-- 当 `/v1/responses` 失败时，管理员可以从系统巡检直接进入对应 `ProxyRequestLog`，查看状态码、上游状态码、错误码、模型、路径、耗时、Key 和租赁关联。
+- 当 `/v1/responses` 失败时，管理员可以从系统巡检直接进入对应 `ProxyRequestLog`，查看状态码、上游状态码、上游 request id、错误码、模型、路径、耗时、Key 和租赁关联。
 - 当 smoke 由资源凭据应用触发时，问题样本同时保留 `resourceId` 和代理请求日志定位字段，便于在资源详情与请求日志之间往返排障。
 - 当上游 OpenAI refresh token 失效时，巡检仍会明确展示失败发生在本地反代的哪一次请求，避免把 Sub2/OpenAI 上游凭据问题误判为本地代理链路无日志。
 
@@ -55,7 +57,7 @@
 
 1. 部署包含本能力的 release。
 2. 管理员登录后台，进入 `反代状态`，运行端到端自检。
-3. 打开 `可用性巡检`，确认 `localProxySmoke` 的问题样本或 latest 证据包含 `requestId`、`proxyRequestLogId` 和代理路径字段。
+3. 打开 `可用性巡检`，确认 `localProxySmoke` 的问题样本或 latest 证据包含 `requestId`、`proxyRequestLogId`、可选 `upstreamRequestId` 和代理路径字段。
 4. 点击 `打开反代请求`，确认反代请求列表可定位到本次 smoke 的 `/v1/models` 或 `/v1/responses` 请求。
 
 ## 线上复查记录
