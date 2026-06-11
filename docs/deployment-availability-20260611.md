@@ -2780,3 +2780,82 @@ CORS 复查：
 ### 结论
 
 管理员入口现在不仅有后端 API 能力矩阵，也有前端侧边栏入口覆盖测试。用户、共享资源、余额、售出和 Sub2/OpenAI 反代这五个目标核心范围已进入 Admin 测试和后续生产部署门禁。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
+
+## 2026-06-12 05:33 管理前端入口巡检发布与线上复查
+
+### 发布版本
+
+- `0f80222 feat: surface admin frontend coverage in health`
+
+### 本轮修复
+
+- Admin surface 清单从 Admin 应用本地文件上移到 `packages/shared/src/index.ts`。
+- `@zyz/shared` 改为输出 `dist/index.js` / `dist/index.d.ts`，并增加 `./admin-surfaces` 子路径导出，供 API 运行时读取。
+- Admin 侧边栏和 Admin tests 改为消费共享 `adminNavigationItems` / `managedListViews`。
+- `GET /api/admin/system-health` 新增 `adminSurfaceCoverage` / `管理前端入口` 检查项：
+  - 校验用户、共享资源、余额、售出和 OpenAI/Codex 反代五个核心范围。
+  - 校验 16 个列表型管理页面都能从侧边栏进入。
+  - 校验侧边栏 view 不重复。
+  - 异常时返回 `required_surface_area_missing`、`managed_list_view_missing` 或 `duplicate_navigation_view` 问题样本。
+- API tests 新增共享 Admin surface 覆盖断言。
+- API/Admin package scripts 增加 shared build 前置步骤，避免干净安装后单独运行 typecheck/test/build 时缺少 `@zyz/shared` dist。
+- Windows 本地 `core.autocrlf=true` 下，普通 `git archive HEAD:user` 会把 shell 脚本归档为 CRLF；本次改用 `git -c core.autocrlf=false archive HEAD:user` 生成部署包，确保远端 `scripts/deploy-production.sh` 为 LF。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/shared run build`：通过。
+- `pnpm.cmd --filter @zyz/shared run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：73/73 通过。
+- `pnpm.cmd --filter @zyz/admin test`：3/3 通过。
+- `pnpm.cmd build`：通过。
+- `pnpm.cmd -r test`：通过。
+- `git diff --check`：无 whitespace 错误。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=0f80222`
+  - `deployed_at=20260611T213328Z`
+- 发布脚本在服务器端完成：
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：73/73 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 当前 release 的 `scripts/deploy-production.sh` CR 字符数为 `0`。
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 新增检查项：
+  - `adminSurfaceCoverage.status=ok`
+  - `summary=管理前端入口覆盖 5/5 个核心管理范围`
+  - metrics：`requiredAreas=5`、`coveredRequiredAreas=5`、`navigationItems=20`、`managedListViews=16`、`criticalViews=5`、`duplicateViews=0`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理后台入口现在由同一份共享矩阵驱动前端、测试和系统健康巡检。线上系统可以直接证明“后端管理员能力完整 + 前端核心入口完整 + Admin 静态入口可访问”。真实 OpenAI/Codex `/v1/responses` 仍未恢复，阻断继续集中在有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失。
