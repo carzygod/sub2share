@@ -354,6 +354,7 @@ log "running type checks and API tests"
 pnpm --filter @zyz/api run typecheck
 pnpm --filter @zyz/admin run typecheck
 pnpm --filter @zyz/api test
+pnpm --filter @zyz/admin test
 log "building workspace"
 pnpm build
 mkdir -p logs

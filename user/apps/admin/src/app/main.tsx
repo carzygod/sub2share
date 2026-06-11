@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Activity,
@@ -26,11 +26,10 @@ import {
   X
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
+import { adminNavigationItems, managedListViews, type AdminManagedListView as ManagedListView, type AdminView as View } from "./admin-surfaces";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
-type View = "dashboard" | "systemHealth" | "systemHealthHistory" | "users" | "wallets" | "walletTransactions" | "reconciliation" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "sub2" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
-type ManagedListView = "systemHealthHistory" | "users" | "wallets" | "walletTransactions" | "sales" | "usages" | "products" | "orders" | "rentals" | "apiKeys" | "proxyRequests" | "suppliers" | "resources" | "settlements" | "withdrawals" | "audit";
 type UserStatus = "active" | "disabled" | "banned";
 type ResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
 
@@ -916,7 +915,6 @@ interface AuditLogRow {
   } | null;
 }
 
-const managedListViews: ManagedListView[] = ["systemHealthHistory", "users", "wallets", "walletTransactions", "sales", "usages", "products", "orders", "rentals", "apiKeys", "proxyRequests", "suppliers", "resources", "settlements", "withdrawals", "audit"];
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
@@ -2091,26 +2089,11 @@ function App() {
           </div>
         </div>
         <nav>
-          <NavButton active={view === "dashboard"} onClick={() => refresh("dashboard")} icon={<BarChart3 size={18} />}>经营看板</NavButton>
-          <NavButton active={view === "systemHealth"} onClick={() => refresh("systemHealth")} icon={<ShieldCheck size={18} />}>可用性巡检</NavButton>
-          <NavButton active={view === "systemHealthHistory"} onClick={() => refresh("systemHealthHistory")} icon={<ScrollText size={18} />}>巡检历史</NavButton>
-          <NavButton active={view === "users"} onClick={() => refresh("users")} icon={<Users size={18} />}>用户管理</NavButton>
-          <NavButton active={view === "wallets"} onClick={() => refresh("wallets")} icon={<WalletCards size={18} />}>余额管理</NavButton>
-          <NavButton active={view === "walletTransactions"} onClick={() => refresh("walletTransactions")} icon={<ReceiptText size={18} />}>余额流水</NavButton>
-          <NavButton active={view === "reconciliation"} onClick={() => refresh("reconciliation")} icon={<Scale size={18} />}>账务对账</NavButton>
-          <NavButton active={view === "sales"} onClick={() => refresh("sales")} icon={<TrendingUp size={18} />}>售出情况</NavButton>
-          <NavButton active={view === "usages"} onClick={() => refresh("usages")} icon={<Activity size={18} />}>用量</NavButton>
-          <NavButton active={view === "products"} onClick={() => refresh("products")} icon={<PackagePlus size={18} />}>商品</NavButton>
-          <NavButton active={view === "orders"} onClick={() => refresh("orders")} icon={<KeyRound size={18} />}>订单</NavButton>
-          <NavButton active={view === "rentals"} onClick={() => refresh("rentals")} icon={<ShieldCheck size={18} />}>租赁</NavButton>
-          <NavButton active={view === "apiKeys"} onClick={() => refresh("apiKeys")} icon={<KeyRound size={18} />}>API Key</NavButton>
-          <NavButton active={view === "sub2"} onClick={() => refresh("sub2")} icon={<Activity size={18} />}>反代状态</NavButton>
-          <NavButton active={view === "proxyRequests"} onClick={() => refresh("proxyRequests")} icon={<ScrollText size={18} />}>反代请求</NavButton>
-          <NavButton active={view === "suppliers"} onClick={() => refresh("suppliers")} icon={<Users size={18} />}>供给方</NavButton>
-          <NavButton active={view === "resources"} onClick={() => refresh("resources")} icon={<Boxes size={18} />}>共享资源</NavButton>
-          <NavButton active={view === "settlements"} onClick={() => refresh("settlements")} icon={<CircleDollarSign size={18} />}>结算</NavButton>
-          <NavButton active={view === "withdrawals"} onClick={() => refresh("withdrawals")} icon={<WalletCards size={18} />}>提现</NavButton>
-          <NavButton active={view === "audit"} onClick={() => refresh("audit")} icon={<ScrollText size={18} />}>审计</NavButton>
+          {adminNavigationItems.map((item) => (
+            <NavButton key={item.view} active={view === item.view} onClick={() => refresh(item.view)} icon={navigationIcon(item.view)}>
+              {item.label}
+            </NavButton>
+          ))}
         </nav>
       </aside>
 
@@ -5028,6 +5011,33 @@ function credentialApplyAuditProxyRequest(after: Record<string, unknown>) {
     summary: `${path}${statusText}${upstreamText}${errorText}`,
     requestId: textValue(failed.requestId)
   };
+}
+
+function navigationIcon(view: View) {
+  const size = 18;
+  const map: Record<View, ReactElement> = {
+    dashboard: <BarChart3 size={size} />,
+    systemHealth: <ShieldCheck size={size} />,
+    systemHealthHistory: <ScrollText size={size} />,
+    users: <Users size={size} />,
+    wallets: <WalletCards size={size} />,
+    walletTransactions: <ReceiptText size={size} />,
+    reconciliation: <Scale size={size} />,
+    sales: <TrendingUp size={size} />,
+    usages: <Activity size={size} />,
+    products: <PackagePlus size={size} />,
+    orders: <KeyRound size={size} />,
+    rentals: <ShieldCheck size={size} />,
+    apiKeys: <KeyRound size={size} />,
+    sub2: <Activity size={size} />,
+    proxyRequests: <ScrollText size={size} />,
+    suppliers: <Users size={size} />,
+    resources: <Boxes size={size} />,
+    settlements: <CircleDollarSign size={size} />,
+    withdrawals: <WalletCards size={size} />,
+    audit: <ScrollText size={size} />
+  };
+  return map[view];
 }
 
 function titleFor(view: View) {
