@@ -37,6 +37,7 @@ import {
   inspectAdminCapabilityRouteCoverage,
   type AdminCapabilityOperation
 } from "./capabilities.js";
+import { inspectCurrentDeploymentRuntime } from "./deployment-runtime.js";
 import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
   localProxySmokeEvidenceCandidates,
@@ -3352,12 +3353,14 @@ async function buildSystemHealthReport() {
   const failedOrders = (ordersByStatus.failed ?? 0) + (ordersByStatus.refunding ?? 0);
   const resourceAvailability = await resourceAvailabilityHealthCheck(resourcesByStatus);
   const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
+  const deploymentRuntime = deploymentRuntimeHealthCheck();
 
   const checks: SystemHealthCheck[] = [
     systemHealthCheck("database", "数据库", "ok", "Prisma 查询正常", {
       users: totalGroupCount(userCounts),
       rentals: activeRentals
     }),
+    deploymentRuntime,
     adminCapabilityHealthCheck(adminCapabilityCoverage),
     systemHealthCheck(
       "users",
@@ -4764,6 +4767,32 @@ function systemHealthCheck(
 
 function inspectRegisteredAdminCapabilityRoutes() {
   return inspectAdminCapabilityRouteCoverage((operation) => adminCapabilityRouteExists?.(operation) ?? false);
+}
+
+function deploymentRuntimeHealthCheck() {
+  const result = inspectCurrentDeploymentRuntime(env.NODE_ENV);
+  return systemHealthCheck(
+    "deploymentRuntime",
+    "部署运行态",
+    result.status,
+    result.status === "ok"
+      ? `当前进程运行在 release ${result.summary.commit ?? result.summary.releaseRootName}`
+      : `${result.issues.length} 个部署运行态问题`,
+    {
+      nodeEnv: result.summary.nodeEnv,
+      releaseRoot: result.summary.releaseRoot,
+      markerPresent: result.summary.markerPresent,
+      commit: result.summary.commit,
+      deployedAt: result.summary.deployedAt,
+      runningFromReplacedRelease: result.summary.runningFromReplacedRelease,
+      runningFromStagingRelease: result.summary.runningFromStagingRelease
+    },
+    {
+      cwd: result.summary.cwd,
+      markerPath: result.summary.markerPath,
+      issues: result.issues
+    }
+  );
 }
 
 function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredAdminCapabilityRoutes>) {
