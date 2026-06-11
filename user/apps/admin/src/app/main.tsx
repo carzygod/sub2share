@@ -2333,6 +2333,13 @@ function App() {
             onApiKeyStatus={setApiKeyStatus}
             onRotateKey={rotateRentalKey}
             onExpireOverdue={expireOverdueRentals}
+            onOpenUser={openUserCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenSettlement={openSettlementCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
             onDraft={(patch) => updateListDraft("rentals", patch)}
             onFilter={(event) => submitListFilters("rentals", event)}
             onClear={() => clearListFilters("rentals")}
@@ -3895,7 +3902,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
   );
 }
 
-function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   selectedRental: RentalDetailRow | null;
   onDetail: (rentalId: string) => void;
@@ -3905,6 +3912,13 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
   onRotateKey: (rentalId: string) => void;
   onExpireOverdue: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -3959,6 +3973,12 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
             <td>
               <div className="row-actions">
                 <button type="button" className="secondary mini" onClick={() => onDetail(rental.id)}>Detail</button>
+                {rental.userId && <button type="button" className="secondary mini" onClick={() => onOpenUser(rental.userId!)}>用户</button>}
+                {rental.orderId && <button type="button" className="secondary mini" onClick={() => onOpenOrder(rental.orderId!)}>订单</button>}
+                {rental.productId && <button type="button" className="secondary mini" onClick={() => onOpenProduct(rental.productId!)}>商品</button>}
+                {(rental.apiKeys ?? [])[0]?.id && <button type="button" className="secondary mini" onClick={() => onOpenApiKey((rental.apiKeys ?? [])[0]!.id)}>Key</button>}
+                <button type="button" className="secondary mini" onClick={() => onOpenUsage(rental.id)}>用量</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenProxyRequest(rental.id)}>反代</button>
                 <button type="button" className="secondary mini" onClick={() => onRotateKey(rental.id)}>Rotate Key</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "active")}>恢复</button>
                 <button type="button" className="secondary mini" onClick={() => onRentalStatus(rental.id, "suspended")}>暂停</button>
@@ -3968,7 +3988,19 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
           </tr>
         ))}
       </TablePanel>
-      {selectedRental && <RentalDetailPanel rental={selectedRental} onClose={onCloseDetail} />}
+      {selectedRental && (
+        <RentalDetailPanel
+          rental={selectedRental}
+          onClose={onCloseDetail}
+          onOpenUser={onOpenUser}
+          onOpenOrder={onOpenOrder}
+          onOpenProduct={onOpenProduct}
+          onOpenApiKey={onOpenApiKey}
+          onOpenUsage={onOpenUsage}
+          onOpenSettlement={onOpenSettlement}
+          onOpenProxyRequest={onOpenProxyRequest}
+        />
+      )}
     </>
   );
 }
@@ -4046,7 +4078,17 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onDraft, on
   );
 }
 
-function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClose: () => void }) {
+function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest }: {
+  rental: RentalDetailRow;
+  onClose: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
+}) {
   const apiKeys = rental.apiKeys ?? [];
   const usages = rental.usages ?? [];
   const proxyRequests = rental.proxyRequestLogs ?? [];
@@ -4063,6 +4105,11 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
         </div>
         <div className="row-actions">
           <StatusPill status={rental.status} />
+          {rental.userId && <button className="secondary mini" onClick={() => onOpenUser(rental.userId!)}>打开用户</button>}
+          {(rental.order?.id ?? rental.orderId) && <button className="secondary mini" onClick={() => onOpenOrder((rental.order?.id ?? rental.orderId)!)}>打开订单</button>}
+          {rental.productId && <button className="secondary mini" onClick={() => onOpenProduct(rental.productId!)}>打开商品</button>}
+          <button className="secondary mini" onClick={() => onOpenUsage(rental.id)}>打开用量</button>
+          <button className="secondary mini" onClick={() => onOpenProxyRequest(rental.id)}>打开反代请求</button>
           <button className="secondary mini" onClick={onClose}>Close</button>
         </div>
       </div>
@@ -4108,7 +4155,7 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
         </DetailBlock>
 
         <DetailBlock title="API Keys">
-          <MiniTable headers={["Name", "Prefix", "Status", "Last used", "Created"]}>
+          <MiniTable headers={["Name", "Prefix", "Status", "Last used", "Created", "操作"]}>
             {apiKeys.map((apiKey) => (
               <tr key={apiKey.id}>
                 <td>{apiKey.name}</td>
@@ -4116,16 +4163,17 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
                 <td><StatusPill status={apiKey.status} /></td>
                 <td>{dateTime(apiKey.lastUsedAt)}</td>
                 <td>{dateTime(apiKey.createdAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenApiKey(apiKey.id)}>打开</button></td>
               </tr>
             ))}
             {apiKeys.length === 0 && (
-              <tr><td colSpan={5}><small>No API keys linked to this rental.</small></td></tr>
+              <tr><td colSpan={6}><small>No API keys linked to this rental.</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="Recent Usage">
-          <MiniTable headers={["Request", "Model", "Status", "Tokens", "Charge", "Supplier", "Time"]}>
+          <MiniTable headers={["Request", "Model", "Status", "Tokens", "Charge", "Supplier", "Time", "操作"]}>
             {usages.slice(0, 10).map((usage) => (
               <tr key={usage.id}>
                 <td><small>{usage.sub2RequestId}</small></td>
@@ -4135,16 +4183,23 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
                 <td><strong>{money(usage.buyerCharge)}</strong><small>Cost {money(usage.apiEquivalentCost)}</small></td>
                 <td><strong>{money(usage.supplierIncome)}</strong><small>{usage.supplierResource?.supplier?.user?.email ?? usage.supplierResource?.sub2AccountId ?? "-"}</small></td>
                 <td>{dateTime(usage.occurredAt)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="secondary mini" onClick={() => onOpenUsage(usage.id)}>用量</button>
+                    <button className="secondary mini" onClick={() => onOpenProxyRequest(usage.sub2RequestId)}>反代</button>
+                    {(usage.settlements ?? [])[0]?.id && <button className="secondary mini" onClick={() => onOpenSettlement((usage.settlements ?? [])[0]!.id)}>结算</button>}
+                  </div>
+                </td>
               </tr>
             ))}
             {usages.length === 0 && (
-              <tr><td colSpan={7}><small>No usage records linked to this rental.</small></td></tr>
+              <tr><td colSpan={8}><small>No usage records linked to this rental.</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="Recent Proxy Requests">
-          <MiniTable headers={["Status", "Request", "Key", "Duration", "Size", "Source", "Time"]}>
+          <MiniTable headers={["Status", "Request", "Key", "Duration", "Size", "Source", "Time", "操作"]}>
             {proxyRequests.slice(0, 10).map((log) => (
               <tr key={log.id}>
                 <td>
@@ -4158,10 +4213,19 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
                 <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
                 <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
                 <td>{dateTime(log.createdAt)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button className="secondary mini" onClick={() => onOpenProxyRequest(log.requestId)}>反代</button>
+                    {(log.apiKeyId ?? log.apiKey?.id ?? log.apiKeyPrefix ?? log.apiKey?.keyPrefix) && (
+                      <button className="secondary mini" onClick={() => onOpenApiKey((log.apiKeyId ?? log.apiKey?.id ?? log.apiKeyPrefix ?? log.apiKey?.keyPrefix)!)}>Key</button>
+                    )}
+                    <button className="secondary mini" onClick={() => onOpenUsage(log.upstreamRequestId ?? log.requestId)}>用量</button>
+                  </div>
+                </td>
               </tr>
             ))}
             {proxyRequests.length === 0 && (
-              <tr><td colSpan={7}><small>No proxy requests linked to this rental.</small></td></tr>
+              <tr><td colSpan={8}><small>No proxy requests linked to this rental.</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
