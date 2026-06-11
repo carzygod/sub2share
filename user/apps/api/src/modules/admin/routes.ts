@@ -51,6 +51,7 @@ import {
   type FrontendRuntimeHealth
 } from "./frontend-runtime-health.js";
 import {
+  attachLocalProxySmokeIssueRepairCandidate,
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
   localProxySmokeEvidenceSummary,
@@ -3413,6 +3414,7 @@ async function buildSystemHealthReport() {
   });
   const openAiProxyRuntime = await inspectOpenAiProxyRuntimeState(checkedAt.getTime());
   const resourceCredentialReadiness = await inspectResourceCredentialReadiness(sub2Status);
+  const localProxySmokeEvidenceWithRepair = attachLocalProxySmokeIssueRepairCandidate(localProxySmokeEvidence, sub2Status.accountSamples);
   const apiCorsPolicy = apiCorsPolicyHealthCheck();
   const usersByStatus = countGroups(userCounts, "status");
   const ordersByStatus = countGroups(orderCounts, "status");
@@ -3549,7 +3551,7 @@ async function buildSystemHealthReport() {
       { ...openAiProxyRuntime.summary },
       openAiProxyRuntime.issues.length > 0 ? { issues: openAiProxyRuntime.issues } : undefined
     ),
-    localProxySmokeEvidenceHealthCheck(localProxySmokeEvidence),
+    localProxySmokeEvidenceHealthCheck(localProxySmokeEvidenceWithRepair),
     systemHealthCheck(
       "sub2Bindings",
       "Sub2 绑定",

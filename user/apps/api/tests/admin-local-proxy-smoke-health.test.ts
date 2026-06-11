@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  attachLocalProxySmokeIssueRepairCandidate,
   latestLocalProxySmokeEvidence,
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
@@ -204,4 +205,58 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
   assert.equal(credentialIssue.auditLogId, "credential-apply-failed");
   assert.equal(credentialIssue.proxyRequestLogId, "credential-proxy-responses");
   assert.equal(credentialIssue.requestId, "credential-req-responses");
+});
+
+test("local proxy smoke issues inherit Sub2 repair account candidates", () => {
+  const direct = normalizeLocalProxySmokeAuditLog({
+    id: "direct-failed",
+    action: "admin.sub2.proxy_smoke_test",
+    objectId: "sub2-key-1",
+    createdAt: new Date("2026-06-11T04:00:00.000Z"),
+    after: {
+      ok: false,
+      model: "gpt-5.3-codex",
+      keyDisabled: true,
+      models: { ok: true },
+      responses: { ok: false },
+      localProxy: {
+        ok: false,
+        proxyRequestLogCount: 1,
+        proxyRequestLogs: [
+          { id: "proxy-responses", requestId: "req-responses", path: "/v1/responses", statusCode: 503, errorCode: "upstream_http_503" }
+        ]
+      }
+    }
+  });
+  assert.ok(direct);
+
+  const issue = localProxySmokeEvidenceIssue(
+    direct,
+    "local_proxy_smoke_failed",
+    "error",
+    3,
+    localProxySmokeFailureSummary(direct),
+    "Repair the failing stage, then rerun the local end-to-end proxy smoke test."
+  );
+
+  const enriched = attachLocalProxySmokeIssueRepairCandidate({ issues: [issue] }, [
+    {
+      id: "sub2_account:2",
+      sub2AccountId: 2,
+      sub2AccountName: "main",
+      accountStatus: "error",
+      credentialsStatus: "configured(3)",
+      schedulable: false
+    }
+  ]);
+
+  assert.equal(enriched.issues[0].sub2Status, true);
+  assert.equal(enriched.issues[0].sub2AccountId, 2);
+  assert.equal(enriched.issues[0].sub2AccountName, "main");
+  assert.equal(enriched.issues[0].accountStatus, "error");
+  assert.equal(enriched.issues[0].credentialsStatus, "configured(3)");
+  assert.equal(enriched.issues[0].schedulable, false);
+  assert.equal(enriched.issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(enriched.issues[0].requestId, "req-responses");
+  assert.equal(enriched.issues[0].proxyRequestLogId, "proxy-responses");
 });

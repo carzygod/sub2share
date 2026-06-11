@@ -17,7 +17,9 @@
 - 没有找到自检证据时标记 `warning`。
 - 如果资源凭据应用请求了端到端自检但因凭据应用失败或 Sub2 账号测试失败而跳过，自检证据会标记为 `error`，并携带 `smokeTestSkippedReason`。
 - 问题样本包含 `auditLogId`、`auditAction`、模型、`smokeTestSkippedReason`、`modelsOk`、`responsesOk`、`localProxyOk`、`keyDisabled`、代理日志数量、发生时间、证据年龄和维修建议。
+- 当 Sub2/OpenAI 上游巡检已经发现非 active 或不可调度的 OpenAI 账号时，本地反代自检问题会继承首个修复候选账号字段：`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable` 和 `repairAction`。
 - Admin `可用性巡检` 问题样本支持从 smoke 问题一键打开对应审计记录。
+- Admin `可用性巡检` 问题样本支持从 smoke 问题一键打开反代状态页；如果问题携带 `sub2AccountId`，凭据应用表单会预选该账号。
 
 ## 证据来源
 
@@ -29,6 +31,7 @@
 
 - 管理员刷新系统巡检时，可以直接看到真实 `/v1/responses` 是否在最近 24 小时内被端到端证明过。
 - 当最新自检失败或被跳过时，巡检页会明确失败阶段，例如凭据应用失败、Sub2 账号测试失败、`/v1/models`、`/v1/responses`、本地代理清理、临时 Sub2 Key 禁用或日志证据不足。
+- 如果失败指向上游账号不可用，管理员可以从同一条 smoke 问题进入反代状态页，并直接看到优先修复账号。
 - 管理员可以从巡检问题样本打开审计记录，查看当次自检的完整脱敏结果。
 
 ## 设计边界

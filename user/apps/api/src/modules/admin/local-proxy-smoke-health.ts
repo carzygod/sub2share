@@ -1,3 +1,5 @@
+import { resourceCredentialRepairCandidateFields, type ResourceCredentialSub2AccountCandidate } from "./resource-credential-health.js";
+
 export interface LocalProxySmokeAuditLog {
   id: string;
   action: string;
@@ -46,6 +48,12 @@ export interface LocalProxySmokeEvidenceIssue {
   auditAction?: string;
   resourceId?: string | null;
   sub2Status?: true;
+  sub2AccountId?: number | string | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  repairAction?: string;
   model?: string | null;
   modelsOk?: boolean | null;
   responsesOk?: boolean | null;
@@ -170,6 +178,19 @@ export function localProxySmokeEvidenceIssue(
     message,
     actionHint
   };
+}
+
+export function attachLocalProxySmokeIssueRepairCandidate<T extends { issues: LocalProxySmokeEvidenceIssue[] }>(
+  result: T,
+  candidates: ResourceCredentialSub2AccountCandidate[]
+): T {
+  const repairFields = resourceCredentialRepairCandidateFields(candidates);
+  if (Object.keys(repairFields).length === 0) return result;
+
+  return {
+    ...result,
+    issues: result.issues.map((issue) => issue.sub2Status ? { ...issue, ...repairFields } : issue)
+  } as T;
 }
 
 export function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
