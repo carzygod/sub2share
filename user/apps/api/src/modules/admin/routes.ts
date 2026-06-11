@@ -41,7 +41,8 @@ import { inspectCurrentDeploymentRuntime } from "./deployment-runtime.js";
 import {
   resourceCredentialCodexResourceListFields,
   resourceCredentialRepairCandidateFields,
-  resourceCredentialSub2AccountRepairSamples
+  resourceCredentialSub2AccountRepairSamples,
+  type ResourceCredentialSub2AccountCandidate
 } from "./resource-credential-health.js";
 import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
@@ -62,7 +63,8 @@ import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } fro
 import {
   internalHealthCheckSupplierResourceWhere,
   nonSmokeSupplierResourceWhere,
-  supplierResourceAvailabilityMetrics
+  supplierResourceAvailabilityMetrics,
+  supplierResourceMissingCodexIssueFields
 } from "./supplier-resource-health.js";
 import {
   buildSub2UpstreamIssues,
@@ -228,6 +230,12 @@ interface ResourceAvailabilityIssue {
   resourceStatus?: string | null;
   resourceType?: string | null;
   supplierEmail?: string | null;
+  sub2AccountId?: number | string | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  repairAction?: string;
   actionHint: string;
   message: string;
 }
@@ -3420,7 +3428,7 @@ async function buildSystemHealthReport() {
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
   const failedOrders = (ordersByStatus.failed ?? 0) + (ordersByStatus.refunding ?? 0);
-  const resourceAvailability = await resourceAvailabilityHealthCheck(resourcesByStatus);
+  const resourceAvailability = await resourceAvailabilityHealthCheck(resourcesByStatus, sub2Status.accountSamples);
   const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
   const deploymentRuntime = deploymentRuntimeHealthCheck();
 
@@ -5037,7 +5045,10 @@ async function inspectPaymentRechargeActivity(checkedAt: Date): Promise<PaymentR
   };
 }
 
-async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string, number>) {
+async function resourceAvailabilityHealthCheck(
+  resourcesByStatus: Record<string, number>,
+  sub2AccountCandidates: ResourceCredentialSub2AccountCandidate[] = []
+) {
   const codexResourceWhere: Prisma.SupplierResourceWhereInput = {
     resourceType: "codex",
     ...nonSmokeSupplierResourceWhere()
@@ -5105,10 +5116,12 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
       type: "codex_online_resource_missing",
       severity: "warning",
       resourceId: nonOnlineCodexSample?.id,
-      resourceList: true,
-      resourceScope: "production",
-      resourceStatus: nonOnlineCodexSample?.status ?? null,
-      resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
+      ...supplierResourceMissingCodexIssueFields({
+        resourceStatus: nonOnlineCodexSample?.status ?? null,
+        resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
+        sub2AccountId: nonOnlineCodexSample?.sub2AccountId ?? null,
+        sub2AccountCandidates
+      }),
       supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? null,
       actionHint: totalCodexResources > 0
         ? "Open an existing production Codex shared resource, bind a Sub2 account and active credential, test it, then switch it online."
