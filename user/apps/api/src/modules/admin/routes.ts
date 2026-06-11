@@ -44,6 +44,12 @@ import {
 } from "./resource-credential-health.js";
 import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
+  inspectFrontendRuntime,
+  type FrontendEndpointName,
+  type FrontendEndpointProbe,
+  type FrontendRuntimeHealth
+} from "./frontend-runtime-health.js";
+import {
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
   localProxySmokeEvidenceSummary,
@@ -84,6 +90,7 @@ const systemHealthPendingUsageScanLimit = 200;
 const systemHealthPendingUsageIssueLimit = 50;
 const systemHealthLocalSmokeFreshMs = 24 * 60 * 60 * 1000;
 const systemHealthLocalSmokeCredentialAuditScanLimit = 100;
+const systemHealthFrontendProbeTimeoutMs = 3000;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
 let adminCapabilityRouteExists: ((operation: AdminCapabilityOperation) => boolean) | null = null;
@@ -3286,7 +3293,8 @@ async function buildSystemHealthReport() {
     productCatalog,
     salesDelivery,
     oauthStateStore,
-    localProxySmokeEvidence
+    localProxySmokeEvidence,
+    frontendRuntime
   ] = await Promise.all([
     prisma.user.groupBy({ by: ["status"], where: nonSmokeUserWhere(), _count: true }),
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -3350,7 +3358,8 @@ async function buildSystemHealthReport() {
     inspectProductCatalogReadiness(),
     inspectSalesDeliveryReadiness(),
     inspectOAuthStateStoreReadiness(),
-    inspectLocalProxySmokeEvidence(checkedAt)
+    inspectLocalProxySmokeEvidence(checkedAt),
+    inspectFrontendRuntimeEndpoints()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
   const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
@@ -3371,6 +3380,7 @@ async function buildSystemHealthReport() {
       rentals: activeRentals
     }),
     deploymentRuntime,
+    frontendRuntimeHealthCheck(frontendRuntime),
     adminCapabilityHealthCheck(adminCapabilityCoverage),
     systemHealthCheck(
       "users",
@@ -4815,6 +4825,83 @@ function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredA
       : `${result.issues.length} 个管理员入口覆盖问题`,
     result.summary,
     result.issues.length > 0 ? { issues: result.issues } : undefined
+  );
+}
+
+async function inspectFrontendRuntimeEndpoints() {
+  const probes = await Promise.all([
+    probeFrontendEndpoint("web", env.APP_PUBLIC_URL),
+    probeFrontendEndpoint("admin", env.ADMIN_PUBLIC_URL)
+  ]);
+  return inspectFrontendRuntime(probes);
+}
+
+async function probeFrontendEndpoint(endpoint: FrontendEndpointName, url?: string | null): Promise<FrontendEndpointProbe> {
+  if (!url) {
+    return {
+      endpoint,
+      url: null,
+      ok: false,
+      statusCode: null,
+      contentType: null,
+      durationMs: null,
+      error: "missing_url"
+    };
+  }
+
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), systemHealthFrontendProbeTimeoutMs);
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { accept: "text/html,application/xhtml+xml" },
+      signal: controller.signal
+    });
+    await response.body?.cancel();
+    return {
+      endpoint,
+      url,
+      ok: response.status >= 200 && response.status < 400,
+      statusCode: response.status,
+      contentType: response.headers.get("content-type"),
+      durationMs: Date.now() - startedAt,
+      error: null
+    };
+  } catch (error) {
+    return {
+      endpoint,
+      url,
+      ok: false,
+      statusCode: null,
+      contentType: null,
+      durationMs: Date.now() - startedAt,
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function frontendRuntimeHealthCheck(result: FrontendRuntimeHealth) {
+  return systemHealthCheck(
+    "frontendRuntime",
+    "前端入口",
+    result.status,
+    result.ok
+      ? `Web/Admin frontend endpoints are reachable (${result.summary.okEndpoints}/${result.summary.totalEndpoints})`
+      : `${result.issues.length} frontend endpoint issue(s) detected`,
+    {
+      totalEndpoints: result.summary.totalEndpoints,
+      okEndpoints: result.summary.okEndpoints,
+      missingEndpoints: result.summary.missingEndpoints,
+      failedEndpoints: result.summary.failedEndpoints,
+      nonHtmlEndpoints: result.summary.nonHtmlEndpoints
+    },
+    {
+      probes: result.probes,
+      issues: result.issues
+    }
   );
 }
 
