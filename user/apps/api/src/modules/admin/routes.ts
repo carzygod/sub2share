@@ -5,7 +5,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireRole } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
-import { localProxySmokeBuyerId, localProxySmokeProductName, localProxySmokeUserEmail } from "../../common/internal-records.js";
+import {
+  legacyHealthCheckUserEmailDomain,
+  legacyHealthCheckUserEmailPrefix,
+  localProxySmokeBuyerId,
+  localProxySmokeProductName,
+  localProxySmokeUserEmail
+} from "../../common/internal-records.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { env, openAiProxyPublicEndpoint } from "../../config/env.js";
@@ -4454,6 +4460,29 @@ async function findSub2BindingIssues() {
     });
   }
 
+  const activeRentalStatuses = new Set(["active", "low_balance", "limited", "suspended"]);
+  const rentalsBySub2Key = new Map<string, typeof rentals>();
+  for (const rental of rentals) {
+    if (rental.sub2KeyId && activeRentalStatuses.has(rental.status)) {
+      const existing = rentalsBySub2Key.get(rental.sub2KeyId) ?? [];
+      existing.push(rental);
+      rentalsBySub2Key.set(rental.sub2KeyId, existing);
+    }
+  }
+  for (const [sub2KeyId, keyRentals] of rentalsBySub2Key) {
+    if (keyRentals.length > 1) {
+      for (const rental of keyRentals) {
+        issues.push(sub2BindingIssue({
+          type: "duplicate_current_api_key_reference",
+          rentalId: rental.id,
+          sub2Type: "api_key",
+          expected: sub2KeyId,
+          message: `Rental ${rental.id} shares current sub2KeyId ${sub2KeyId} with ${keyRentals.length - 1} other active rental(s).`
+        }));
+      }
+    }
+  }
+
   for (const rental of rentals) {
     if (rental.sub2UserId) {
       const binding = bindingBySub2TypeAndId.get(`user:${rental.sub2UserId}`);
@@ -4520,6 +4549,7 @@ async function findSub2BindingIssues() {
       missingCurrentUserBindings: issues.filter((issue) => issue.type === "missing_current_user_binding").length,
       missingUserBindings: issues.filter((issue) => issue.type === "missing_user_binding").length,
       missingCurrentApiKeyBindings: issues.filter((issue) => issue.type === "missing_current_api_key_binding").length,
+      duplicateCurrentApiKeyReferences: issues.filter((issue) => issue.type === "duplicate_current_api_key_reference").length,
       mismatchedCurrentBindings: issues.filter((issue) => issue.type.startsWith("mismatched_current")).length,
       orphanBindings: issues.filter((issue) => issue.type === "orphan_binding").length
     },
@@ -5528,7 +5558,21 @@ function groupCount(group: Record<string, unknown>) {
 }
 
 function nonSmokeUserWhere(): Prisma.UserWhereInput {
-  return { email: { not: localProxySmokeUserEmail } };
+  return { NOT: internalHealthCheckUserWhere() };
+}
+
+function internalHealthCheckUserWhere(): Prisma.UserWhereInput {
+  return {
+    OR: [
+      { email: localProxySmokeUserEmail },
+      {
+        email: {
+          startsWith: legacyHealthCheckUserEmailPrefix,
+          endsWith: legacyHealthCheckUserEmailDomain
+        }
+      }
+    ]
+  };
 }
 
 function nonSmokeOrderWhere(): Prisma.OrderWhereInput {
@@ -6059,31 +6103,35 @@ async function cleanupLocalOpenAiProxySmoke(local?: LocalProxySmokeProvision, su
 async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limit: number }) {
   const checkedAt = new Date();
   const cutoff = new Date(checkedAt.getTime() - input.ageMinutes * 60 * 1000);
-  const smokeUser = await prisma.user.findUnique({
-    where: { email: localProxySmokeUserEmail },
+  const smokeUsers = await prisma.user.findMany({
+    where: internalHealthCheckUserWhere(),
     include: { wallet: true }
   });
 
-  if (!smokeUser) {
+  if (smokeUsers.length === 0) {
     return {
       checkedAt: checkedAt.toISOString(),
       cutoff: cutoff.toISOString(),
       smokeUserFound: false,
+      usersMatched: 0,
       rentalsMatched: 0,
       rentalsClosed: 0,
       ordersClosed: 0,
       apiKeysDeactivated: 0,
       walletReset: false,
+      walletsReset: 0,
       sub2KeysDisableAttempted: 0,
       sub2KeysDisabled: 0,
       sub2DisableFailed: 0,
+      sub2DisableSkipped: 0,
       errors: [] as string[]
     };
   }
 
+  const smokeUserIds = smokeUsers.map((user) => user.id);
   const staleRentals = await prisma.rental.findMany({
     where: {
-      userId: smokeUser.id,
+      userId: { in: smokeUserIds },
       OR: [
         { createdAt: { lte: cutoff } },
         { endsAt: { lte: checkedAt } },
@@ -6094,7 +6142,9 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
     select: {
       id: true,
       orderId: true,
-      sub2KeyId: true
+      sub2UserId: true,
+      sub2KeyId: true,
+      user: { select: { email: true } }
     },
     orderBy: { createdAt: "asc" },
     take: input.limit
@@ -6106,6 +6156,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   let sub2KeysDisableAttempted = 0;
   let sub2KeysDisabled = 0;
   let sub2DisableFailed = 0;
+  let sub2DisableSkipped = 0;
   const errors: string[] = [];
 
   for (const rental of staleRentals) {
@@ -6140,6 +6191,18 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
     }
 
     if (rental.sub2KeyId) {
+      const sharedActiveRentals = await prisma.rental.count({
+        where: {
+          id: { not: rental.id },
+          sub2KeyId: rental.sub2KeyId,
+          status: { in: ["active", "low_balance", "limited", "suspended"] },
+          user: nonSmokeUserWhere()
+        }
+      });
+      if (rental.user.email !== localProxySmokeUserEmail || sharedActiveRentals > 0) {
+        sub2DisableSkipped += 1;
+        continue;
+      }
       sub2KeysDisableAttempted += 1;
       try {
         await sub2Client.disableKey(localProxySmokeBuyerId, rental.sub2KeyId);
@@ -6154,7 +6217,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   const [staleOrders, staleApiKeys] = await Promise.all([
     prisma.order.updateMany({
       where: {
-        userId: smokeUser.id,
+        userId: { in: smokeUserIds },
         createdAt: { lte: cutoff },
         status: { not: "closed" }
       },
@@ -6162,7 +6225,7 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
     }),
     prisma.apiKey.updateMany({
       where: {
-        userId: smokeUser.id,
+        userId: { in: smokeUserIds },
         createdAt: { lte: cutoff },
         status: { not: "inactive" }
       },
@@ -6172,37 +6235,44 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   ordersClosed += staleOrders.count;
   apiKeysDeactivated += staleApiKeys.count;
 
-  const freshActiveRentals = await prisma.rental.count({
-    where: {
-      userId: smokeUser.id,
-      status: "active",
-      createdAt: { gt: cutoff }
-    }
-  });
-  let walletReset = false;
-  if (smokeUser.wallet && freshActiveRentals === 0 && smokeUser.wallet.updatedAt.getTime() <= cutoff.getTime()) {
-    const wallet = await prisma.walletAccount.update({
-      where: { id: smokeUser.wallet.id },
-      data: {
-        availableBalance: new Prisma.Decimal(0),
-        frozenBalance: new Prisma.Decimal(0)
+  let walletsReset = 0;
+  for (const smokeUser of smokeUsers) {
+    const freshActiveRentals = await prisma.rental.count({
+      where: {
+        userId: smokeUser.id,
+        status: "active",
+        createdAt: { gt: cutoff }
       }
     });
-    walletReset = wallet.availableBalance.eq(0) && wallet.frozenBalance.eq(0);
+    if (smokeUser.wallet && freshActiveRentals === 0 && smokeUser.wallet.updatedAt.getTime() <= cutoff.getTime()) {
+      const wallet = await prisma.walletAccount.update({
+        where: { id: smokeUser.wallet.id },
+        data: {
+          availableBalance: new Prisma.Decimal(0),
+          frozenBalance: new Prisma.Decimal(0)
+        }
+      });
+      if (wallet.availableBalance.eq(0) && wallet.frozenBalance.eq(0)) {
+        walletsReset += 1;
+      }
+    }
   }
 
   return {
     checkedAt: checkedAt.toISOString(),
     cutoff: cutoff.toISOString(),
     smokeUserFound: true,
+    usersMatched: smokeUsers.length,
     rentalsMatched: staleRentals.length,
     rentalsClosed,
     ordersClosed,
     apiKeysDeactivated,
-    walletReset,
+    walletReset: walletsReset > 0,
+    walletsReset,
     sub2KeysDisableAttempted,
     sub2KeysDisabled,
     sub2DisableFailed,
+    sub2DisableSkipped,
     errors
   };
 }
