@@ -916,3 +916,100 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：生产部署过程现在有仓库内脚本可复用，且真实发布已证明脚本能够避免旧 release cwd 漂移。完整 OpenAI/Codex 真实生成仍取决于有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号。
+
+## 2026-06-11 19:44 支付巡检跳转与部署脚本加固
+
+### 发布版本
+
+- `20a53ce fix: link payment health to wallet views`
+- `bd6999a fix: harden production deploy restarts`
+
+### 本轮修复
+
+- `payments.detail.issues` 在 `PAYMENT_PROVIDER=disabled` 和生产环境 `PAYMENT_PROVIDER=mock` 场景下新增：
+  - `walletList=true`
+  - `walletTransactionList=true`
+- 管理后台 `可用性巡检 -> 巡检问题样本` 新增操作：
+  - `打开余额列表`
+  - `打开余额流水`
+- 这样管理员看到支付充值配置 warning/error 后，可以直接进入余额管理和余额流水复核受影响账务数据。
+- 加固 `user/scripts/deploy-production.sh`：
+  - 停端口时先发 `TERM`，再用 `fuser -k` 清理仍占用 4100/3100/3101 的进程。
+  - 启动服务时使用 `cd -P` 进入当前 release 的 `apps/api`、`apps/web`、`apps/admin`。
+  - 若 HTTP 复查成功但 cwd 复查发现旧 release listener，脚本会自动停止三端口并从当前 release 再启动一次。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：51/51 通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- 服务器临时路径 `bash -n` 校验加固后的 `deploy-production.sh`：通过。
+
+### 服务端发布验证
+
+首次部署 `20a53ce` 时，脚本按预期捕获到 4100 仍由旧 cwd 提供服务：
+
+- marker 已切到 `20a53ce`。
+- 4100 cwd：`/opt/zhisuan-yizhan/user-replaced-20260611T113911Z-20a53ce`
+- Web/Admin cwd 已是当前 release。
+- 已手动杀掉 4100 stale listener，并从 `/opt/zhisuan-yizhan/user/apps/api` 重启 API。
+
+加固脚本后部署 `bd6999a`，发布门禁全部通过：
+
+- `pnpm install --frozen-lockfile --prod=false`：通过。
+- `pnpm db:generate`：通过。
+- `pnpm exec prisma migrate deploy`：无待应用迁移。
+- `pnpm --filter @zyz/api run typecheck`：通过。
+- `pnpm --filter @zyz/admin run typecheck`：通过。
+- `pnpm --filter @zyz/api test`：51/51 通过。
+- `pnpm build`：通过。
+- 启动后 HTTP 复查：
+  - `GET /health`：`200`
+  - `GET /ready`：`200`
+  - `GET /` on `3100`：`200`
+  - `GET /` on `3101`：`200`
+- cwd 复查：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101：`/opt/zhisuan-yizhan/user/apps/admin`
+- release marker：
+  - `commit=bd6999a`
+  - `deployed_at=20260611T114311Z`
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T11:44:02.343Z`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release bd6999a`
+- commit：`bd6999a`
+- deployedAt：`20260611T114311Z`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- issues：`[]`
+
+`payments` 当前仍为 warning，但操作入口已经补齐：
+
+- provider：`mock`
+- nodeEnv：`production`
+- issueType：`production_mock_recharge`
+- walletList：`true`
+- walletTransactionList：`true`
+
+剩余阻断仍未变化：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token；候选维修账号仍为 Sub2 account `#2` / `1`。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成失败。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：余额/售出可信度相关的支付配置 warning 现在可以从巡检页直达余额与流水复核入口；生产部署脚本也能捕获并恢复旧 release listener 漂移。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。

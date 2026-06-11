@@ -25,9 +25,10 @@
   - 解包 `git archive HEAD:user` 生成的 release 包到 `user.new-*`。
   - 复制当前 `.env`，强制开启 Sub2 usage 启动同步与 5 分钟周期同步。
   - 执行 `pnpm install --frozen-lockfile --prod=false`、Prisma generate/migrate、API/Admin typecheck、API 测试和全量 build。
-  - 停止 4100/3100/3101 后切换 `/opt/zhisuan-yizhan/user`。
+  - 停止 4100/3100/3101 后切换 `/opt/zhisuan-yizhan/user`；端口停止会先发 `TERM`，再用 `fuser -k` 清理仍占用端口的进程。
   - 直接从 `apps/api`、`apps/web`、`apps/admin` 目录启动服务，避免 `pnpm --filter` 在目录切换后留下旧 cwd。
   - 对 `/health`、`/ready`、Web、Admin 首页执行 HTTP 复查，并读取 `/proc/<pid>/cwd` 确认三个端口均运行在当前 release。
+  - 如果启动后 cwd 复核发现旧 release listener，脚本会自动停止三端口并从当前 release 重启一次，再执行完整 HTTP 与 cwd 复查。
 
 ## 管理价值
 
