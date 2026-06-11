@@ -3047,3 +3047,88 @@ CORS 复查：
 ### 结论
 
 OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康异常样本中携带上游 request id。后续 `/v1/responses` 若继续返回上游错误，管理员可以同时拿到本地 `x-proxy-request-id` 和 Sub2API/OpenAI 侧 request id 进行跨系统排障。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
+
+## 2026-06-12 06:10 本地反代自检证据携带上游 Request ID 发布与线上复查
+
+### 发布版本
+
+- `afab975 feat: include upstream ids in smoke evidence`
+
+### 本轮修复
+
+- `Sub2ProxySmokeRequestLogSummary` 新增 `upstreamRequestId`。
+- `runLocalOpenAiProxySmokeTest()` 读取 smoke 租赁关联 `ProxyRequestLog` 时同步选择 `upstreamRequestId`。
+- `normalizeLocalProxySmokeAuditLog()` 解析 smoke 审计中的 `localProxy.proxyRequestLogs[].upstreamRequestId`。
+- `localProxySmoke.detail.latest` 新增主代理请求的 `upstreamRequestId`。
+- `localProxySmoke.detail.issues[]` 新增主代理请求的 `upstreamRequestId`。
+- 单元测试覆盖：
+  - 直接 smoke 审计解析上游 request id。
+  - Sub2 直接应用 refresh token 后的 smoke 审计解析上游 request id。
+  - smoke 失败问题样本携带上游 request id。
+- 更新文档：
+  - `docs/local-proxy-smoke-health-evidence.md`
+  - `docs/local-proxy-smoke-request-log-links.md`
+  - `docs/proxy-request-upstream-request-id.md`
+  - `docs/system-health-check.md`
+  - `docs/system-health-issue-samples.md`
+  - `docs/需求文档.md`
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test -- tests/admin-local-proxy-smoke-health.test.ts`：通过；当前脚本实际运行 API 全量测试，74/74 通过。
+- `pnpm.cmd -r test`：通过；API 74/74、Admin 3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=afab975`
+  - `deployed_at=20260611T220830Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 生产 API dist 已包含 smoke 上游 request id 逻辑：
+  - `local-proxy-smoke-health.js` 包含 `upstreamRequestId` 解析和 issue 输出。
+  - `routes.js` 的 `listLocalProxySmokeLogs()` 已 select/map `upstreamRequestId`。
+- 未发现残留 `/opt/zhisuan-yizhan/user.new-*` staging 目录。
+- `/tmp/sub2share-user-afab975.tar` 已由部署脚本删除。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- `localProxySmoke`：
+  - status：`error`
+  - summary：`Latest local OpenAI/Codex smoke test failed at /v1/responses.`
+  - `firstIssueHasUpstreamRequestIdKey=true`
+  - `firstIssueUpstreamRequestId=null`
+  - `latestUpstreamRequestId=null`
+- 当前线上 latest smoke 审计产生于本次字段上线前，因此 `upstreamRequestId` 为空是预期行为；后续重新运行端到端 smoke 后，若 Sub2API/OpenAI 响应带上游 request id，系统健康 latest/issue 会直接展示。
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+本地反代自检证据现在与普通反代请求日志使用同一套上游 request id 线索。后续管理员从“反代状态”页运行 smoke，或在资源凭据应用/直接 token 应用时触发 smoke，系统健康页即可直接展示主失败请求的上游 request id。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
