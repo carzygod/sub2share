@@ -607,3 +607,71 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：本轮未伪造或绕过 OpenAI 上游凭据问题，而是把最后的端到端自检失败入口打通到管理员可维修页面。完整 OpenAI/Codex 反代闭环仍需要管理员补入有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号后，再运行端到端自检确认 `/v1/responses` 成功。
+
+## 2026-06-11 18:59 部署运行态巡检补强
+
+### 发布版本
+
+- `60be53a fix: add deployment runtime health check`
+
+### 本轮修复
+
+- 新增 `deploymentRuntime` 系统巡检项，读取当前 API 进程 cwd、release root 和 `.release-marker`。
+- 当进程仍运行在 `user-replaced-*` 旧 release 目录时标记 `error`，避免 release marker 已切换但旧代码仍接管 4100 的情况被漏掉。
+- 当进程运行在 `user.new-*` staging 目录时标记 `error`。
+- 生产环境缺少 `.release-marker` 时标记 `warning`。
+- 新增 `admin-deployment-runtime.test.ts`，覆盖当前 release、旧 release、staging release 和缺 marker 场景。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：48/48 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/admin run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：48/48 通过。
+- 服务端 `pnpm build`：通过。
+- 发布脚本启动后校验：
+  - 4100 cwd：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100 cwd：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101 cwd：`/opt/zhisuan-yizhan/user/apps/admin`
+- 当前 release marker：`commit=60be53a`，`deployed_at=20260611T105847Z`。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release 60be53a`
+- releaseRoot：`/opt/zhisuan-yizhan/user`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- markerPresent：`true`
+- commit：`60be53a`
+- deployedAt：`20260611T105847Z`
+- runningFromReplacedRelease：`false`
+- runningFromStagingRelease：`false`
+
+剩余阻塞仍未变化：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：真实 `/v1/responses` 仍由失效 OpenAI 上游 token 阻断。
+- `payments` warning：生产仍使用 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：本轮把发布过程中的“进程是否真的运行在当前 release”纳入后台巡检证据。完整 OpenAI/Codex 反代真实生成仍取决于有效 OpenAI 上游凭据补录或重新授权。
