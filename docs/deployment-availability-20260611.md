@@ -2486,3 +2486,81 @@ CORS 复查：
 ### 结论
 
 管理员现在可以从“反代状态”页直接完成“应用 OpenAI refresh token 到 Sub2 + 显式同步保存平台共享资源凭据”的闭环。该能力不会默认保存 token，必须由管理员勾选并通过二次确认；保存前会校验目标资源或供给方邮箱。真实 `/v1/responses` 仍未恢复，因为线上仍缺少有效 OpenAI refresh token / active Sub2 OpenAI 账号。
+## 2026-06-12 04:49 Sub2 修复上下文预填发布与线上复查
+
+### 发布版本
+
+- `e86a6b1 feat: prefill sub2 repair resource context`
+- `c4942a6 feat: enrich sub2 repair supplier context`
+
+### 本轮修复
+
+- Admin 系统健康页点击“打开反代状态”时，不再只传 `sub2AccountId`，会传递修复上下文：
+  - `accountId`
+  - `resourceId`
+  - `supplierEmail`
+  - `resourceType`
+  - `resourceStatus`
+- Admin “反代状态”页 Apply OpenAI Credentials 表单会使用该上下文：
+  - 自动预选 Sub2 OpenAI 账号。
+  - 自动预填目标资源 ID。
+  - 自动预填供给方邮箱。
+  - 如果存在资源 ID 或供给方邮箱，默认勾选“保存为共享资源凭据”。
+  - 表单随修复上下文变化重新挂载，避免旧默认值残留。
+- 后端系统健康报告新增修复上下文 enrichment：
+  - 当 `repairAction=apply_openai_refresh_token_to_sub2_account` 的问题缺少 `supplierEmail`，且系统内恰好只有一个 active 供给方时，自动补入该供给方邮箱。
+  - 当前线上候选为 `admin@zhisuan.local`。
+- 新增文档：`docs/admin-sub2-repair-context-prefill.md`。
+- 总需求文档追加 `18.136 系统健康到 Sub2 修复页的上下文预填`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=c4942a6`
+  - `deployed_at=20260611T204838Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- Admin 生产 JS 资源包含：
+  - `repairContext`
+  - `credential-`
+  - `saveToResource`
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- 当前线上所有 `repairAction=apply_openai_refresh_token_to_sub2_account` 问题均携带修复上下文：
+  - `resource:codex-online-missing`：`sub2AccountId=2`，`supplierEmail=admin@zhisuan.local`，`resourceType=codex`
+  - `openai-refresh-token-candidate-missing`：`sub2AccountId=2`，`supplierEmail=admin@zhisuan.local`，`resourceType=codex`
+  - `sub2_upstream:openai_group_has_no_active_accounts`：`sub2AccountId=2`，`supplierEmail=admin@zhisuan.local`，`resourceType=codex`
+  - `local_proxy_smoke_failed`：`sub2AccountId=2`，`supplierEmail=admin@zhisuan.local`，`resourceType=codex`
+
+### 结论
+
+管理员现在从系统健康页任一 OpenAI/Sub2 上游修复问题进入“反代状态”页时，表单会预选账号 #2 并预填供给方 `admin@zhisuan.local`，同时默认勾选保存为共享资源凭据。拿到有效 OpenAI refresh token 后，管理员只需粘贴 token 并确认，即可同时修复 Sub2 账号、沉淀平台 Codex 资源凭据并运行账号/端到端自检。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token。
