@@ -1688,6 +1688,10 @@ function App() {
     setMessage(filter?.type ? "已打开巡检关联余额流水" : "已打开余额流水");
   }
 
+  async function openWalletTransactionCandidate(lookup: string) {
+    await openFilteredListCandidate("walletTransactions", lookup, "已打开用户关联余额流水");
+  }
+
   async function openSalesCandidate() {
     const query = { ...defaultListQuery };
     setListQueries((current) => ({ ...current, sales: query }));
@@ -2174,6 +2178,13 @@ function App() {
             onRoles={setUserRoles}
             onDetail={openUserDetail}
             onCloseDetail={() => setSelectedUser(null)}
+            onOpenWallet={openWalletCandidate}
+            onOpenWalletTransaction={openWalletTransactionCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
             onDraft={(patch) => updateListDraft("users", patch)}
             onFilter={(event) => submitListFilters("users", event)}
             onClear={() => clearListFilters("users")}
@@ -2700,7 +2711,7 @@ function SystemHealthHistoryView({ snapshots, query, meta, onDraft, onFilter, on
   );
 }
 
-function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpdate, onRoles, onDetail, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpdate, onRoles, onDetail, onCloseDetail, onOpenWallet, onOpenWalletTransaction, onOpenOrder, onOpenRental, onOpenApiKey, onOpenResource, onOpenWithdrawal, onDraft, onFilter, onClear, onPage, onExport }: {
   users: UserRow[];
   selectedUser: UserDetailRow | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
@@ -2709,6 +2720,13 @@ function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpd
   onRoles: (userId: string, roles: string[]) => void;
   onDetail: (userId: string) => void;
   onCloseDetail: () => void;
+  onOpenWallet: (lookup: string) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
 } & ManagedListProps) {
   return (
     <section className="stack">
@@ -2750,16 +2768,37 @@ function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpd
           </tr>
         ))}
       </TablePanel>
-      {selectedUser && <UserDetailPanel user={selectedUser} onUpdate={onUpdate} onRoles={onRoles} onClose={onCloseDetail} />}
+      {selectedUser && (
+        <UserDetailPanel
+          user={selectedUser}
+          onUpdate={onUpdate}
+          onRoles={onRoles}
+          onClose={onCloseDetail}
+          onOpenWallet={onOpenWallet}
+          onOpenWalletTransaction={onOpenWalletTransaction}
+          onOpenOrder={onOpenOrder}
+          onOpenRental={onOpenRental}
+          onOpenApiKey={onOpenApiKey}
+          onOpenResource={onOpenResource}
+          onOpenWithdrawal={onOpenWithdrawal}
+        />
+      )}
     </section>
   );
 }
 
-function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
+function UserDetailPanel({ user, onUpdate, onRoles, onClose, onOpenWallet, onOpenWalletTransaction, onOpenOrder, onOpenRental, onOpenApiKey, onOpenResource, onOpenWithdrawal }: {
   user: UserDetailRow;
   onUpdate: (event: FormEvent<HTMLFormElement>, userId: string) => void;
   onRoles: (userId: string, roles: string[]) => void;
   onClose: () => void;
+  onOpenWallet: (lookup: string) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenWithdrawal: (withdrawalId: string) => void;
 }) {
   const transactions = user.wallet?.transactions ?? [];
   const orders = user.orders ?? [];
@@ -2778,6 +2817,7 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
         </div>
         <div className="row-actions">
           <StatusPill status={user.status} />
+          {user.wallet?.id && <button className="secondary mini" onClick={() => onOpenWallet(user.wallet!.id)}>打开余额</button>}
           <button className="secondary mini" onClick={onClose}>关闭</button>
         </div>
       </div>
@@ -2822,7 +2862,7 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
 
       <section className="detail-grid">
         <DetailBlock title="最近钱包流水">
-          <MiniTable headers={["类型", "金额", "余额后", "引用", "时间"]}>
+          <MiniTable headers={["类型", "金额", "余额后", "引用", "时间", "操作"]}>
             {transactions.slice(0, 8).map((transaction) => (
               <tr key={transaction.id}>
                 <td><StatusPill status={transaction.type} /></td>
@@ -2830,13 +2870,14 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td>{money(transaction.balanceAfter)}</td>
                 <td><strong>{transaction.refType ?? "-"}</strong><small>{transaction.refId ?? "-"}</small></td>
                 <td>{dateTime(transaction.createdAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenWalletTransaction(transaction.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="最近订单">
-          <MiniTable headers={["订单", "状态", "金额", "租赁", "时间"]}>
+          <MiniTable headers={["订单", "状态", "金额", "租赁", "时间", "操作"]}>
             {orders.slice(0, 8).map((order) => (
               <tr key={order.id}>
                 <td><small>{order.id}</small></td>
@@ -2844,13 +2885,14 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td>{money(order.paidAmount)} / {money(order.totalAmount)}</td>
                 <td>{order.rentals?.length ?? 0}</td>
                 <td>{dateTime(order.createdAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenOrder(order.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="最近租赁">
-          <MiniTable headers={["租赁", "资源", "状态", "Endpoint", "到期"]}>
+          <MiniTable headers={["租赁", "资源", "状态", "Endpoint", "到期", "操作"]}>
             {rentals.slice(0, 8).map((rental) => (
               <tr key={rental.id}>
                 <td><small>{rental.id}</small></td>
@@ -2858,13 +2900,14 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td><StatusPill status={rental.status} /></td>
                 <td><small>{rental.endpointUrl ?? "-"}</small></td>
                 <td>{dateTime(rental.endsAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenRental(rental.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="API Key">
-          <MiniTable headers={["名称", "前缀", "状态", "最近使用", "创建"]}>
+          <MiniTable headers={["名称", "前缀", "状态", "最近使用", "创建", "操作"]}>
             {apiKeys.slice(0, 8).map((apiKey) => (
               <tr key={apiKey.id}>
                 <td>{apiKey.name}</td>
@@ -2872,13 +2915,14 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td><StatusPill status={apiKey.status} /></td>
                 <td>{dateTime(apiKey.lastUsedAt)}</td>
                 <td>{dateTime(apiKey.createdAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenApiKey(apiKey.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="供给资源">
-          <MiniTable headers={["资源", "状态", "等级", "Sub2 账号", "更新时间"]}>
+          <MiniTable headers={["资源", "状态", "等级", "Sub2 账号", "更新时间", "操作"]}>
             {resources.slice(0, 8).map((resource) => (
               <tr key={resource.id}>
                 <td>{resource.resourceType}</td>
@@ -2886,13 +2930,14 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td>{resource.level}</td>
                 <td><small>{resource.sub2AccountId ?? "-"}</small></td>
                 <td>{dateTime(resource.updatedAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenResource(resource.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="提现记录">
-          <MiniTable headers={["金额", "状态", "引用", "备注", "创建"]}>
+          <MiniTable headers={["金额", "状态", "引用", "备注", "创建", "操作"]}>
             {withdrawals.slice(0, 8).map((withdrawal) => (
               <tr key={withdrawal.id}>
                 <td>{money(withdrawal.amount)}</td>
@@ -2900,6 +2945,7 @@ function UserDetailPanel({ user, onUpdate, onRoles, onClose }: {
                 <td><small>{withdrawal.payoutRef ?? "-"}</small></td>
                 <td><small>{withdrawal.note ?? "-"}</small></td>
                 <td>{dateTime(withdrawal.createdAt)}</td>
+                <td><button className="secondary mini" onClick={() => onOpenWithdrawal(withdrawal.id)}>打开</button></td>
               </tr>
             ))}
           </MiniTable>
