@@ -3280,3 +3280,82 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从单个售出订单或订单详情页横向进入用户、余额流水、反代请求、商品、租赁通道和 API Key 管理，订单售后与交付排障路径更短。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 06:44 管理员反代请求横向钻取发布与线上复查
+
+### 发布版本
+
+- `9586ac9 feat: add admin proxy request cross links`
+
+### 本轮修复
+
+- `GET /api/admin/proxy-requests` 的租赁关联信息新增 `orderId` 与 `productId`。
+- 订单详情中的最近反代请求数据也同步返回租赁关联 `orderId` 与 `productId`。
+- 管理后台 `反代请求` 列表新增 `操作` 列。
+- 行内操作可从单条 OpenAI/Codex 代理日志继续打开：
+  - 用户管理并进入用户详情。
+  - 订单管理并进入订单详情。
+  - 租赁管理并进入租赁详情。
+  - API Key 管理。
+  - 商品配置。
+  - 用量记录列表。
+- 新增文档：`docs/admin-proxy-request-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.145 管理员反代请求支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，74/74。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check` / `git diff --cached --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=9586ac9`
+  - `deployed_at=20260611T224445Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 生产 Admin 静态产物已更新：
+  - `apps/admin/dist/assets/index-B9Y-jEhm.js`
+  - `apps/admin/dist/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-9586ac9.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/proxy-requests?page=1&pageSize=5`：200。
+  - 样本 request id：`c3c3450f-5b06-4c72-aad4-449af98b6beb`。
+  - 样本 rental id：`c2804538-e863-4071-a1f2-2580a12f5948`。
+  - 样本 order id：`9f6e77b9-087c-454b-acb5-843de1459519`。
+  - 样本 product id：`91b79a4e-5977-4206-821d-009f37f4280a`。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从全局反代请求列表直接进入用户、订单、租赁、API Key、商品和用量管理，`系统健康 -> 反代请求 -> 业务对象/售后对象` 的排障链路更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
