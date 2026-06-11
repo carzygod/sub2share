@@ -34,6 +34,8 @@ test("normalizes direct local proxy smoke audit evidence", () => {
 
   assert.ok(evidence);
   assert.equal(evidence.auditLogId, "audit-1");
+  assert.equal(evidence.resourceId, null);
+  assert.equal(evidence.sub2AccountId, null);
   assert.equal(evidence.ok, true);
   assert.equal(evidence.model, "gpt-5.3-codex");
   assert.equal(evidence.modelsOk, true);
@@ -47,6 +49,50 @@ test("normalizes direct local proxy smoke audit evidence", () => {
   assert.equal(evidence.proxyRequestPath, "/v1/responses");
   assert.equal(evidence.proxyRequestStatusCode, 200);
   assert.equal(evidence.smokeTestSkippedReason, null);
+});
+
+test("normalizes direct refresh token apply smoke evidence", () => {
+  const evidence = normalizeLocalProxySmokeAuditLog({
+    id: "audit-direct-apply",
+    action: "admin.sub2.account.apply_openai_refresh_token",
+    objectId: "2",
+    createdAt: new Date("2026-06-11T02:30:00.000Z"),
+    after: {
+      ok: true,
+      accountId: 2,
+      smokeTestRequested: true,
+      resourceCredentialSync: {
+        saved: true,
+        resourceId: "resource-from-direct-apply",
+        sub2AccountId: "2"
+      },
+      smokeTest: {
+        ok: false,
+        model: "gpt-5.3-codex",
+        keyDisabled: true,
+        models: { ok: true, statusCode: 200 },
+        responses: { ok: false, statusCode: 401, errorType: "invalid_auth" },
+        localProxy: {
+          ok: false,
+          proxyRequestLogCount: 1,
+          proxyRequestLogs: [
+            { id: "direct-apply-proxy", requestId: "direct-apply-req", path: "/v1/responses", statusCode: 401, errorCode: "upstream_http_401" }
+          ]
+        }
+      }
+    }
+  });
+
+  assert.ok(evidence);
+  assert.equal(evidence.auditLogId, "audit-direct-apply");
+  assert.equal(evidence.action, "admin.sub2.account.apply_openai_refresh_token");
+  assert.equal(evidence.resourceId, "resource-from-direct-apply");
+  assert.equal(evidence.sub2AccountId, "2");
+  assert.equal(evidence.ok, false);
+  assert.equal(evidence.responsesOk, false);
+  assert.equal(evidence.proxyRequestLogId, "direct-apply-proxy");
+  assert.equal(evidence.requestId, "direct-apply-req");
+  assert.equal(localProxySmokeFailureSummary(evidence), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
 });
 
 test("normalizes credential apply smoke skip evidence", () => {
@@ -90,6 +136,22 @@ test("chooses the newest valid smoke evidence across audit sources", () => {
       }
     },
     {
+      id: "direct-apply-newest",
+      action: "admin.sub2.account.apply_openai_refresh_token",
+      objectId: "2",
+      createdAt: new Date("2026-06-11T04:00:00.000Z"),
+      after: {
+        smokeTest: {
+          ok: true,
+          model: "gpt-5.3-codex",
+          keyDisabled: true,
+          models: { ok: true },
+          responses: { ok: true },
+          localProxy: { ok: true, proxyRequestLogCount: 2 }
+        }
+      }
+    },
+    {
       id: "credential-without-smoke",
       action: "admin.resource.credential_apply_sub2",
       objectId: "resource-no-smoke",
@@ -118,11 +180,12 @@ test("chooses the newest valid smoke evidence across audit sources", () => {
   ];
   const candidates = localProxySmokeEvidenceCandidates(logs);
 
-  assert.equal(candidates.length, 2);
-  assert.equal(candidates[0].auditLogId, "credential-newer");
-  assert.equal(candidates[1].auditLogId, "direct-older");
-  assert.equal(latestLocalProxySmokeEvidence(logs)?.auditLogId, "credential-newer");
-  assert.equal(localProxySmokeFailureSummary(candidates[0]), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
+  assert.equal(candidates.length, 3);
+  assert.equal(candidates[0].auditLogId, "direct-apply-newest");
+  assert.equal(candidates[1].auditLogId, "credential-newer");
+  assert.equal(candidates[2].auditLogId, "direct-older");
+  assert.equal(latestLocalProxySmokeEvidence(logs)?.auditLogId, "direct-apply-newest");
+  assert.equal(localProxySmokeFailureSummary(candidates[1]), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
 });
 
 test("local proxy smoke issues link operators back to repair surfaces", () => {
@@ -205,6 +268,50 @@ test("local proxy smoke issues link operators back to repair surfaces", () => {
   assert.equal(credentialIssue.auditLogId, "credential-apply-failed");
   assert.equal(credentialIssue.proxyRequestLogId, "credential-proxy-responses");
   assert.equal(credentialIssue.requestId, "credential-req-responses");
+
+  const directApply = normalizeLocalProxySmokeAuditLog({
+    id: "direct-apply-failed",
+    action: "admin.sub2.account.apply_openai_refresh_token",
+    objectId: "2",
+    createdAt: new Date("2026-06-11T06:00:00.000Z"),
+    after: {
+      smokeTest: {
+        ok: false,
+        model: "gpt-5.3-codex",
+        keyDisabled: true,
+        models: { ok: true },
+        responses: { ok: false },
+        localProxy: {
+          ok: false,
+          proxyRequestLogCount: 1,
+          proxyRequestLogs: [
+            { id: "direct-apply-proxy-responses", requestId: "direct-apply-req-responses", path: "/v1/responses", statusCode: 502 }
+          ]
+        }
+      },
+      resourceCredentialSync: {
+        saved: true,
+        resourceId: "resource-direct-apply"
+      }
+    }
+  });
+  assert.ok(directApply);
+
+  const directApplyIssue = localProxySmokeEvidenceIssue(
+    directApply,
+    "local_proxy_smoke_failed",
+    "error",
+    5,
+    localProxySmokeFailureSummary(directApply),
+    "Repair the failing stage, then rerun the local end-to-end proxy smoke test."
+  );
+
+  assert.equal(directApplyIssue.sub2Status, true);
+  assert.equal(directApplyIssue.resourceId, "resource-direct-apply");
+  assert.equal(directApplyIssue.sub2AccountId, "2");
+  assert.equal(directApplyIssue.auditLogId, "direct-apply-failed");
+  assert.equal(directApplyIssue.proxyRequestLogId, "direct-apply-proxy-responses");
+  assert.equal(directApplyIssue.requestId, "direct-apply-req-responses");
 });
 
 test("local proxy smoke issues inherit Sub2 repair account candidates", () => {

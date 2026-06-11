@@ -12,6 +12,8 @@ export interface LocalProxySmokeEvidence {
   auditLogId: string;
   action: string;
   objectId?: string | null;
+  resourceId?: string | null;
+  sub2AccountId?: string | null;
   createdAt: Date;
   ok: boolean;
   model?: string | null;
@@ -86,11 +88,12 @@ export function latestLocalProxySmokeEvidence(logs: LocalProxySmokeAuditLog[]) {
 export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): LocalProxySmokeEvidence | null {
   const after = jsonRecord(log.after);
   if (!after) return null;
-  const smoke = log.action === "admin.resource.credential_apply_sub2"
+  const smoke = isEmbeddedLocalProxySmokeAction(log.action)
     ? jsonRecord(after.smokeTest)
     : after;
   const skippedReason = jsonText(after.smokeTestSkippedReason);
   if (!smoke && !skippedReason) return null;
+  const resourceCredentialSync = jsonRecord(after.resourceCredentialSync);
   const models = jsonRecord(smoke?.models);
   const responses = jsonRecord(smoke?.responses);
   const localProxy = jsonRecord(smoke?.localProxy);
@@ -102,6 +105,8 @@ export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): 
     auditLogId: log.id,
     action: log.action,
     objectId: log.objectId,
+    resourceId: localProxySmokeEvidenceResourceId(log, resourceCredentialSync),
+    sub2AccountId: localProxySmokeEvidenceSub2AccountId(log, after),
     createdAt: log.createdAt,
     ok: smoke ? Boolean(smoke.ok) : false,
     model: smoke ? jsonText(smoke.model) : null,
@@ -125,6 +130,8 @@ export function localProxySmokeEvidenceSummary(smoke: LocalProxySmokeEvidence, a
     auditLogId: smoke.auditLogId,
     auditAction: smoke.action,
     objectId: smoke.objectId ?? null,
+    resourceId: smoke.resourceId ?? null,
+    sub2AccountId: smoke.sub2AccountId ?? null,
     createdAt: smoke.createdAt.toISOString(),
     ageMinutes,
     stale,
@@ -159,8 +166,9 @@ export function localProxySmokeEvidenceIssue(
     severity,
     auditLogId: smoke.auditLogId,
     auditAction: smoke.action,
-    resourceId: smoke.action === "admin.resource.credential_apply_sub2" ? smoke.objectId ?? null : null,
+    resourceId: smoke.resourceId ?? null,
     sub2Status: true,
+    sub2AccountId: smoke.sub2AccountId ?? null,
     model: smoke.model ?? null,
     modelsOk: smoke.modelsOk,
     responsesOk: smoke.responsesOk,
@@ -202,6 +210,24 @@ export function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
   if (smoke.localProxyOk === false) return "Latest local OpenAI/Codex smoke test did not complete local proxy cleanup or log evidence.";
   if (smoke.keyDisabled === false) return "Latest local OpenAI/Codex smoke test did not disable the temporary Sub2 key.";
   return "Latest local OpenAI/Codex smoke test failed.";
+}
+
+function isEmbeddedLocalProxySmokeAction(action: string) {
+  return action === "admin.resource.credential_apply_sub2"
+    || action === "admin.sub2.account.apply_openai_refresh_token";
+}
+
+function localProxySmokeEvidenceResourceId(log: LocalProxySmokeAuditLog, resourceCredentialSync: Record<string, unknown> | null) {
+  if (log.action === "admin.resource.credential_apply_sub2") return log.objectId ?? null;
+  if (log.action === "admin.sub2.account.apply_openai_refresh_token") return jsonText(resourceCredentialSync?.resourceId);
+  return null;
+}
+
+function localProxySmokeEvidenceSub2AccountId(log: LocalProxySmokeAuditLog, after: Record<string, unknown>) {
+  if (log.action === "admin.sub2.account.apply_openai_refresh_token") {
+    return log.objectId ?? jsonText(after.accountId);
+  }
+  return jsonText(after.accountId) ?? jsonText(after.sub2AccountId);
 }
 
 function jsonRecord(value: unknown): Record<string, unknown> | null {

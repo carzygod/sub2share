@@ -5541,7 +5541,7 @@ async function fetchSub2HealthStatus() {
 }
 
 async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
-  const [directSmokeLogs, credentialApplyLogs] = await Promise.all([
+  const [directSmokeLogs, credentialApplyLogs, refreshTokenApplyLogs] = await Promise.all([
     prisma.auditLog.findMany({
       where: { action: "admin.sub2.proxy_smoke_test" },
       select: localProxySmokeAuditSelect,
@@ -5553,10 +5553,16 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       select: localProxySmokeAuditSelect,
       orderBy: { createdAt: "desc" },
       take: systemHealthLocalSmokeCredentialAuditScanLimit
+    }),
+    prisma.auditLog.findMany({
+      where: { action: "admin.sub2.account.apply_openai_refresh_token" },
+      select: localProxySmokeAuditSelect,
+      orderBy: { createdAt: "desc" },
+      take: systemHealthLocalSmokeCredentialAuditScanLimit
     })
   ]);
-  const checkedAuditLogs = directSmokeLogs.length + credentialApplyLogs.length;
-  const candidates = localProxySmokeEvidenceCandidates([...directSmokeLogs, ...credentialApplyLogs]);
+  const checkedAuditLogs = directSmokeLogs.length + credentialApplyLogs.length + refreshTokenApplyLogs.length;
+  const candidates = localProxySmokeEvidenceCandidates([...directSmokeLogs, ...credentialApplyLogs, ...refreshTokenApplyLogs]);
   const latest = candidates[0];
   const issues: LocalProxySmokeEvidenceIssue[] = [];
 
