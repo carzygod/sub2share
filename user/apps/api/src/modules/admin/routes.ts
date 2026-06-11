@@ -38,6 +38,10 @@ import {
   type AdminCapabilityOperation
 } from "./capabilities.js";
 import { inspectCurrentDeploymentRuntime } from "./deployment-runtime.js";
+import {
+  resourceCredentialRepairCandidateFields,
+  resourceCredentialSub2AccountRepairSamples
+} from "./resource-credential-health.js";
 import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
   localProxySmokeEvidenceCandidates,
@@ -247,6 +251,12 @@ interface ResourceCredentialReadinessIssue {
   resourceId?: string;
   refId?: string;
   sub2Status?: boolean;
+  sub2AccountId?: number | string | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  repairAction?: string;
   actionHint?: string;
   message: string;
 }
@@ -5688,6 +5698,8 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
   const issues: ResourceCredentialReadinessIssue[] = [];
   const firstApplicableResourceId = samples[0]?.supplierResource.id;
   const firstMissingSub2AccountResourceId = missingAccountSamples[0]?.supplierResource.id;
+  const sub2AccountRepairFields = resourceCredentialRepairCandidateFields(sub2Status.accountSamples);
+  const sub2AccountRepairSamples = resourceCredentialSub2AccountRepairSamples(sub2Status.accountSamples);
   if (!configured) {
     issues.push({
       id: "resource-credential-encryption-secret-missing",
@@ -5715,6 +5727,7 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       type: "openai_refresh_token_candidate_missing",
       severity: "error",
       sub2Status: true,
+      ...sub2AccountRepairFields,
       actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id, or paste a valid token on the Sub2 status page.",
       message: "Sub2 reports no active OpenAI upstream accounts and no active resource credential can be applied"
     });
@@ -5783,7 +5796,8 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
           resourceStatus: credential.supplierResource.status,
           sub2AccountId: credential.supplierResource.sub2AccountId,
           supplierEmail: credential.supplierResource.supplier.user.email
-        }))
+        })),
+        ...sub2AccountRepairSamples
       ]
     }
   );
