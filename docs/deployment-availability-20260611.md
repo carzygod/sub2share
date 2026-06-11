@@ -1588,3 +1588,71 @@ CORS 复查：
 - `adminCapabilities`：`ok`
 
 结论：当 Sub2/OpenAI 上游无 active 账号且本地没有可应用 refresh token 时，管理员不再只能进入反代状态页；同一巡检问题也可以直接打开 Codex 共享资源列表，选择创建生产资源或补齐资源凭据。真实生成恢复仍依赖有效 OpenAI/Sub2 refresh token。
+
+## 2026-06-12 02:23 支付 mock 充值流水影响巡检发布
+
+### 发布版本
+
+- `71355e9 fix: expose mock recharge ledger risk`
+
+### 本轮修复
+
+- `GET /api/admin/system-health` 的 `payments.metrics` 新增最近充值流水影响指标：
+  - `rechargeWindowHours`
+  - `rechargeWindowStartedAt`
+  - `recentRechargeTransactions`
+  - `recentRechargeAmount`
+  - `latestRechargeAt`
+- 生产环境 `PAYMENT_PROVIDER=mock` 且最近窗口内已有充值流水时，`production_mock_recharge` 会提示管理员先复核充值流水，再把余额与售出收入视为真实收款依据。
+- 新增 `inspectPaymentProviderHealth()` 纯 helper，并补测试覆盖 mock 无近期流水、mock 有近期流水和 disabled 充值。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：63/63 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=71355e9`
+  - `deployed_at=20260611T182335Z`
+- systemd：
+  - `zyz-api.service`：active
+  - `zyz-web.service`：active
+  - `zyz-admin.service`：active
+- HTTP：
+  - `GET http://127.0.0.1:4100/health`：200
+  - `GET http://127.0.0.1:4100/ready`：200
+  - `GET http://127.0.0.1:3100/`：200
+  - `GET http://127.0.0.1:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：63/63 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `payments`：`warning`
+  - provider：`mock`
+  - nodeEnv：`production`
+  - rechargeEndpointEnabled：`true`
+  - rechargeWindowHours：`24`
+  - recentRechargeTransactions：`0`
+  - recentRechargeAmount：`0.000000`
+  - latestRechargeAt：`null`
+  - issue：`production_mock_recharge`
+- `resources`：`warning`
+  - `issueSamples=1`
+  - `resourceSamples=0`
+- `resourceCredentials` / `sub2` / `localProxySmoke` 仍为 error：上游 OpenAI/Sub2 refresh token 失效。
+- `openAiProxyContract` / `openAiProxyRuntime` / `adminCapabilities`：`ok`
+
+结论：支付配置 warning 现在能同时回答“生产是否仍在 mock 充值”和“最近 24 小时 mock 充值是否已经写入余额流水”。当前线上未发现最近 mock 充值流水，余额风险仍主要来自生产继续启用 mock 充值配置本身；真实支付渠道接入仍是生产级后续任务。
