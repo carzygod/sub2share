@@ -9,6 +9,7 @@ import {
 test("resource credential health points missing credential repairs to Codex resources", () => {
   assert.deepEqual(resourceCredentialCodexResourceListFields(), {
     resourceList: true,
+    resourceScope: "production",
     resourceType: "codex",
     resourceStatus: null
   });

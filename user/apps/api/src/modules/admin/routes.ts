@@ -235,6 +235,7 @@ interface ResourceAvailabilityIssue {
   severity: "warning";
   resourceId?: string;
   resourceList?: boolean;
+  resourceScope?: "production";
   resourceStatus?: string | null;
   resourceType?: string | null;
   supplierEmail?: string | null;
@@ -264,6 +265,7 @@ interface ResourceCredentialReadinessIssue {
   severity: "warning" | "error";
   resourceId?: string;
   resourceList?: boolean;
+  resourceScope?: "production";
   resourceType?: string | null;
   resourceStatus?: string | null;
   refId?: string;
@@ -2325,7 +2327,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(resourceStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
+    const productionScope = query.action === "production";
     const where: Prisma.SupplierResourceWhereInput = {
+      ...(productionScope ? nonSmokeSupplierResourceWhere() : {}),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -5097,6 +5101,7 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
       severity: "warning",
       resourceId: abnormalSample?.id,
       resourceList: true,
+      resourceScope: "production",
       resourceStatus: abnormalSample?.status ?? null,
       resourceType: abnormalSample?.resourceType ?? null,
       supplierEmail: abnormalSample?.supplier.user.email ?? null,
@@ -5111,6 +5116,7 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
       severity: "warning",
       resourceId: nonOnlineCodexSample?.id,
       resourceList: true,
+      resourceScope: "production",
       resourceStatus: nonOnlineCodexSample?.status ?? null,
       resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
       supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? null,

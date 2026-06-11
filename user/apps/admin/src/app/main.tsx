@@ -173,6 +173,7 @@ interface SystemHealthIssueRow {
   message: string;
   resourceId?: string;
   resourceList?: boolean;
+  resourceScope?: string;
   resourceType?: string;
   resourceStatus?: string;
   proxyRequestLookup?: string;
@@ -1673,16 +1674,18 @@ function App() {
     await openFilteredListCandidate("products", lookup, "已打开巡检关联商品");
   }
 
-  async function openResourcesCandidate(filter?: { resourceType?: string; status?: string }) {
+  async function openResourcesCandidate(filter?: { resourceType?: string; status?: string; scope?: string }) {
+    const hasFilter = Boolean(filter?.resourceType || filter?.status || filter?.scope);
     const query = {
       ...defaultListQuery,
+      action: filter?.scope === "production" ? "production" : "",
       resourceType: filter?.resourceType ?? "",
       status: filter?.status ?? ""
     };
     setSelectedResource(null);
     setListQueries((current) => ({ ...current, resources: query }));
     await refresh("resources", query);
-    setMessage(filter?.resourceType || filter?.status ? "已打开巡检关联共享资源列表" : "已打开共享资源列表");
+    setMessage(hasFilter ? "已打开巡检关联共享资源列表" : "已打开共享资源列表");
   }
 
   async function openSettlementCandidate(lookup: string) {
@@ -2446,7 +2449,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
-  onOpenResources: (filter?: { resourceType?: string; status?: string }) => void;
+  onOpenResources: (filter?: { resourceType?: string; status?: string; scope?: string }) => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
@@ -2530,7 +2533,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(issue.sub2AccountId)}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -4680,6 +4683,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       message: systemHealthIssueMessage(record, issue),
       resourceId: textValue(record.resourceId),
       resourceList: record.resourceList === true || textValue(record.resourceList)?.toLowerCase() === "true",
+      resourceScope: textValue(record.resourceScope),
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
@@ -4722,7 +4726,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "resourceId", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "walletId", "walletAccountId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);

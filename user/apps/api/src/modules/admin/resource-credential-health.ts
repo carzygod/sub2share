@@ -14,6 +14,7 @@ export interface ResourceCredentialSub2AccountCandidate {
 export function resourceCredentialCodexResourceListFields() {
   return {
     resourceList: true,
+    resourceScope: "production" as const,
     resourceType: "codex",
     resourceStatus: null
   };

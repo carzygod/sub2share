@@ -90,6 +90,8 @@ The admin-disabled internal supplier resource is now identified by:
 
 Production-facing resource health and dashboard resource counts exclude this record. The admin resource list still shows it, so operators can audit or clean it explicitly, but `GET /api/admin/system-health` no longer treats it as a real Codex resource that should be opened and moved online.
 
+System health issue actions now mark production repair paths with `resourceScope=production`. The admin UI maps that scope to `GET /api/admin/resources?...&action=production`, and the API applies the same non-smoke supplier resource filter used by health checks. This keeps the `可用性巡检 -> 打开共享资源` path focused on real production Codex resources while preserving the normal resource list as an internal audit surface.
+
 Affected health metrics:
 
 - `resources.metrics.totalCodexResources` counts production Codex resources only.
