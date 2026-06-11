@@ -3206,3 +3206,77 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从单个用户详情页横向进入余额、余额流水、售出订单、租赁通道、API Key、共享资源和提现管理，用户维度排障路径更短。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 06:34 管理员订单详情横向钻取发布与线上复查
+
+### 发布版本
+
+- `ddb1c78 feat: add admin order detail cross links`
+
+### 本轮修复
+
+- 管理后台 `订单详情` 顶部新增 `打开用户` 操作。
+- 订单详情中的钱包流水、最近反代请求、订单项、租赁交付、租赁限制和 API Key 新增行内 `打开` 操作。
+- 行内操作复用既有列表筛选和详情打开函数：
+  - 钱包流水：按流水 ID 打开 `walletTransactions`。
+  - 反代请求：按 `requestId` 打开 `proxyRequests`。
+  - 订单项：按商品 ID 打开 `products`。
+  - 租赁交付：打开 `rentals` 并进入租赁详情。
+  - 租赁限制：打开 `rentals` 并进入租赁详情。
+  - API Key：按 Key ID 打开 `apiKeys`。
+- 该能力同时覆盖 `售出情况` 与 `订单管理` 两个入口，因为它们共用订单详情组件。
+- 新增文档：`docs/admin-order-detail-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.144 管理员订单详情支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- `pnpm.cmd -r test`：通过，API 74/74，Admin 3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check` / `git diff --cached --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=ddb1c78`
+  - `deployed_at=20260611T223418Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 生产 Admin 静态产物已更新：
+  - `apps/admin/dist/assets/index-Dw-a_3xv.js`
+  - `apps/admin/dist/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-ddb1c78.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从单个售出订单或订单详情页横向进入用户、余额流水、反代请求、商品、租赁通道和 API Key 管理，订单售后与交付排障路径更短。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
