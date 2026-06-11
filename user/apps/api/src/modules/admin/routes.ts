@@ -3226,6 +3226,13 @@ function decimalMax(left: Prisma.Decimal, right: Prisma.Decimal) {
 async function buildSystemHealthReport() {
   const checkedAt = new Date();
   const proxySince = new Date(checkedAt.getTime() - systemHealthProxyWindowMs);
+  const proxyRequestWhere: Prisma.ProxyRequestLogWhereInput = {
+    createdAt: { gte: proxySince },
+    OR: [
+      { rentalId: null },
+      { rental: nonSmokeRentalWhere() }
+    ]
+  };
   const [
     userCounts,
     activeRentals,
@@ -3270,20 +3277,24 @@ async function buildSystemHealthReport() {
     prisma.order.groupBy({ by: ["status"], where: nonSmokeOrderWhere(), _count: true }),
     inspectOrderStatusReadiness(),
     prisma.supplierResource.groupBy({ by: ["status"], _count: true }),
-    prisma.withdrawal.count({ where: { status: "pending" } }),
+    prisma.withdrawal.count({ where: { status: "pending", ...nonSmokeWithdrawalWhere() } }),
     prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince } } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 400, lt: 500 } } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, statusCode: { gte: 500 } } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { not: null } } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: "client_disconnected" } }),
-    prisma.proxyRequestLog.count({ where: { createdAt: { gte: proxySince }, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] } } }),
+    prisma.proxyRequestLog.count({ where: proxyRequestWhere }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, statusCode: { gte: 400, lt: 500 } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, statusCode: { gte: 500 } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { not: null } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: "client_disconnected" } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] } } }),
     prisma.proxyRequestLog.findMany({
       where: {
-        createdAt: { gte: proxySince },
-        OR: [
-          { statusCode: { gte: 400 } },
-          { errorCode: { not: null } }
+        AND: [
+          proxyRequestWhere,
+          {
+            OR: [
+              { statusCode: { gte: 400 } },
+              { errorCode: { not: null } }
+            ]
+          }
         ]
       },
       select: {
