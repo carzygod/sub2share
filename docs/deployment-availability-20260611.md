@@ -1816,3 +1816,81 @@ CORS 复查：
   - `resourceScope=production`
 
 结论：系统巡检中的 Sub2 主问题行现在能直接定位优先修复账号，管理员从 `openai_group_has_no_active_accounts` 进入反代状态页时无需再从账号列表中二次判断。真实 `/v1/responses` 生成仍被失效 refresh token 阻断，需要粘贴有效 token 后运行账号测试和端到端自检。
+
+## 2026-06-12 03:07 本地反代自检问题继承修复账号发布
+
+### 发布版本
+
+- `51b09f3 fix: link proxy smoke issues to repair accounts`
+
+### 本轮修复
+
+- `LocalProxySmokeEvidenceIssue` 新增可选修复账号字段：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `repairAction`
+- 新增 `attachLocalProxySmokeIssueRepairCandidate()`，复用 Sub2/OpenAI 上游巡检的账号候选样本。
+- `localProxySmoke` 问题会保留代理请求定位字段，同时继承 Sub2 修复账号字段。
+- Admin `可用性巡检` 中从 smoke 失败行点击 `打开反代状态` 时，可以直接预选修复账号。
+- 新增单元测试 `local proxy smoke issues inherit Sub2 repair account candidates`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：67/67 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=51b09f3`
+  - `deployed_at=20260611T190755Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：67/67 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `localProxySmoke`：`error`
+  - summary：`Latest local OpenAI/Codex smoke test failed at /v1/responses.`
+  - `model=gpt-5.3-codex`
+  - `responsesOk=false`
+  - `localProxyOk=false`
+  - `proxyRequestLogCount=2`
+  - issue：`local_proxy_smoke_failed`
+  - `sub2Status=true`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `accountStatus=error`
+  - `credentialsStatus=configured(3)`
+  - `schedulable=false`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `requestId=d5435936-acc1-41fe-88ed-c99850834d22`
+  - `proxyRequestLogId=efd432c8-1b7e-4830-b4a6-67f216aa82e2`
+  - `proxyRequestPath=/v1/responses`
+  - `proxyRequestStatusCode=503`
+  - `proxyRequestErrorCode=upstream_http_503`
+- `sub2` 与 `resourceCredentials` 仍指向同一个修复账号 `sub2AccountId=2`。
+
+结论：本地 `/v1/responses` 自检失败、Sub2 上游无 active 账号、资源凭据缺失三条巡检问题现在都指向同一个优先修复账号。管理员可以从任意一条问题进入反代状态页并预选账号 #2；真实生成仍需要补充有效 refresh token 并重新运行账号测试和端到端自检。
