@@ -21,6 +21,11 @@ import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
 import {
+  adminCapabilities,
+  inspectAdminCapabilityRouteCoverage,
+  type AdminCapabilityOperation
+} from "./capabilities.js";
+import {
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
   localProxySmokeEvidenceSummary,
@@ -63,6 +68,7 @@ const systemHealthLocalSmokeFreshMs = 24 * 60 * 60 * 1000;
 const systemHealthLocalSmokeCredentialAuditScanLimit = 100;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
+let adminCapabilityRouteExists: ((operation: AdminCapabilityOperation) => boolean) | null = null;
 
 const listQuerySchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -506,6 +512,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       paidOrderCount: orderAgg._count,
       paidOrderAmount: orderAgg._sum.paidAmount ?? 0,
       latestSystemHealth
+    });
+  });
+
+  app.get("/api/admin/capabilities", async (request, reply) => {
+    await requireRole(request, ["operator", "admin"]);
+    return adminOk(reply, {
+      capabilities: adminCapabilities(),
+      coverage: inspectRegisteredAdminCapabilityRoutes()
     });
   });
 
@@ -2959,6 +2973,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     });
     return adminOk(reply, result);
   });
+
+  adminCapabilityRouteExists = (operation) => app.hasRoute({
+    method: operation.method,
+    url: operation.path
+  });
 }
 
 function adminOk(reply: FastifyReply, data: unknown) {
@@ -3295,12 +3314,14 @@ async function buildSystemHealthReport() {
   const onlineCodexResources = await prisma.supplierResource.count({
     where: { resourceType: "codex", status: "online" }
   });
+  const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
 
   const checks: SystemHealthCheck[] = [
     systemHealthCheck("database", "数据库", "ok", "Prisma 查询正常", {
       users: totalGroupCount(userCounts),
       rentals: activeRentals
     }),
+    adminCapabilityHealthCheck(adminCapabilityCoverage),
     systemHealthCheck(
       "users",
       "用户状态",
@@ -4661,6 +4682,23 @@ function systemHealthCheck(
   detail?: unknown
 ): SystemHealthCheck {
   return { id, label, status, summary, metrics, detail };
+}
+
+function inspectRegisteredAdminCapabilityRoutes() {
+  return inspectAdminCapabilityRouteCoverage((operation) => adminCapabilityRouteExists?.(operation) ?? false);
+}
+
+function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredAdminCapabilityRoutes>) {
+  return systemHealthCheck(
+    "adminCapabilities",
+    "管理员入口覆盖",
+    result.ok ? "ok" : "error",
+    result.ok
+      ? `管理员入口覆盖 ${result.summary.coveredRequiredAreas}/${result.summary.requiredAreas} 个核心管理范围`
+      : `${result.issues.length} 个管理员入口覆盖问题`,
+    result.summary,
+    result.issues.length > 0 ? { issues: result.issues } : undefined
+  );
 }
 
 function paymentProviderHealthCheck() {
