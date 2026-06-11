@@ -1734,3 +1734,85 @@ CORS 复查：
 - `sub2` / `localProxySmoke` / `resourceCredentials` 仍为 error：上游 OpenAI/Sub2 refresh token 失效或无 active OpenAI 账号。
 
 结论：从系统巡检进入共享资源修复时，管理员现在看到的是生产 Codex 资源范围，不会被内部 disabled smoke resource 误导；内部自检资源仍可通过普通共享资源列表审计。完整 `/v1/responses` 真实生成仍需要补充有效 OpenAI/Sub2 refresh token 并重新通过账号测试与端到端自检。
+
+## 2026-06-12 03:00 Sub2 上游主问题直达修复账号发布
+
+### 发布版本
+
+- `7382eb4 fix: point sub2 health issues to repair accounts`
+
+### 本轮修复
+
+- 将 Sub2/OpenAI 上游巡检 issue 生成逻辑抽到 `sub2-upstream-health` helper。
+- `sub2.detail.issues` 显式携带 `sub2Status=true`。
+- 当阻断原因是 `openai_group_has_no_active_accounts` 时，主问题行会携带首个修复候选账号：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- 管理后台现有 `打开反代状态` 操作会消费该 `sub2AccountId`，进入反代状态页后凭据应用表单预选该账号。
+- 新增 `admin-sub2-upstream-health.test.ts`，覆盖失败账号样本、主问题修复候选字段和无候选账号时仍可打开反代状态。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：66/66 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=7382eb4`
+  - `deployed_at=20260611T190032Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：66/66 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `sub2`：`error`
+  - summary：`阻断：openai_group_has_no_active_accounts`
+  - `gatewayReachable=true`
+  - `defaultGroupId=2`
+  - `openAiAccounts=2`
+  - `activeOpenAiAccounts=0`
+  - issue：`openai_group_has_no_active_accounts`
+  - `sub2Status=true`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `accountStatus=error`
+  - `credentialsStatus=configured(3)`
+  - `schedulable=false`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `sub2.detail.samples` 继续列出两个失效账号：
+  - `#2 / 1`：Token revoked / token invalidated。
+  - `#1 / main`：token invalidated。
+- `resourceCredentials` 主问题仍带同一个 repair candidate：
+  - issue：`openai_refresh_token_candidate_missing`
+  - `sub2Status=true`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `resourceList=true`
+  - `resourceScope=production`
+
+结论：系统巡检中的 Sub2 主问题行现在能直接定位优先修复账号，管理员从 `openai_group_has_no_active_accounts` 进入反代状态页时无需再从账号列表中二次判断。真实 `/v1/responses` 生成仍被失效 refresh token 阻断，需要粘贴有效 token 后运行账号测试和端到端自检。
