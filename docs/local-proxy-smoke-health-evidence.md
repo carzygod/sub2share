@@ -10,6 +10,7 @@
 
 - `GET /api/admin/system-health` 新增 `localProxySmoke` / `本地反代自检` 检查项。
 - 巡检只读取最近审计日志，不会在刷新系统健康时主动触发真实 OpenAI/Codex 请求。
+- 巡检会独立读取最新一条 `admin.sub2.proxy_smoke_test`，并扫描最近 100 条资源凭据应用审计，筛选其中的 `smokeTest` 或 `smokeTestSkippedReason` 证据，再按时间选择最新证据。
 - 默认把 24 小时内的成功端到端自检视为新鲜证据。
 - 最近自检失败时标记 `error`。
 - 最近自检超过 24 小时时标记 `warning`。

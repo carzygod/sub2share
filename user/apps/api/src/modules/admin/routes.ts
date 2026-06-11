@@ -53,7 +53,7 @@ const systemHealthSalesDeliveryIssueLimit = 50;
 const systemHealthPendingUsageScanLimit = 200;
 const systemHealthPendingUsageIssueLimit = 50;
 const systemHealthLocalSmokeFreshMs = 24 * 60 * 60 * 1000;
-const systemHealthLocalSmokeAuditScanLimit = 20;
+const systemHealthLocalSmokeCredentialAuditScanLimit = 100;
 const sub2BindingReconciliationLimit = 500;
 const systemHealthStatuses = ["ok", "warning", "error"] as const;
 
@@ -5108,21 +5108,26 @@ function sub2UpstreamIssueActionHint(reason: string) {
 }
 
 async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
-  const auditLogs = await prisma.auditLog.findMany({
-    where: { action: { in: ["admin.sub2.proxy_smoke_test", "admin.resource.credential_apply_sub2"] } },
-    select: {
-      id: true,
-      action: true,
-      objectId: true,
-      after: true,
-      createdAt: true
-    },
-    orderBy: { createdAt: "desc" },
-    take: systemHealthLocalSmokeAuditScanLimit
-  });
-  const latest = auditLogs
+  const [directSmokeLogs, credentialApplyLogs] = await Promise.all([
+    prisma.auditLog.findMany({
+      where: { action: "admin.sub2.proxy_smoke_test" },
+      select: localProxySmokeAuditSelect,
+      orderBy: { createdAt: "desc" },
+      take: 1
+    }),
+    prisma.auditLog.findMany({
+      where: { action: "admin.resource.credential_apply_sub2" },
+      select: localProxySmokeAuditSelect,
+      orderBy: { createdAt: "desc" },
+      take: systemHealthLocalSmokeCredentialAuditScanLimit
+    })
+  ]);
+  const checkedAuditLogs = directSmokeLogs.length + credentialApplyLogs.length;
+  const candidates = [...directSmokeLogs, ...credentialApplyLogs]
     .map((log) => normalizeLocalProxySmokeAuditLog(log))
-    .find((result): result is LocalProxySmokeEvidence => Boolean(result));
+    .filter((result): result is LocalProxySmokeEvidence => Boolean(result))
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  const latest = candidates[0];
   const issues: LocalProxySmokeEvidenceIssue[] = [];
 
   if (!latest) {
@@ -5152,7 +5157,8 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
         keyDisabled: null,
         smokeTestSkippedReason: null,
         proxyRequestLogCount: null,
-        checkedAuditLogs: auditLogs.length,
+        checkedAuditLogs,
+        evidenceCandidates: 0,
         freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
       },
       latest: null,
@@ -5187,7 +5193,8 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       keyDisabled: latest.keyDisabled,
       smokeTestSkippedReason: latest.smokeTestSkippedReason,
       proxyRequestLogCount: latest.proxyRequestLogCount,
-      checkedAuditLogs: auditLogs.length,
+      checkedAuditLogs,
+      evidenceCandidates: candidates.length,
       freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
     },
     latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale),
@@ -5210,6 +5217,14 @@ function localProxySmokeEvidenceHealthCheck(result: Awaited<ReturnType<typeof in
     }
   );
 }
+
+const localProxySmokeAuditSelect = {
+  id: true,
+  action: true,
+  objectId: true,
+  after: true,
+  createdAt: true
+} satisfies Prisma.AuditLogSelect;
 
 interface LocalProxySmokeEvidence {
   auditLogId: string;
