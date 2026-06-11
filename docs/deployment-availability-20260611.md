@@ -2628,3 +2628,81 @@ CORS 复查：
 ### 结论
 
 共享资源详情现在能同时覆盖“从资源应用到 Sub2”和“从反代状态页直接保存到资源”两条凭据修复路径的审计历史。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
+
+## 2026-06-12 05:03 Sub2 直接应用 Token 自检证据纳入巡检发布与线上复查
+
+### 发布版本
+
+- `e40269a feat: include direct token apply smoke evidence`
+
+### 本轮修复
+
+- `localProxySmoke` 系统巡检新增读取 `admin.sub2.account.apply_openai_refresh_token` 审计日志。
+- 该巡检现在统一识别三类端到端 smoke 证据：
+  - `admin.sub2.proxy_smoke_test`
+  - `admin.resource.credential_apply_sub2`
+  - `admin.sub2.account.apply_openai_refresh_token`
+- 直接应用 refresh token 的审计中会解析：
+  - `smokeTest`
+  - `smokeTestSkippedReason`
+  - `resourceCredentialSync.resourceId`
+  - Sub2 账号 ID
+- `localProxySmoke` 问题样本现在可以携带直接 token 应用路径产生的 `sub2AccountId` 和可选 `resourceId`。
+- 更新文档：
+  - `docs/local-proxy-smoke-health-evidence.md`
+  - `docs/system-health-check.md`
+  - `docs/system-health-issue-samples.md`
+  - `docs/需求文档.md`
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：72/72 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+- `git diff --check`：无 whitespace 错误。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=e40269a`
+  - `deployed_at=20260611T210341Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：72/72 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+- 生产 API dist 已包含新 action 扫描：
+  - `routes.js` 包含 `where: { action: "admin.sub2.account.apply_openai_refresh_token" }`
+  - `local-proxy-smoke-health.js` 包含 `admin.sub2.account.apply_openai_refresh_token` 解析逻辑
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `localProxySmoke` 当前仍为 `error`：
+  - summary：`Latest local OpenAI/Codex smoke test failed at /v1/responses.`
+- 当前线上审计日志状态：
+  - `admin.sub2.account.apply_openai_refresh_token`：暂无记录。
+  - `admin.sub2.proxy_smoke_test`：已有 1 条最近记录。
+  - `admin.resource.credential_apply_sub2`：暂无记录。
+
+### 结论
+
+从“反代状态”页直接应用 OpenAI refresh token 并运行端到端自检后，下一次系统巡检可以直接读取该审计产生的 `/v1/responses` 证据，并保留 Sub2 账号/资源上下文。当前真实可用性仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
