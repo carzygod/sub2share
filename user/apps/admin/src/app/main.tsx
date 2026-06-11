@@ -2238,6 +2238,12 @@ function App() {
             onRefund={refundOrder}
             onRetryProvision={retryProvisionOrder}
             onCloseDetail={() => setSelectedOrder(null)}
+            onOpenUser={openUserCandidate}
+            onOpenWalletTransaction={openWalletTransactionCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenProduct={openProductCandidate}
             onDraft={(patch) => updateListDraft("sales", patch)}
             onFilter={(event) => submitListFilters("sales", event)}
             onClear={() => clearListFilters("sales")}
@@ -2289,6 +2295,12 @@ function App() {
             onRefund={refundOrder}
             onRetryProvision={retryProvisionOrder}
             onCloseDetail={() => setSelectedOrder(null)}
+            onOpenUser={openUserCandidate}
+            onOpenWalletTransaction={openWalletTransactionCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenProduct={openProductCandidate}
             onDraft={(patch) => updateListDraft("orders", patch)}
             onFilter={(event) => submitListFilters("orders", event)}
             onClear={() => clearListFilters("orders")}
@@ -3172,7 +3184,7 @@ function ReconciliationView({ reconciliation, onRefresh }: {
   );
 }
 
-function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onDraft, onFilter, onClear, onPage, onExport }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
@@ -3180,6 +3192,12 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
   onRefund: (orderId: string) => void;
   onRetryProvision: (orderId: string) => void;
   onCloseDetail: () => void;
+  onOpenUser: (userId: string) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenProduct: (lookup: string) => void;
 } & ManagedListProps) {
   const orders = sales?.orders ?? [];
   const breakdown = sales?.breakdown;
@@ -3278,6 +3296,12 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         onRefund={onRefund}
         onRetryProvision={onRetryProvision}
         onCloseDetail={onCloseDetail}
+        onOpenUser={onOpenUser}
+        onOpenWalletTransaction={onOpenWalletTransaction}
+        onOpenProxyRequest={onOpenProxyRequest}
+        onOpenRental={onOpenRental}
+        onOpenApiKey={onOpenApiKey}
+        onOpenProduct={onOpenProduct}
       />
     </section>
   );
@@ -3503,7 +3527,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
   );
 }
 
-function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onDraft, onFilter, onClear, onPage, onExport }: {
+function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onDraft, onFilter, onClear, onPage, onExport }: {
   orders: OrderRow[];
   title?: string;
   selectedOrder?: OrderDetailRow | null;
@@ -3512,6 +3536,12 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
   onRefund?: (orderId: string) => void;
   onRetryProvision?: (orderId: string) => void;
   onCloseDetail?: () => void;
+  onOpenUser?: (userId: string) => void;
+  onOpenWalletTransaction?: (lookup: string) => void;
+  onOpenProxyRequest?: (lookup: string) => void;
+  onOpenRental?: (rentalId: string) => void;
+  onOpenApiKey?: (lookup: string) => void;
+  onOpenProduct?: (lookup: string) => void;
 } & Partial<ManagedListProps>) {
   return (
     <>
@@ -3547,12 +3577,38 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
           </tr>
         ))}
       </TablePanel>
-      {selectedOrder && onCloseDetail && <OrderDetailPanel order={selectedOrder} onCancel={onCancel} onRefund={onRefund} onRetryProvision={onRetryProvision} onClose={onCloseDetail} />}
+      {selectedOrder && onCloseDetail && (
+        <OrderDetailPanel
+          order={selectedOrder}
+          onCancel={onCancel}
+          onRefund={onRefund}
+          onRetryProvision={onRetryProvision}
+          onClose={onCloseDetail}
+          onOpenUser={onOpenUser}
+          onOpenWalletTransaction={onOpenWalletTransaction}
+          onOpenProxyRequest={onOpenProxyRequest}
+          onOpenRental={onOpenRental}
+          onOpenApiKey={onOpenApiKey}
+          onOpenProduct={onOpenProduct}
+        />
+      )}
     </>
   );
 }
 
-function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose }: { order: OrderDetailRow; onCancel?: (orderId: string) => void; onRefund?: (orderId: string) => void; onRetryProvision?: (orderId: string) => void; onClose: () => void }) {
+function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct }: {
+  order: OrderDetailRow;
+  onCancel?: (orderId: string) => void;
+  onRefund?: (orderId: string) => void;
+  onRetryProvision?: (orderId: string) => void;
+  onClose: () => void;
+  onOpenUser?: (userId: string) => void;
+  onOpenWalletTransaction?: (lookup: string) => void;
+  onOpenProxyRequest?: (lookup: string) => void;
+  onOpenRental?: (rentalId: string) => void;
+  onOpenApiKey?: (lookup: string) => void;
+  onOpenProduct?: (lookup: string) => void;
+}) {
   const walletTransactions = order.walletTransactions ?? [];
   const proxyRequests = order.proxyRequests ?? [];
   const deliverySummary = order.deliverySummary;
@@ -3565,6 +3621,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
         </div>
         <div className="row-actions">
           <StatusPill status={order.status} />
+          {onOpenUser && <button className="secondary mini" onClick={() => onOpenUser(order.user.id)}>打开用户</button>}
           {onRetryProvision && order.status === "failed" && <button className="secondary mini" onClick={() => onRetryProvision(order.id)}>Retry</button>}
           {onCancel && <button className="secondary mini" onClick={() => onCancel(order.id)}>取消</button>}
           {onRefund && <button className="danger mini" onClick={() => onRefund(order.id)}>退款</button>}
@@ -3605,7 +3662,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
         </DetailBlock>
 
         <DetailBlock title="钱包流水">
-          <MiniTable headers={["类型", "金额", "余额后", "用户", "备注", "时间"]}>
+          <MiniTable headers={["类型", "金额", "余额后", "用户", "备注", "时间", "操作"]}>
             {walletTransactions.slice(0, 10).map((transaction) => (
               <tr key={transaction.id}>
                 <td><StatusPill status={transaction.type} /></td>
@@ -3614,16 +3671,17 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td><small>{transaction.wallet?.user?.email ?? transaction.walletId}</small></td>
                 <td><small>{transaction.note ?? "-"}</small></td>
                 <td>{dateTime(transaction.createdAt)}</td>
+                <td>{onOpenWalletTransaction ? <button className="secondary mini" onClick={() => onOpenWalletTransaction(transaction.id)}>打开</button> : <small>-</small>}</td>
               </tr>
             ))}
             {walletTransactions.length === 0 && (
-              <tr><td colSpan={6}><small>暂无关联钱包流水。</small></td></tr>
+              <tr><td colSpan={7}><small>暂无关联钱包流水。</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="最近反代请求">
-          <MiniTable headers={["状态", "请求", "租赁", "耗时", "体积", "时间"]}>
+          <MiniTable headers={["状态", "请求", "租赁", "耗时", "体积", "时间", "操作"]}>
             {proxyRequests.slice(0, 10).map((log) => (
               <tr key={log.id}>
                 <td>
@@ -3636,10 +3694,11 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td>{log.durationMs}ms</td>
                 <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
                 <td>{dateTime(log.createdAt)}</td>
+                <td>{onOpenProxyRequest ? <button className="secondary mini" onClick={() => onOpenProxyRequest(log.requestId ?? log.id)}>打开</button> : <small>-</small>}</td>
               </tr>
             ))}
             {proxyRequests.length === 0 && (
-              <tr><td colSpan={6}><small>暂无关联反代请求。</small></td></tr>
+              <tr><td colSpan={7}><small>暂无关联反代请求。</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
@@ -3660,7 +3719,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
         </DetailBlock>
 
         <DetailBlock title="订单项">
-          <MiniTable headers={["商品", "资源", "数量", "金额", "价格 ID"]}>
+          <MiniTable headers={["商品", "资源", "数量", "金额", "价格 ID", "操作"]}>
             {order.items.map((item) => (
               <tr key={item.id}>
                 <td><strong>{item.product?.name ?? item.productId}</strong><small>{item.productId}</small></td>
@@ -3668,13 +3727,14 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td>{item.quantity}</td>
                 <td>{money(item.amount)}</td>
                 <td><small>{item.priceId ?? "-"}</small></td>
+                <td>{onOpenProduct ? <button className="secondary mini" onClick={() => onOpenProduct(item.productId)}>打开</button> : <small>-</small>}</td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="租赁交付">
-          <MiniTable headers={["租赁", "状态", "资源", "Endpoint", "Sub2 Key", "到期"]}>
+          <MiniTable headers={["租赁", "状态", "资源", "Endpoint", "Sub2 Key", "到期", "操作"]}>
             {order.rentals.map((rental) => (
               <tr key={rental.id}>
                 <td><small>{rental.id}</small></td>
@@ -3683,13 +3743,14 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td><small>{rental.endpointUrl ?? "-"}</small></td>
                 <td><small>{rental.sub2KeyId ?? "-"}</small></td>
                 <td>{dateTime(rental.endsAt)}</td>
+                <td>{onOpenRental ? <button className="secondary mini" onClick={() => onOpenRental(rental.id)}>打开</button> : <small>-</small>}</td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="租赁限制">
-          <MiniTable headers={["租赁", "并发", "RPM", "TPM", "请求数", "消费上限", "剩余额度"]}>
+          <MiniTable headers={["租赁", "并发", "RPM", "TPM", "请求数", "消费上限", "剩余额度", "操作"]}>
             {order.rentals.map((rental) => (
               <tr key={rental.id}>
                 <td><small>{rental.id}</small></td>
@@ -3699,13 +3760,14 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td>{rental.limits?.requestLimit ?? "-"}</td>
                 <td>{rental.limits?.spendLimit ?? "-"}</td>
                 <td>{rental.limits?.remainingSpend ?? "-"}</td>
+                <td>{onOpenRental ? <button className="secondary mini" onClick={() => onOpenRental(rental.id)}>打开</button> : <small>-</small>}</td>
               </tr>
             ))}
           </MiniTable>
         </DetailBlock>
 
         <DetailBlock title="API Key">
-          <MiniTable headers={["租赁", "名称", "前缀", "状态", "最近使用", "创建"]}>
+          <MiniTable headers={["租赁", "名称", "前缀", "状态", "最近使用", "创建", "操作"]}>
             {order.rentals.flatMap((rental) => (rental.apiKeys ?? []).map((apiKey) => (
               <tr key={apiKey.id}>
                 <td><small>{rental.id}</small></td>
@@ -3714,6 +3776,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
                 <td><StatusPill status={apiKey.status} /></td>
                 <td>{dateTime(apiKey.lastUsedAt)}</td>
                 <td>{dateTime(apiKey.createdAt)}</td>
+                <td>{onOpenApiKey ? <button className="secondary mini" onClick={() => onOpenApiKey(apiKey.id)}>打开</button> : <small>-</small>}</td>
               </tr>
             )))}
           </MiniTable>
