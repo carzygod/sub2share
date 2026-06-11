@@ -2029,3 +2029,75 @@ CORS 复查：
   - summary 包含 `orderCount`、`paidAmount`、`supplierIncome`、`totalAmount`、`usageCharge`、`usageCount`
 
 结论：生产 mock 充值 warning 现在能从巡检页直接进入余额、充值流水和售出情况三类运营视图。真实支付渠道仍需后续接入；当前线上没有最近 24 小时 mock 充值流水。
+
+## 2026-06-12 03:35 共享资源缺失巡检继承修复账号发布
+
+### 发布版本
+
+- `41ea6cf fix: prefill missing resource repair account`
+
+### 本轮修复
+
+- `resources` 巡检生成 `codex_online_resource_missing` 问题时，会接收 Sub2/OpenAI 上游巡检的修复账号样本。
+- 如果问题没有具体共享资源绑定，后端会继承首个修复候选账号字段：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- 如果现有非 online Codex 资源本身已经绑定 `sub2AccountId`，系统保留真实资源绑定，不用候选账号覆盖。
+- Admin `可用性巡检 -> 打开共享资源` 已可消费该字段，创建生产 Codex 资源时会直接预填候选 Sub2 账号 ID。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：69/69 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=41ea6cf`
+  - `deployed_at=20260611T193504Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：69/69 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resources`：`warning`
+  - issue：`codex_online_resource_missing`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+  - `resourceStatus=null`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `accountStatus=error`
+  - `credentialsStatus=configured(3)`
+  - `schedulable=false`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `resourceCredentials`、`sub2` 与 `localProxySmoke` 仍指向同一个修复账号 `sub2AccountId=2`。
+- `localProxySmoke` 仍失败在 `/v1/responses`，当前代理请求状态为 `503 upstream_http_503`。
+- `payments` warning 仍带有 `walletList=true`、`walletTransactionList=true`、`walletTransactionType=recharge` 和 `salesList=true`。
+
+结论：共享资源缺失 warning 现在与资源凭据、Sub2 上游、本地反代 smoke 三条巡检链路统一指向账号 #2。管理员从 `resources` 问题行进入共享资源页即可创建绑定账号 #2 的生产 Codex 资源；真实 `/v1/responses` 仍被上游 OpenAI/Sub2 refresh token 无效或不可调度状态阻断。
