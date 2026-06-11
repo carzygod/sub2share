@@ -3747,3 +3747,85 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从单个 API Key 直接进入用户、售出订单、租赁交付、商品配置、反代请求和用量上下文，`Key -> 本地 OpenAI/Codex 反代证据 -> 售出/用量证据` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 07:40 管理员结算提现横向钻取发布与线上复查
+
+### 发布版本
+
+- `f444ed0 feat: add admin settlement withdrawal cross links`
+
+### 本轮修复
+
+- 管理后台 `供给方结算` 列表新增用户、共享资源、用量和提现直达操作。
+- `提现管理` 列表新增用户、共享资源、用量和结算直达操作。
+- `GET /api/admin/withdrawals` 搜索新增支持提现分配 ID 和结算记录 ID。
+- 结算和提现空列表补充占位行。
+- 新增文档：`docs/admin-settlement-withdrawal-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.151 管理员结算提现支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，74/74。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check` / `git diff --cached --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=f444ed0`
+  - `deployed_at=20260611T233953Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- 生产 Admin 静态产物已更新：
+  - `apps/admin/dist/assets/index-Dxl4Ajzs.js`
+  - `apps/admin/dist/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-f444ed0.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/settlements?page=1&pageSize=5`：200。
+  - total：`0`。
+  - count：`0`。
+  - 当前线上没有结算样本，因此本轮线上验证覆盖列表加载与空状态路径；真实行内钻取待产生结算后可直接复核。
+- `GET /api/admin/withdrawals?page=1&pageSize=5`：200。
+  - total：`2`。
+  - count：`2`。
+  - 样本提现 ID：`f22beffa-407b-40a6-808f-9f108193552d`。
+  - 样本供给方：`d801e723-dcea-43bd-bf6d-54009d676309`。
+  - 样本供给方用户：`2154e9ba-76cb-4d8c-bb7f-731fb0fb92c8`。
+  - 样本状态：`paid`。
+  - 样本结算分配数：`0`。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从共享收益尾端的结算和提现记录继续进入供给方用户、共享资源、用量和对应结算/提现上下文，`共享资源 -> 用量 -> 结算 -> 提现` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
