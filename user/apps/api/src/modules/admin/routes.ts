@@ -209,6 +209,19 @@ interface ProductCatalogIssue {
   message: string;
 }
 
+interface ResourceAvailabilityIssue {
+  id: string;
+  type: string;
+  severity: "warning";
+  resourceId?: string;
+  resourceList?: boolean;
+  resourceStatus?: string | null;
+  resourceType?: string | null;
+  supplierEmail?: string | null;
+  actionHint: string;
+  message: string;
+}
+
 interface PendingUsageBillingIssue {
   id: string;
   type: string;
@@ -3335,10 +3348,7 @@ async function buildSystemHealthReport() {
   const ordersByStatus = countGroups(orderCounts, "status");
   const resourcesByStatus = countGroups(resourceCounts, "status");
   const failedOrders = (ordersByStatus.failed ?? 0) + (ordersByStatus.refunding ?? 0);
-  const abnormalResources = resourcesByStatus.abnormal ?? 0;
-  const onlineCodexResources = await prisma.supplierResource.count({
-    where: { resourceType: "codex", status: "online" }
-  });
+  const resourceAvailability = await resourceAvailabilityHealthCheck(resourcesByStatus);
   const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
 
   const checks: SystemHealthCheck[] = [
@@ -3423,15 +3433,7 @@ async function buildSystemHealthReport() {
     ),
     authTokenConfigHealthCheck(),
     paymentProviderHealthCheck(),
-    systemHealthCheck(
-      "resources",
-      "共享资源",
-      abnormalResources > 0 ? "warning" : onlineCodexResources === 0 ? "warning" : "ok",
-      abnormalResources > 0
-        ? `${abnormalResources} 个资源异常`
-        : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常",
-      { ...resourcesByStatus, onlineCodexResources }
-    ),
+    resourceAvailability,
     resourceCredentialReadiness,
     systemHealthCheck(
       "sub2",
@@ -4810,6 +4812,115 @@ function paymentProviderHealthCheck() {
       rechargeEndpointEnabled: env.PAYMENT_PROVIDER === "mock"
     },
     issues.length > 0 ? { issues } : undefined
+  );
+}
+
+async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string, number>) {
+  const [onlineCodexResources, totalCodexResources, samples] = await Promise.all([
+    prisma.supplierResource.count({
+      where: { resourceType: "codex", status: "online" }
+    }),
+    prisma.supplierResource.count({
+      where: { resourceType: "codex" }
+    }),
+    prisma.supplierResource.findMany({
+      where: {
+        OR: [
+          { status: "abnormal" },
+          { resourceType: "codex", status: { not: "online" } }
+        ]
+      },
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        level: true,
+        maxConcurrency: true,
+        sub2AccountId: true,
+        lastCheckedAt: true,
+        updatedAt: true,
+        supplier: {
+          select: {
+            user: { select: { email: true } }
+          }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10
+    })
+  ]);
+  const abnormalResources = resourcesByStatus.abnormal ?? 0;
+  const issues: ResourceAvailabilityIssue[] = [];
+  const abnormalSample = samples.find((resource) => resource.status === "abnormal");
+  const nonOnlineCodexSample = samples.find((resource) => resource.resourceType === "codex" && resource.status !== "online");
+
+  if (abnormalResources > 0) {
+    issues.push({
+      id: "resource:abnormal",
+      type: "abnormal_supplier_resource",
+      severity: "warning",
+      resourceId: abnormalSample?.id,
+      resourceList: true,
+      resourceStatus: abnormalSample?.status ?? null,
+      resourceType: abnormalSample?.resourceType ?? null,
+      supplierEmail: abnormalSample?.supplier.user.email ?? null,
+      actionHint: "Open the affected shared resource, review its Sub2 account binding and credential, then test it before moving it online.",
+      message: `${abnormalResources} supplier resource(s) are abnormal and need operator review.`
+    });
+  }
+  if (onlineCodexResources === 0) {
+    issues.push({
+      id: "resource:codex-online-missing",
+      type: "codex_online_resource_missing",
+      severity: "warning",
+      resourceId: nonOnlineCodexSample?.id,
+      resourceList: true,
+      resourceStatus: nonOnlineCodexSample?.status ?? null,
+      resourceType: nonOnlineCodexSample?.resourceType ?? "codex",
+      supplierEmail: nonOnlineCodexSample?.supplier.user.email ?? null,
+      actionHint: totalCodexResources > 0
+        ? "Open an existing Codex shared resource, bind a Sub2 account and active credential, test it, then switch it online."
+        : "Create a Codex shared resource, bind a Sub2 account and active OpenAI credential, test it, then switch it online.",
+      message: totalCodexResources > 0
+        ? `${totalCodexResources} Codex shared resource(s) exist, but none are online.`
+        : "No Codex shared resource exists for OpenAI/Codex rental delivery."
+    });
+  }
+
+  const status: SystemHealthStatus = issues.length > 0 ? "warning" : "ok";
+  const summary = abnormalResources > 0 && onlineCodexResources === 0
+    ? `${abnormalResources} 个资源异常，且没有 online 的 Codex 共享资源`
+    : abnormalResources > 0
+      ? `${abnormalResources} 个资源异常`
+      : onlineCodexResources === 0 ? "没有 online 的 Codex 共享资源" : "共享资源状态正常";
+
+  return systemHealthCheck(
+    "resources",
+    "共享资源",
+    status,
+    summary,
+    {
+      ...resourcesByStatus,
+      totalCodexResources,
+      onlineCodexResources,
+      issueSamples: samples.length
+    },
+    issues.length > 0 || samples.length > 0 ? {
+      issues,
+      samples: samples.map((resource) => ({
+        id: resource.id,
+        resourceId: resource.id,
+        resourceType: resource.resourceType,
+        resourceStatus: resource.status,
+        level: resource.level,
+        maxConcurrency: resource.maxConcurrency,
+        sub2AccountId: resource.sub2AccountId,
+        supplierEmail: resource.supplier.user.email,
+        lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
+        updatedAt: resource.updatedAt.toISOString(),
+        message: `${resource.resourceType} resource is ${resource.status}; Sub2 account ${resource.sub2AccountId ?? "-"}`
+      }))
+    } : undefined
   );
 }
 

@@ -172,6 +172,7 @@ interface SystemHealthIssueRow {
   ref: string;
   message: string;
   resourceId?: string;
+  resourceList?: boolean;
   proxyRequestLookup?: string;
   userId?: string;
   orderId?: string;
@@ -2011,6 +2012,7 @@ function App() {
             snapshots={systemHealthSnapshots}
             onRefresh={() => refresh("systemHealth")}
             onRunMaintenance={runSystemMaintenance}
+            onOpenResources={() => { void refresh("resources"); }}
             onOpenResource={openResourceCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
             onOpenUser={openUserCandidate}
@@ -2375,12 +2377,13 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
+  onOpenResources: () => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenUser: (userId: string) => void;
@@ -2462,6 +2465,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={onOpenSub2Status}>打开反代状态</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={onOpenResources}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -4587,6 +4591,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       ref: systemHealthIssueRef(record),
       message: systemHealthIssueMessage(record, issue),
       resourceId: textValue(record.resourceId),
+      resourceList: record.resourceList === true || textValue(record.resourceList)?.toLowerCase() === "true",
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId),
@@ -4643,6 +4648,7 @@ function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string
 function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
   return Boolean(
     issue.proxyRequestLookup
+    || issue.resourceList
     || issue.resourceId
     || issue.orderId
     || issue.rentalId
@@ -4659,7 +4665,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
 }
 
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
-  const fields = ["supplierEmail", "credentialType", "status", "resourceStatus", "keyFingerprint", "lastRotatedAt", "message"];
+  const fields = ["supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
   const parts = fields
     .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
     .filter(Boolean);
