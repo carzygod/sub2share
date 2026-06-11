@@ -17,7 +17,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`resourceId`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`resourceId`、`resourceType`、`resourceStatus`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON；如果后端返回 `actionHint`，页面会追加展示维修建议。
   - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持共享资源列表、资源详情、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
@@ -37,6 +37,7 @@
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 资源凭据巡检发现没有 active 可应用 refresh token 时，会从 Sub2/OpenAI 巡检结果中暴露 `sub2_account_repair_candidate`，让管理员直接看到可优先补 token 的 Sub2 账号 ID、名称、状态、凭据状态和调度状态。
 - 共享资源巡检发现没有 online Codex 资源或存在异常资源时，管理员可以直接看到资源类型、资源状态、Sub2 账号、供给方邮箱和维修建议，并一键打开共享资源列表或具体资源详情。
+- 如果共享资源问题样本带有 `resourceType` 和 `resourceStatus`，点击“打开共享资源”会自动把这些字段写入共享资源列表筛选条件，例如直接打开 `codex + disabled` 的资源列表。
 - 管理员可以从候选样本一键进入共享资源详情，继续执行凭据轮换、应用到 Sub2 或资源测试。
 - Sub2/OpenAI 上游巡检发现网关不可达、OpenAI 分组缺失、分组非 active、分组无账号或无 active 账号时，管理员可以在统一问题样本中看到阻断原因、分组、OpenAI 账号数量、active 账号数量和维修建议，并一键进入反代状态页继续执行账号刷新、测试、自检或凭据应用。
 - Sub2/OpenAI 上游巡检还会在候选样本中列出非 active 或不可调度的 OpenAI 账号，管理员可以直接看到账号 ID、名称、状态、凭据配置状态、调度状态和错误摘要。

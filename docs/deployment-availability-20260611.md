@@ -1013,3 +1013,91 @@ CORS 复查：
 - `resources` warning：当前没有 online Codex shared resource。
 
 结论：余额/售出可信度相关的支付配置 warning 现在可以从巡检页直达余额与流水复核入口；生产部署脚本也能捕获并恢复旧 release listener 漂移。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
+
+## 2026-06-11 19:53 共享资源巡检筛选跳转
+
+### 发布版本
+
+- `659dd4e fix: filter resource health links`
+
+### 本轮修复
+
+- 管理后台 `可用性巡检 -> 巡检问题样本` 解析共享资源问题中的：
+  - `resourceType`
+  - `resourceStatus`
+- 点击 `打开共享资源` 时，会把这些字段写入共享资源列表筛选条件，而不是只打开全量资源列表。
+- 当前线上 `resources` warning 的 `codex_online_resource_missing` 问题会直接打开 `resourceType=codex` 且 `status=disabled` 的共享资源列表。
+- 问题样本的对象摘要也会展示 `resourceType` 和 `resourceStatus`，便于管理员在巡检页先看清资源类型与状态。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+使用 `user/scripts/deploy-production.sh` 部署 `659dd4e`：
+
+- `pnpm install --frozen-lockfile --prod=false`：通过。
+- `pnpm db:generate`：通过。
+- `pnpm exec prisma migrate deploy`：无待应用迁移。
+- `pnpm --filter @zyz/api run typecheck`：通过。
+- `pnpm --filter @zyz/admin run typecheck`：通过。
+- `pnpm --filter @zyz/api test`：51/51 通过。
+- `pnpm build`：通过。
+- 启动后 HTTP 复查：
+  - `GET /health`：`200`
+  - `GET /ready`：`200`
+  - `GET /` on `3100`：`200`
+  - `GET /` on `3101`：`200`
+- cwd 复查：
+  - 4100：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100：`/opt/zhisuan-yizhan/user/apps/web`
+  - 3101：`/opt/zhisuan-yizhan/user/apps/admin`
+- release marker：
+  - `commit=659dd4e`
+  - `deployed_at=20260611T115253Z`
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- status：`error`
+- totalChecks：`27`
+- ok：`22`
+- warning：`2`
+- error：`3`
+- checkedAt：`2026-06-11T11:53:49.488Z`
+
+`deploymentRuntime` 当前为 ok：
+
+- summary：`当前进程运行在 release 659dd4e`
+- commit：`659dd4e`
+- deployedAt：`20260611T115253Z`
+- cwd：`/opt/zhisuan-yizhan/user/apps/api`
+- issues：`[]`
+
+`resources` 当前仍为 warning，但跳转筛选字段齐全：
+
+- issueType：`codex_online_resource_missing`
+- resourceId：`8b7706ac-2ac6-4962-83e5-0ed6ae49e067`
+- resourceList：`true`
+- resourceType：`codex`
+- resourceStatus：`disabled`
+
+筛选接口复查：
+
+- `GET /api/admin/resources?resourceType=codex&status=disabled&page=1&pageSize=10`
+- total：`1`
+- first：`8b7706ac-2ac6-4962-83e5-0ed6ae49e067`
+- firstType：`codex`
+- firstStatus：`disabled`
+
+剩余阻断仍未变化：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token；候选维修账号仍为 Sub2 account `#2` / `1`。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active。
+- `localProxySmoke` error：最近一次 `/v1/responses` 真实生成失败。
+- `payments` warning：生产环境仍启用 `PAYMENT_PROVIDER=mock`。
+
+结论：共享资源 warning 现在可以从巡检页直接进入精确筛选后的资源列表，并继续打开资源详情、补凭据、应用到 Sub2、测试并上线。完整 OpenAI/Codex 真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
