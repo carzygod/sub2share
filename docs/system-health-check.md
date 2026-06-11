@@ -107,6 +107,7 @@
 - `resources.metrics.ignoredInternalResources` reports ignored internal supplier resources for operator visibility.
 - `codex_online_resource_missing` now points operators to create or repair production Codex resources instead of opening the internal disabled smoke resource.
 - `resourceCredentials` only counts OpenAI refresh token credentials attached to production Codex resources as repair candidates.
+- `resources.metrics.issueSamples` reports structured resource health issues; `resources.metrics.resourceSamples` reports concrete resource rows returned as repair candidates.
 
 ## 验收记录
 

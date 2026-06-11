@@ -5,6 +5,15 @@ export type SupplierResourceIdentity = {
   sub2AccountId: string | null;
 };
 
+export interface SupplierResourceAvailabilityMetricsInput {
+  resourcesByStatus: Record<string, number>;
+  totalCodexResources: number;
+  onlineCodexResources: number;
+  ignoredInternalResources: number;
+  issueCount: number;
+  resourceSampleCount: number;
+}
+
 export function isInternalHealthCheckSupplierResource(resource: SupplierResourceIdentity) {
   return resource.sub2AccountId === internalHealthCheckSupplierResourceSub2AccountId;
 }
@@ -17,3 +26,13 @@ export function nonSmokeSupplierResourceWhere(): Prisma.SupplierResourceWhereInp
   return { NOT: internalHealthCheckSupplierResourceWhere() };
 }
 
+export function supplierResourceAvailabilityMetrics(input: SupplierResourceAvailabilityMetricsInput) {
+  return {
+    ...input.resourcesByStatus,
+    totalCodexResources: input.totalCodexResources,
+    onlineCodexResources: input.onlineCodexResources,
+    ignoredInternalResources: input.ignoredInternalResources,
+    issueSamples: input.issueCount,
+    resourceSamples: input.resourceSampleCount
+  };
+}

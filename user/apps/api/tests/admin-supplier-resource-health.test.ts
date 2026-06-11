@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   internalHealthCheckSupplierResourceWhere,
   isInternalHealthCheckSupplierResource,
-  nonSmokeSupplierResourceWhere
+  nonSmokeSupplierResourceWhere,
+  supplierResourceAvailabilityMetrics
 } from "../src/modules/admin/supplier-resource-health.js";
 
 test("identifies only explicit internal supplier resources", () => {
@@ -21,3 +22,20 @@ test("builds a production supplier resource filter that excludes internal health
   });
 });
 
+test("separates resource health issues from concrete resource samples", () => {
+  assert.deepEqual(supplierResourceAvailabilityMetrics({
+    resourcesByStatus: { disabled: 1 },
+    totalCodexResources: 0,
+    onlineCodexResources: 0,
+    ignoredInternalResources: 1,
+    issueCount: 1,
+    resourceSampleCount: 0
+  }), {
+    disabled: 1,
+    totalCodexResources: 0,
+    onlineCodexResources: 0,
+    ignoredInternalResources: 1,
+    issueSamples: 1,
+    resourceSamples: 0
+  });
+});

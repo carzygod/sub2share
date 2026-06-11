@@ -58,7 +58,8 @@ import {
 } from "./local-proxy-smoke-health.js";
 import {
   internalHealthCheckSupplierResourceWhere,
-  nonSmokeSupplierResourceWhere
+  nonSmokeSupplierResourceWhere,
+  supplierResourceAvailabilityMetrics
 } from "./supplier-resource-health.js";
 
 const redactedFields = new Set(["passwordHash", "keyHash", "sub2KeyHash", "encryptedValue"]);
@@ -5138,13 +5139,14 @@ async function resourceAvailabilityHealthCheck(resourcesByStatus: Record<string,
     "共享资源",
     status,
     summary,
-    {
-      ...resourcesByStatus,
+    supplierResourceAvailabilityMetrics({
+      resourcesByStatus,
       totalCodexResources,
       onlineCodexResources,
       ignoredInternalResources,
-      issueSamples: samples.length
-    },
+      issueCount: issues.length,
+      resourceSampleCount: samples.length
+    }),
     issues.length > 0 || samples.length > 0 ? {
       issues,
       samples: samples.map((resource) => ({

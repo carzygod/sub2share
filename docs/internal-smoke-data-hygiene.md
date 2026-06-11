@@ -95,4 +95,5 @@ Affected health metrics:
 - `resources.metrics.totalCodexResources` counts production Codex resources only.
 - `resources.metrics.onlineCodexResources` counts production online Codex resources only.
 - `resources.metrics.ignoredInternalResources` reports how many internal supplier resources were ignored.
+- `resources.metrics.issueSamples` counts structured resource health issues, while `resources.metrics.resourceSamples` counts concrete resource rows returned as candidates.
 - `resourceCredentials` only treats credentials on production Codex resources as applicable repair candidates.
