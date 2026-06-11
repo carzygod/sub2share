@@ -2101,3 +2101,66 @@ CORS 复查：
 - `payments` warning 仍带有 `walletList=true`、`walletTransactionList=true`、`walletTransactionType=recharge` 和 `salesList=true`。
 
 结论：共享资源缺失 warning 现在与资源凭据、Sub2 上游、本地反代 smoke 三条巡检链路统一指向账号 #2。管理员从 `resources` 问题行进入共享资源页即可创建绑定账号 #2 的生产 Codex 资源；真实 `/v1/responses` 仍被上游 OpenAI/Sub2 refresh token 无效或不可调度状态阻断。
+
+## 2026-06-12 03:46 共享资源缺失巡检预填供给方邮箱发布
+
+### 发布版本
+
+- `362f4f0 fix: prefill resource supplier from health issue`
+
+### 本轮修复
+
+- `resources` 巡检生成 `codex_online_resource_missing` 问题时，会查找 active 用户关联的供给方候选。
+- 当系统恰好只有一个可用供给方候选，且问题没有具体共享资源行时，问题样本会附带该供给方的 `supplierEmail`。
+- Admin `可用性巡检 -> 打开共享资源` 现在会传递 `supplierEmail`：
+  - 共享资源列表使用该邮箱作为搜索条件。
+  - 创建共享资源表单默认填入供给方邮箱。
+  - 创建表单继续保留 `resourceType=codex` 和 `sub2AccountId=2` 预填。
+- 多供给方候选时不自动选择默认供给方，避免把生产资源绑定到错误供应商。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：69/69 通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=362f4f0`
+  - `deployed_at=20260611T194645Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：69/69 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `resources`：`warning`
+  - issue：`codex_online_resource_missing`
+  - `supplierEmail=admin@zhisuan.local`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceType=codex`
+  - `resourceStatus=null`
+  - `sub2AccountId=2`
+  - `sub2AccountName=1`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `adminCapabilities`：`ok`
+- `localProxySmoke` 仍为 `error`，真实 `/v1/responses` 仍被上游 OpenAI/Sub2 refresh token 无效或不可调度状态阻断。
+
+结论：管理员现在从 `resources` warning 一键进入共享资源页时，生产 Codex 创建表单已经能预填供给方邮箱、资源类型和 Sub2 账号 ID。剩余阻断集中在有效 OpenAI refresh token / Sub2 上游账号修复。
