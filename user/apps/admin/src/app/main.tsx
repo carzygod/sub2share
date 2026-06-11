@@ -203,8 +203,19 @@ interface SystemHealthSampleRow {
   ref: string;
   summary: string;
   resourceId?: string;
+  resourceType?: string;
+  resourceStatus?: string;
+  supplierEmail?: string;
   sub2AccountId?: string;
   sub2Status?: boolean;
+}
+
+interface Sub2RepairContext {
+  accountId?: string | null;
+  resourceId?: string;
+  resourceType?: string;
+  resourceStatus?: string;
+  supplierEmail?: string;
 }
 
 interface DeliverySummary {
@@ -961,7 +972,7 @@ function App() {
   const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
   const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
   const [sub2Bindings, setSub2Bindings] = useState<Sub2BindingReconciliationResult | null>(null);
-  const [preferredSub2AccountId, setPreferredSub2AccountId] = useState<string | null>(null);
+  const [sub2RepairContext, setSub2RepairContext] = useState<Sub2RepairContext>({});
   const [proxyRequests, setProxyRequests] = useState<ProxyRequestLogRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
@@ -1783,11 +1794,12 @@ function App() {
     await openFilteredListCandidate("audit", lookup, "已打开巡检关联审计记录");
   }
 
-  async function openSub2StatusCandidate(accountId?: string) {
-    setPreferredSub2AccountId(accountId ?? null);
+  async function openSub2StatusCandidate(context?: string | Sub2RepairContext) {
+    const repairContext = typeof context === "string" ? { accountId: context } : context ?? {};
+    setSub2RepairContext(repairContext);
     await refresh("sub2");
-    setMessage(accountId
-      ? `Opened Sub2/OpenAI proxy status for account #${accountId}`
+    setMessage(repairContext.accountId
+      ? `Opened Sub2/OpenAI proxy status for account #${repairContext.accountId}`
       : "Opened Sub2/OpenAI proxy status for the selected health issue");
   }
 
@@ -2318,7 +2330,7 @@ function App() {
             tests={sub2Tests}
             smoke={sub2Smoke}
             bindings={sub2Bindings}
-            preferredAccountId={preferredSub2AccountId}
+            repairContext={sub2RepairContext}
             onRefreshAccount={refreshSub2Account}
             onTestAccount={testSub2Account}
             onSmokeTest={runSub2SmokeTest}
@@ -2515,7 +2527,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenProduct: (lookup: string) => void;
   onOpenSettlement: (lookup: string) => void;
   onOpenWithdrawal: (lookup: string) => void;
-  onOpenSub2Status: (accountId?: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
   onOpenAuditLog: (lookup: string) => void;
 }) {
   const checks = health?.checks ?? [];
@@ -2584,7 +2596,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td>
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
-                {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(issue.sub2AccountId)}>打开反代状态</button>}
+                {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: issue.sub2AccountId, resourceId: issue.resourceId, supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, resourceStatus: issue.resourceStatus })}>打开反代状态</button>}
                 {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
@@ -2623,7 +2635,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {sample.resourceId
                   ? <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>
                   : sample.sub2Status
-                    ? <button className="secondary mini" onClick={() => onOpenSub2Status(sample.sub2AccountId)}>打开反代状态</button>
+                    ? <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: sample.sub2AccountId, resourceId: sample.resourceId, supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, resourceStatus: sample.resourceStatus })}>打开反代状态</button>
                   : <small>-</small>}
               </td>
             </tr>
@@ -3950,12 +3962,12 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
   );
 }
 
-function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, onRefreshAccount, onTestAccount, onSmokeTest, onCheckBindings, onRepairBindings, onApplyRefreshToken }: {
+function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefreshAccount, onTestAccount, onSmokeTest, onCheckBindings, onRepairBindings, onApplyRefreshToken }: {
   status: Sub2Status | null;
   tests: Record<number, Sub2AccountTestResult>;
   smoke: Sub2ProxySmokeTestResult | null;
   bindings: Sub2BindingReconciliationResult | null;
-  preferredAccountId?: string | null;
+  repairContext: Sub2RepairContext;
   onRefreshAccount: (accountId: number) => void;
   onTestAccount: (accountId: number) => void;
   onSmokeTest: () => void;
@@ -3969,8 +3981,8 @@ function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, on
     ? openAiAccounts.filter((account) => account.groupIds.includes(status.defaultGroupId!))
     : [];
   const activeAccounts = groupAccounts.filter((account) => account.status === "active");
-  const preferredAccount = preferredAccountId
-    ? openAiAccounts.find((account) => String(account.id) === preferredAccountId)
+  const preferredAccount = repairContext.accountId
+    ? openAiAccounts.find((account) => String(account.id) === repairContext.accountId)
     : undefined;
   const repairAccount = preferredAccount
     ?? groupAccounts.find((account) => account.status !== "active" || account.schedulable === false)
@@ -4052,9 +4064,9 @@ function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, on
           </div>
         )}
       </div>
-      <form className="panel glass-panel inline-form credential-form" onSubmit={onApplyRefreshToken}>
+      <form className="panel glass-panel inline-form credential-form" key={`credential-${repairContext.accountId ?? "auto"}-${repairContext.resourceId ?? ""}-${repairContext.supplierEmail ?? ""}`} onSubmit={onApplyRefreshToken}>
         <span className="eyebrow">Apply OpenAI Credentials</span>
-        <select key={`${repairAccount?.id ?? "none"}-${preferredAccountId ?? "auto"}`} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
+        <select key={`${repairAccount?.id ?? "none"}-${repairContext.accountId ?? "auto"}`} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
           <option value="">选择上游账号</option>
           {openAiAccounts.map((account) => (
             <option key={account.id} value={account.id}>#{account.id} {account.name}{preferredAccount?.id === account.id ? " · 巡检定位" : repairAccount?.id === account.id ? " · 建议修复" : ""}</option>
@@ -4073,11 +4085,11 @@ function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, on
         </label>
         <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
         <label className="checkbox-line">
-          <input name="saveToResource" type="checkbox" />
+          <input name="saveToResource" type="checkbox" defaultChecked={Boolean(repairContext.resourceId || repairContext.supplierEmail)} />
           <span>保存为共享资源凭据</span>
         </label>
-        <input name="resourceId" placeholder="目标资源 ID，可选" autoComplete="off" />
-        <input name="supplierEmail" type="email" placeholder="供给方邮箱，新建资源时必填" autoComplete="off" />
+        <input name="resourceId" defaultValue={repairContext.resourceId ?? ""} placeholder="目标资源 ID，可选" autoComplete="off" />
+        <input name="supplierEmail" type="email" defaultValue={repairContext.supplierEmail ?? ""} placeholder="供给方邮箱，新建资源时必填" autoComplete="off" />
         <button>应用凭据</button>
       </form>
       <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "凭据 / 调度", "并发", "最近错误 / 测试结果", "操作"]}>
@@ -4839,6 +4851,9 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       ref: systemHealthIssueRef(record),
       summary: systemHealthSampleSummary(record, sample),
       resourceId: textValue(record.resourceId),
+      resourceType: textValue(record.resourceType),
+      resourceStatus: textValue(record.resourceStatus),
+      supplierEmail: textValue(record.supplierEmail),
       sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: sub2StatusFlag
     };
