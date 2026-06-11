@@ -123,15 +123,22 @@ stop_port() {
   local port="$1"
   local pids=""
 
-  for signal in TERM KILL; do
-    for _attempt in 1 2 3 4 5 6 7 8; do
-      pids="$(port_pids "$port")"
-      if [ -z "$pids" ]; then
-        return 0
-      fi
-      kill "-$signal" $pids 2>/dev/null || true
-      sleep 1
-    done
+  for _attempt in 1 2 3 4 5 6 7 8; do
+    pids="$(port_pids "$port")"
+    if [ -z "$pids" ]; then
+      return 0
+    fi
+    kill -TERM $pids 2>/dev/null || true
+    sleep 1
+  done
+
+  for _attempt in 1 2 3 4 5; do
+    pids="$(port_pids "$port")"
+    if [ -z "$pids" ]; then
+      return 0
+    fi
+    fuser -k "${port}/tcp" >/dev/null 2>&1 || true
+    sleep 1
   done
 
   pids="$(port_pids "$port")"
@@ -154,9 +161,9 @@ start_services() {
   source_release_env "$current"
   mkdir -p "$current/logs"
 
-  ( cd "$current/apps/api" && nohup node dist/main.js > "$current/logs/api.log" 2>&1 & )
-  ( cd "$current/apps/web" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$web_port" > "$current/logs/web.log" 2>&1 & )
-  ( cd "$current/apps/admin" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$admin_port" > "$current/logs/admin.log" 2>&1 & )
+  ( cd -P "$current/apps/api" && nohup node dist/main.js > "$current/logs/api.log" 2>&1 & )
+  ( cd -P "$current/apps/web" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$web_port" > "$current/logs/web.log" 2>&1 & )
+  ( cd -P "$current/apps/admin" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$admin_port" > "$current/logs/admin.log" 2>&1 & )
 }
 
 wait_http() {
@@ -217,6 +224,19 @@ verify_runtime() {
   wait_http "http://127.0.0.1:${api_port}/ready"
   wait_http "http://127.0.0.1:${web_port}/"
   wait_http "http://127.0.0.1:${admin_port}/"
+  if ! verify_all_port_cwds; then
+    log "stale listener detected after start; restarting current release once"
+    stop_ports
+    start_services
+    wait_http "http://127.0.0.1:${api_port}/health"
+    wait_http "http://127.0.0.1:${api_port}/ready"
+    wait_http "http://127.0.0.1:${web_port}/"
+    wait_http "http://127.0.0.1:${admin_port}/"
+    verify_all_port_cwds
+  fi
+}
+
+verify_all_port_cwds() {
   verify_port_cwd "$api_port"
   verify_port_cwd "$web_port"
   verify_port_cwd "$admin_port"
