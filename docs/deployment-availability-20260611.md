@@ -1961,3 +1961,71 @@ CORS 复查：
 - `localProxySmoke` 与 `sub2` 仍指向同一个修复账号 `sub2AccountId=2`。
 
 结论：资源凭据巡检已经能把账号 #2 同时用于反代状态页预选和共享资源创建表单预填。管理员创建生产 Codex 资源时不再需要从巡检对象摘要里手工复制 Sub2 账号 ID；真实 `/v1/responses` 仍等待有效 refresh token。
+
+## 2026-06-12 03:24 支付风险巡检直达售出情况发布
+
+### 发布版本
+
+- `74f8ce2 fix: link payment health to sales view`
+
+### 本轮修复
+
+- `payments.detail.issues` 新增 `salesList=true`。
+- 支付配置问题现在同时提供：
+  - `打开余额列表`
+  - `打开余额流水`
+  - `打开售出情况`
+- 余额流水仍会通过 `walletTransactionType=recharge` 自动筛选充值类型。
+- 管理员从生产 mock 充值 warning 可以直接联动复核余额、充值流水和售出收入视图。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：67/67 通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=74f8ce2`
+  - `deployed_at=20260611T192413Z`
+- HTTP：
+  - `GET http://192.168.31.26:4100/health`：200
+  - `GET http://192.168.31.26:4100/ready`：200
+  - `GET http://192.168.31.26:3100/`：200
+  - `GET http://192.168.31.26:3101/`：200
+- 监听端口：
+  - `4100`：API
+  - `3100`：Web
+  - `3101`：Admin
+  - `8080`：Sub2API
+- 发布脚本在服务端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：67/67 通过。
+  - workspace build：通过。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+- `payments`：`warning`
+  - issue：`production_mock_recharge`
+  - `walletList=true`
+  - `walletTransactionList=true`
+  - `walletTransactionType=recharge`
+  - `salesList=true`
+  - `recentRechargeTransactions=0`
+  - `recentRechargeAmount=0.000000`
+- `GET /api/admin/sales?page=1&pageSize=5`：
+  - status：200
+  - total：1
+  - summary 包含 `orderCount`、`paidAmount`、`supplierIncome`、`totalAmount`、`usageCharge`、`usageCount`
+
+结论：生产 mock 充值 warning 现在能从巡检页直接进入余额、充值流水和售出情况三类运营视图。真实支付渠道仍需后续接入；当前线上没有最近 24 小时 mock 充值流水。
