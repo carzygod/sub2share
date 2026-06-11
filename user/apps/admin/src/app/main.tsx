@@ -3926,15 +3926,27 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
         <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
         <button>应用凭据</button>
       </form>
-      <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "并发", "最近错误 / 测试结果", "操作"]}>
+      <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "凭据 / 调度", "并发", "最近错误 / 测试结果", "操作"]}>
         {accounts.map((account) => (
           <tr key={account.id}>
             <td><strong>{account.name}</strong><small>#{account.id} / {account.platform} / {account.type}</small></td>
             <td>{account.groupNames.length ? account.groupNames.join(", ") : account.groupIds.join(", ") || "-"}</td>
             <td><StatusPill status={account.status} /></td>
+            <td>
+              <small>凭据 {account.credentialsStatus ?? "-"}</small>
+              <small>调度 {account.schedulable === undefined ? "-" : account.schedulable ? "可调度" : "不可调度"}</small>
+              <small>更新 {dateTime(account.updatedAt)}</small>
+            </td>
             <td>{account.currentConcurrency ?? 0} / {account.concurrency ?? "-"}</td>
             <td>
               <small>{account.errorMessage ?? account.tempUnschedulableReason ?? "-"}</small>
+              {(account.rateLimitedAt || account.overloadUntil || account.tempUnschedulableUntil) && (
+                <small>
+                  {account.rateLimitedAt ? `限速 ${dateTime(account.rateLimitedAt)}` : ""}
+                  {account.overloadUntil ? ` 过载到 ${dateTime(account.overloadUntil)}` : ""}
+                  {account.tempUnschedulableUntil ? ` 临时阻断到 ${dateTime(account.tempUnschedulableUntil)}` : ""}
+                </small>
+              )}
               {tests[account.id] && (
                 <small>
                   测试 {tests[account.id].ok ? "通过" : "失败"} / HTTP {tests[account.id].statusCode} / {testSummary(tests[account.id])}
@@ -4565,6 +4577,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
 
   return check.detail.issues.slice(0, 100).map((issue, index): SystemHealthIssueRow => {
     const record = isPlainRecord(issue) ? issue : {};
+    const sub2StatusFlag = record.sub2Status === true || textValue(record.sub2Status)?.toLowerCase() === "true";
     return {
       id: textValue(record.id) ?? String(index),
       checkId: check.id,
@@ -4584,7 +4597,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       productLookup: textValue(record.productId) ?? textValue(record.priceId),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
       withdrawalLookup: textValue(record.withdrawalId),
-      sub2Status: check.id === "sub2" || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
+      sub2Status: check.id === "sub2" || sub2StatusFlag || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
       auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
     };
   });

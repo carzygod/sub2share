@@ -231,6 +231,8 @@ interface ResourceCredentialReadinessIssue {
   severity: "warning" | "error";
   resourceId?: string;
   refId?: string;
+  sub2Status?: boolean;
+  actionHint?: string;
   message: string;
 }
 
@@ -5394,7 +5396,8 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
     activeApplicableCredentials,
     activeMissingSub2Account,
     inactiveOpenAiRefreshTokens,
-    samples
+    samples,
+    missingAccountSamples
   ] = await Promise.all([
     prisma.supplierResourceCredential.count({
       where: { supplierResource: { resourceType: "codex" } }
@@ -5435,16 +5438,45 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       },
       orderBy: { lastRotatedAt: "desc" },
       take: 10
+    }),
+    prisma.supplierResourceCredential.findMany({
+      where: {
+        ...activeOpenAiRefreshTokenWhere,
+        supplierResource: {
+          resourceType: "codex",
+          sub2AccountId: null
+        }
+      },
+      select: {
+        ...resourceCredentialSummarySelect,
+        supplierResource: {
+          select: {
+            id: true,
+            status: true,
+            sub2AccountId: true,
+            supplier: {
+              select: {
+                user: { select: { email: true } }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { lastRotatedAt: "desc" },
+      take: 10
     })
   ]);
 
   const issues: ResourceCredentialReadinessIssue[] = [];
+  const firstApplicableResourceId = samples[0]?.supplierResource.id;
+  const firstMissingSub2AccountResourceId = missingAccountSamples[0]?.supplierResource.id;
   if (!configured) {
     issues.push({
       id: "resource-credential-encryption-secret-missing",
       type: "api_key_encryption_secret_missing",
       severity: env.NODE_ENV === "production" ? "error" : "warning",
       refId: "API_KEY_ENCRYPTION_SECRET",
+      actionHint: "Configure API_KEY_ENCRYPTION_SECRET before saving or applying OpenAI refresh token credentials.",
       message: "API_KEY_ENCRYPTION_SECRET must be configured before storing or applying supplier resource credentials"
     });
   }
@@ -5453,6 +5485,9 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       id: "openai-refresh-token-sub2-account-missing",
       type: "openai_refresh_token_sub2_account_missing",
       severity: upstreamNoActiveAccounts ? "error" : "warning",
+      resourceId: firstMissingSub2AccountResourceId,
+      sub2Status: true,
+      actionHint: "Open the resource, bind its Sub2 account id, then apply the stored credential to Sub2.",
       message: `${activeMissingSub2Account} active OpenAI refresh token credential(s) are missing a Sub2 account id`
     });
   }
@@ -5461,6 +5496,8 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       id: "openai-refresh-token-candidate-missing",
       type: "openai_refresh_token_candidate_missing",
       severity: "error",
+      sub2Status: true,
+      actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id, or paste a valid token on the Sub2 status page.",
       message: "Sub2 reports no active OpenAI upstream accounts and no active resource credential can be applied"
     });
   } else if (upstreamNoActiveAccounts && activeApplicableCredentials > 0) {
@@ -5468,6 +5505,9 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
       id: "openai-refresh-token-apply-needed",
       type: "openai_refresh_token_apply_needed",
       severity: "warning",
+      resourceId: firstApplicableResourceId,
+      sub2Status: true,
+      actionHint: "Open the resource and apply its credential to Sub2, or use the Sub2 status page to apply a fresh token directly.",
       message: `${activeApplicableCredentials} active OpenAI refresh token credential candidate(s) can be applied to Sub2`
     });
   }
@@ -5501,17 +5541,32 @@ async function inspectResourceCredentialReadiness(sub2Status: Awaited<ReturnType
     },
     {
       issues,
-      samples: samples.map((credential) => ({
-        id: credential.id,
-        credentialType: credential.credentialType,
-        keyFingerprint: credential.keyFingerprint,
-        status: credential.status,
-        lastRotatedAt: credential.lastRotatedAt.toISOString(),
-        resourceId: credential.supplierResource.id,
-        resourceStatus: credential.supplierResource.status,
-        sub2AccountId: credential.supplierResource.sub2AccountId,
-        supplierEmail: credential.supplierResource.supplier.user.email
-      }))
+      samples: [
+        ...samples.map((credential) => ({
+          sampleType: "applicable",
+          id: credential.id,
+          credentialType: credential.credentialType,
+          keyFingerprint: credential.keyFingerprint,
+          status: credential.status,
+          lastRotatedAt: credential.lastRotatedAt.toISOString(),
+          resourceId: credential.supplierResource.id,
+          resourceStatus: credential.supplierResource.status,
+          sub2AccountId: credential.supplierResource.sub2AccountId,
+          supplierEmail: credential.supplierResource.supplier.user.email
+        })),
+        ...missingAccountSamples.map((credential) => ({
+          sampleType: "missing_sub2_account",
+          id: credential.id,
+          credentialType: credential.credentialType,
+          keyFingerprint: credential.keyFingerprint,
+          status: credential.status,
+          lastRotatedAt: credential.lastRotatedAt.toISOString(),
+          resourceId: credential.supplierResource.id,
+          resourceStatus: credential.supplierResource.status,
+          sub2AccountId: credential.supplierResource.sub2AccountId,
+          supplierEmail: credential.supplierResource.supplier.user.email
+        }))
+      ]
     }
   );
 }
