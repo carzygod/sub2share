@@ -80,3 +80,31 @@
 3. 确认 `frontendRuntime.status=ok`。
 4. 确认 `frontendRuntime.metrics.okEndpoints=2`。
 5. 确认 `detail.probes` 中 Web/Admin 均为 `ok=true` 且 `contentType` 包含 `text/html`。
+
+## 线上复查记录
+
+复查时间：2026-06-12 01:02 CST
+
+- 已部署 release：`ffad973`
+- 系统健康总数：`28`
+- `frontendRuntime.status`：`ok`
+- `frontendRuntime.summary`：`Web/Admin frontend endpoints are reachable (2/2)`
+- `frontendRuntime.metrics`：
+  - `totalEndpoints=2`
+  - `okEndpoints=2`
+  - `missingEndpoints=0`
+  - `failedEndpoints=0`
+  - `nonHtmlEndpoints=0`
+- Web probe：
+  - URL：`http://192.168.31.26:3100`
+  - `statusCode=200`
+  - `contentType=text/html; charset=utf-8`
+- Admin probe：
+  - URL：`http://192.168.31.26:3101`
+  - `statusCode=200`
+  - `contentType=text/html; charset=utf-8`
+- `zyz-api.service`、`zyz-web.service`、`zyz-admin.service` 均为 `active`。
+- `zyz-web.service` 的 `ExecStart`：`/usr/local/bin/node scripts/serve-static.mjs apps/web/dist 3100`
+- `zyz-admin.service` 的 `ExecStart`：`/usr/local/bin/node scripts/serve-static.mjs apps/admin/dist 3101`
+
+结论：系统健康页现在可以直接证明 Web 与 Admin 前端入口可访问，覆盖了此前 API 正常但前端端口退出的可用性缺口。
