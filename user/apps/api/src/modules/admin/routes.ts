@@ -487,8 +487,12 @@ const sub2OpenAiRefreshTokenSchema = z.object({
   proxyId: z.coerce.number().int().positive().optional(),
   runAccountTest: z.boolean().default(true),
   runSmokeTest: z.boolean().default(false),
-  smokeModel: z.string().trim().min(1).max(160).optional()
+  smokeModel: z.string().trim().min(1).max(160).optional(),
+  saveToResource: z.boolean().default(false),
+  resourceId: z.string().trim().min(1).max(120).optional(),
+  supplierEmail: z.string().email().optional()
 });
+type Sub2OpenAiRefreshTokenInput = z.infer<typeof sub2OpenAiRefreshTokenSchema>;
 
 const usageSyncSchema = z.object({
   cursor: z.string().trim().min(1).max(500).optional()
@@ -2986,12 +2990,25 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const { id } = sub2AccountParamsSchema.parse(request.params);
     const input = sub2OpenAiRefreshTokenSchema.parse(request.body ?? {});
-    const result = await sub2Client.applyOpenAiRefreshToken(id, input);
+    const resourceSyncTarget = input.saveToResource ? await validateSub2RefreshTokenResourceSyncTarget(input) : null;
+    const result = await sub2Client.applyOpenAiRefreshToken(id, {
+      refreshToken: input.refreshToken,
+      clientId: input.clientId,
+      proxyId: input.proxyId
+    });
     let testResult: Sub2GatewayAccountTestResult | null = null;
     let smokeTest: Sub2ProxySmokeTestResult | null = null;
     let smokeTestSkippedReason: string | null = null;
+    let resourceCredentialSync: Awaited<ReturnType<typeof syncSub2RefreshTokenToSupplierResource>> | { saved: false; skippedReason: string; created: false; resource: null; credential: null } | null = null;
     if (result.ok && input.runAccountTest) {
       testResult = await testSub2AccountForResourceApply(id);
+    }
+    if (input.saveToResource) {
+      if (result.ok && resourceSyncTarget) {
+        resourceCredentialSync = await syncSub2RefreshTokenToSupplierResource(request, actor.id, id, input, resourceSyncTarget, testResult);
+      } else {
+        resourceCredentialSync = { saved: false, skippedReason: "credential_apply_failed", created: false, resource: null, credential: null };
+      }
     }
     if (input.runSmokeTest) {
       if (!result.ok) {
@@ -3015,6 +3032,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       } : null,
       smokeTestRequested: input.runSmokeTest,
       smokeTestSkippedReason,
+      resourceCredentialSync: resourceCredentialSync ? resourceCredentialSyncAuditPayload(resourceCredentialSync) : null,
       smokeTest: smokeTest ? {
         ok: smokeTest.ok,
         model: smokeTest.model,
@@ -3028,6 +3046,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       accountId: id,
       result,
       test: testResult,
+      resourceCredentialSync,
       smokeTest,
       smokeTestSkippedReason
     });
@@ -6849,6 +6868,189 @@ function parseResourceSub2AccountId(value: string | null | undefined) {
   }
 
   return accountId;
+}
+
+type Sub2RefreshTokenResourceSyncTarget =
+  | {
+    mode: "resource";
+    resource: Prisma.SupplierResourceGetPayload<{
+      include: {
+        supplier: { include: { user: true } };
+        credential: { select: typeof resourceCredentialSummarySelect };
+      };
+    }>;
+  }
+  | {
+    mode: "supplier";
+    supplierEmail: string;
+    user: { id: string; email: string; displayName: string | null };
+  };
+
+async function validateSub2RefreshTokenResourceSyncTarget(input: Sub2OpenAiRefreshTokenInput): Promise<Sub2RefreshTokenResourceSyncTarget> {
+  if (!env.API_KEY_ENCRYPTION_SECRET) {
+    throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
+  }
+
+  if (input.resourceId) {
+    const resource = await prisma.supplierResource.findUnique({
+      where: { id: input.resourceId },
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
+    });
+    if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    if (resource.resourceType !== "codex") {
+      throw new AppError("resource_type_unsupported", "Only Codex resources can store OpenAI refresh tokens for Sub2", 400);
+    }
+    return { mode: "resource", resource };
+  }
+
+  const supplierEmail = input.supplierEmail?.toLowerCase();
+  if (!supplierEmail) {
+    throw new AppError("supplier_email_required", "Supplier email is required when saving a direct Sub2 credential to a new resource", 400);
+  }
+  const user = await prisma.user.findUnique({
+    where: { email: supplierEmail },
+    select: { id: true, email: true, displayName: true }
+  });
+  if (!user) throw new AppError("supplier_user_not_found", "Supplier user not found", 404);
+  return { mode: "supplier", supplierEmail, user };
+}
+
+async function syncSub2RefreshTokenToSupplierResource(
+  request: Parameters<typeof requireRole>[0],
+  actorUserId: string,
+  accountId: number,
+  input: Sub2OpenAiRefreshTokenInput,
+  target: Sub2RefreshTokenResourceSyncTarget,
+  testResult: Sub2GatewayAccountTestResult | null
+) {
+  const encrypted = encryptSupplierResourceCredential(input.refreshToken, env.API_KEY_ENCRYPTION_SECRET!);
+  const credentialData = {
+    credentialType: "openai_refresh_token",
+    encryptedValue: encrypted.encryptedValue,
+    encryptionVersion: encrypted.encryptionVersion,
+    keyFingerprint: encrypted.keyFingerprint,
+    status: "active"
+  };
+  const now = new Date();
+  const sub2AccountId = String(accountId);
+
+  if (target.mode === "resource") {
+    const before = {
+      id: target.resource.id,
+      resourceType: target.resource.resourceType,
+      status: target.resource.status,
+      sub2AccountId: target.resource.sub2AccountId,
+      lastCheckedAt: target.resource.lastCheckedAt?.toISOString() ?? null,
+      credential: target.resource.credential ? resourceCredentialAuditPayload(target.resource.credential) : null
+    };
+    const nextStatus = testResult ? statusAfterResourceTest(target.resource.status, testResult.ok) : statusAfterDirectCredentialSync(target.resource.status);
+    const resource = await prisma.supplierResource.update({
+      where: { id: target.resource.id },
+      data: {
+        sub2AccountId,
+        status: nextStatus,
+        ...(testResult ? { lastCheckedAt: now } : {}),
+        credential: {
+          upsert: {
+            update: {
+              ...credentialData,
+              lastRotatedAt: now
+            },
+            create: credentialData
+          }
+        }
+      },
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
+    });
+    await writeAuditLog(request, actorUserId, "admin.sub2.account.save_refresh_token_resource", "supplier_resource", resource.id, before, {
+      id: resource.id,
+      resourceType: resource.resourceType,
+      status: resource.status,
+      sub2AccountId: resource.sub2AccountId,
+      lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
+      source: "sub2_direct_refresh_token_apply",
+      accountId,
+      test: resourceSyncTestAuditPayload(testResult)
+    });
+    return { saved: true, skippedReason: null, created: false, resource, credential: resource.credential };
+  }
+
+  const initialStatus = testResult ? statusAfterResourceTest("testing", testResult.ok) : "testing";
+  const resource = await prisma.$transaction(async (tx) => {
+    await tx.userRole.upsert({
+      where: { userId_role: { userId: target.user.id, role: "supplier" } },
+      update: {},
+      create: { userId: target.user.id, role: "supplier" }
+    });
+    const supplier = await tx.supplier.upsert({
+      where: { userId: target.user.id },
+      update: {},
+      create: { userId: target.user.id, displayName: target.user.displayName }
+    });
+    return tx.supplierResource.create({
+      data: {
+        supplierId: supplier.id,
+        resourceType: "codex",
+        status: initialStatus,
+        level: "L0",
+        maxConcurrency: 1,
+        shareRate: supplier.defaultShareRate,
+        reserveRatio: new Prisma.Decimal(0.2),
+        sub2AccountId,
+        lastCheckedAt: testResult ? now : undefined,
+        credential: { create: credentialData }
+      },
+      include: {
+        supplier: { include: { user: true } },
+        credential: { select: resourceCredentialSummarySelect }
+      }
+    });
+  });
+  await writeAuditLog(request, actorUserId, "admin.sub2.account.save_refresh_token_resource", "supplier_resource", resource.id, null, {
+    id: resource.id,
+    resourceType: resource.resourceType,
+    status: resource.status,
+    sub2AccountId: resource.sub2AccountId,
+    supplierEmail: target.supplierEmail,
+    credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
+    source: "sub2_direct_refresh_token_apply",
+    accountId,
+    test: resourceSyncTestAuditPayload(testResult)
+  });
+  return { saved: true, skippedReason: null, created: true, resource, credential: resource.credential };
+}
+
+function statusAfterDirectCredentialSync(current: ResourceStatus): ResourceStatus {
+  if (["disabled", "paused"].includes(current)) return current;
+  if (["pending", "abnormal"].includes(current)) return "testing";
+  return current;
+}
+
+function resourceSyncTestAuditPayload(testResult: Sub2GatewayAccountTestResult | null) {
+  return testResult ? {
+    ok: testResult.ok,
+    statusCode: testResult.statusCode,
+    events: testResult.events.map((event) => event.type ?? event.message ?? "event")
+  } : null;
+}
+
+function resourceCredentialSyncAuditPayload(sync: Awaited<ReturnType<typeof syncSub2RefreshTokenToSupplierResource>> | { saved: false; skippedReason: string; created: false; resource: null; credential: null }) {
+  return {
+    saved: sync.saved,
+    skippedReason: sync.skippedReason,
+    created: sync.created,
+    resourceId: sync.resource?.id ?? null,
+    resourceStatus: sync.resource?.status ?? null,
+    sub2AccountId: sync.resource?.sub2AccountId ?? null,
+    credential: sync.credential ? resourceCredentialAuditPayload(sync.credential) : null
+  };
 }
 
 async function applyStoredResourceCredentialToSub2(

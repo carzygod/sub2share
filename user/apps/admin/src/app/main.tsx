@@ -839,6 +839,13 @@ interface Sub2CredentialApplyResult {
   };
   test?: Sub2AccountTestResult | null;
   resource?: ResourceRow | null;
+  resourceCredentialSync?: {
+    saved: boolean;
+    skippedReason?: string | null;
+    created: boolean;
+    resource?: ResourceRow | null;
+    credential?: ResourceCredentialRow | null;
+  } | null;
   smokeTest?: Sub2ProxySmokeTestResult | null;
   smokeTestSkippedReason?: string | null;
 }
@@ -1916,7 +1923,6 @@ function App() {
     setMessage(credentialApplyMessage(result, "资源凭据已应用", "资源凭据应用失败"));
     await refresh("resources");
     await openResourceDetail(resourceId);
-    await refresh("sub2");
   }
 
   async function updateSupplierConfig(event: FormEvent<HTMLFormElement>, supplierId: string) {
@@ -1993,7 +1999,11 @@ function App() {
     const runAccountTest = form.get("runAccountTest") === "on";
     const runSmokeTest = form.get("runSmokeTest") === "on";
     const smokeModel = optionalFormString(form, "smokeModel");
+    const saveToResource = form.get("saveToResource") === "on";
+    const resourceId = optionalFormString(form, "resourceId");
+    const supplierEmail = optionalFormString(form, "supplierEmail");
     if (!confirmAdminAction("确认应用 OpenAI Refresh Token？", `Sub2 账号 ID：${accountId}\nClient ID：${clientId || "-"}\nProxy ID：${proxyIdText || "-"}\n应用后测试账号：${runAccountTest ? "是" : "否"}\n端到端自检：${runSmokeTest ? "是" : "否"}\n自检模型：${smokeModel ?? "-"}`)) return;
+    if (saveToResource && !confirmAdminAction("确认同步保存共享资源凭据？", `目标资源：${resourceId ?? "-"}\n供给方邮箱：${supplierEmail ?? "-"}\n未填写目标资源时会为供给方创建 Codex 共享资源。`)) return;
     const result = await api<Sub2CredentialApplyResult>(
       `/api/admin/sub2/accounts/${accountId}/apply-openai-refresh-token`,
       {
@@ -2004,7 +2014,10 @@ function App() {
           proxyId: proxyIdText ? Number(proxyIdText) : undefined,
           runAccountTest,
           runSmokeTest,
-          smokeModel
+          smokeModel,
+          saveToResource,
+          resourceId,
+          supplierEmail
         })
       }
     );
@@ -2017,7 +2030,9 @@ function App() {
     const smokeMessage = result.smokeTest
       ? result.smokeTest.ok ? "，端到端通过" : `，端到端失败 / ${smokeSummary(result.smokeTest)}`
       : result.smokeTestSkippedReason ? `，端到端跳过：${credentialApplySmokeSkipLabel(result.smokeTestSkippedReason)}` : "";
-    setMessage(result.result.ok ? `OpenAI 上游凭据已应用到账号 #${result.accountId}${testMessage}${smokeMessage}` : `凭据应用失败：${result.result.error ?? "未知错误"}${smokeMessage}`);
+    const resourceSyncMessage = result.resourceCredentialSync ? `，${resourceCredentialSyncMessage(result.resourceCredentialSync)}` : "";
+    setMessage(result.result.ok ? `OpenAI 上游凭据已应用到账号 #${result.accountId}${testMessage}${smokeMessage}${resourceSyncMessage}` : `凭据应用失败：${result.result.error ?? "未知错误"}${smokeMessage}${resourceSyncMessage}`);
+    if (result.resourceCredentialSync?.saved) await refresh("resources");
     await refresh("sub2");
   }
 
@@ -4057,6 +4072,12 @@ function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, on
           <span>应用后端到端自检</span>
         </label>
         <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
+        <label className="checkbox-line">
+          <input name="saveToResource" type="checkbox" />
+          <span>保存为共享资源凭据</span>
+        </label>
+        <input name="resourceId" placeholder="目标资源 ID，可选" autoComplete="off" />
+        <input name="supplierEmail" type="email" placeholder="供给方邮箱，新建资源时必填" autoComplete="off" />
         <button>应用凭据</button>
       </form>
       <TablePanel title="OpenAI 上游账号" count={accounts.length} headers={["账号", "分组", "状态", "凭据 / 调度", "并发", "最近错误 / 测试结果", "操作"]}>
@@ -5350,6 +5371,19 @@ function credentialApplyMessage(result: Sub2CredentialApplyResult, successPrefix
   return result.result.ok
     ? `${successPrefix}到 Sub2 账号 #${result.accountId}${testMessage}${smokeMessage}`
     : `${failurePrefix}：${result.result.error ?? "未知错误"}${smokeMessage}`;
+}
+
+function resourceCredentialSyncMessage(sync: NonNullable<Sub2CredentialApplyResult["resourceCredentialSync"]>) {
+  if (!sync.saved) return `共享资源凭据未保存：${resourceCredentialSyncSkipLabel(sync.skippedReason)}`;
+  const action = sync.created ? "已新建共享资源并保存凭据" : "已更新共享资源凭据";
+  const resourceId = sync.resource?.id ? ` #${sync.resource.id}` : "";
+  const status = sync.resource?.status ? ` / ${sync.resource.status}` : "";
+  return `${action}${resourceId}${status}`;
+}
+
+function resourceCredentialSyncSkipLabel(reason?: string | null) {
+  if (reason === "credential_apply_failed") return "Sub2 应用失败";
+  return reason ?? "未知原因";
 }
 
 function credentialApplySmokeSkipLabel(reason: string) {
