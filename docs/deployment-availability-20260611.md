@@ -350,3 +350,77 @@ Sub2 账号复查：
 - `localProxySmoke`：最近一次失败仍位于 `/v1/responses`。
 
 结论：本地反代内核已经明确以 Sub2API 为上游覆盖完整 OpenAI `/v1/*` 子路径和 Codex 常用 Responses API；真实生成仍需补齐有效 OpenAI 上游账号凭据。
+
+## 2026-06-11 18:07 共享资源巡检可操作化
+
+### 发布版本
+
+- `e4c5f4a fix: surface shared resource health actions`
+
+### 本轮修复
+
+- `resources` 健康项从纯摘要指标升级为可操作巡检：
+  - 统计 `totalCodexResources`。
+  - 统计 `onlineCodexResources`。
+  - 返回 `detail.issues`，包括异常资源和缺少 online Codex 共享资源。
+  - 返回 `detail.samples`，展示异常资源或非 online Codex 资源样本。
+- 管理后台 `可用性巡检` 的问题样本新增 `resourceList` 操作：
+  - 有具体 `resourceId` 时可打开资源详情。
+  - 没有具体资源 ID 时仍可打开共享资源列表。
+- 巡检候选样本摘要新增资源相关字段：
+  - `resourceType`
+  - `resourceStatus`
+  - `sub2AccountId`
+  - `level`
+  - `maxConcurrency`
+  - `updatedAt`
+
+### 验证
+
+- 本地 `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/api test`：41/41 通过。
+- 本地 `pnpm.cmd --filter @zyz/api run build`：通过。
+- 本地 `pnpm.cmd --filter @zyz/admin run build`：通过。
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/admin run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：41/41 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`GET /api/admin/system-health`：
+
+- totalChecks：`25`
+- ok：`20`
+- warning：`2`
+- error：`3`
+
+`resources` 当前为 warning：
+
+- summary：`没有 online 的 Codex 共享资源`
+- metrics：
+  - disabled：`1`
+  - totalCodexResources：`1`
+  - onlineCodexResources：`0`
+  - issueSamples：`1`
+- issue：
+  - type：`codex_online_resource_missing`
+  - resourceId：`8b7706ac-2ac6-4962-83e5-0ed6ae49e067`
+  - resourceList：`true`
+  - resourceStatus：`disabled`
+  - resourceType：`codex`
+  - supplierEmail：`admin@zhisuan.local`
+  - actionHint：提示打开已有 Codex 资源，绑定 Sub2 账号和 active 凭据，测试后切换 online。
+
+剩余核心阻断仍为：
+
+- `resourceCredentials`：没有 active 且可应用的 OpenAI refresh token。
+- `sub2`：OpenAI group `oai` 有 2 个账号但 active OpenAI accounts 为 `0`。
+- `localProxySmoke`：最近一次 `/v1/responses` 失败，与 Sub2 上游账号失效一致。
+
+结论：共享资源告警现在已经能从巡检页直接跳转到共享资源列表和具体资源详情。完整 OpenAI/Codex 反代真实生成仍需要有效 OpenAI 上游凭据。
