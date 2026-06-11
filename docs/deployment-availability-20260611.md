@@ -2859,3 +2859,98 @@ CORS 复查：
 ### 结论
 
 管理后台入口现在由同一份共享矩阵驱动前端、测试和系统健康巡检。线上系统可以直接证明“后端管理员能力完整 + 前端核心入口完整 + Admin 静态入口可访问”。真实 OpenAI/Codex `/v1/responses` 仍未恢复，阻断继续集中在有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失。
+
+## 2026-06-12 05:46 支付充值样本巡检发布与线上复查
+
+### 发布版本
+
+- `7234322 feat: surface recharge samples in health`
+
+### 本轮修复
+
+- `GET /api/admin/system-health` 的 `payments` / `支付充值` 检查在生产 mock 充值 warning 之外，新增最近 24 小时非 smoke 充值流水样本。
+- `payments.metrics` 新增 `recentRechargeSamples`，用于标记本次巡检返回的最近充值样本数量。
+- `payments.detail.samples` 新增 `recent_recharge_transaction` 样本，包含：
+  - `walletTransactionId`
+  - `userId`
+  - `userEmail`
+  - `amount`
+  - `balanceAfter`
+  - `currency`
+  - `createdAt`
+  - `walletLookup=true`
+  - `walletList=true`
+  - `walletTransactionList=true`
+  - `walletTransactionType=recharge`
+  - `salesList=true`
+- Admin 巡检问题样本表新增支付样本操作入口：
+  - 打开用户。
+  - 打开余额列表。
+  - 打开余额流水。
+  - 打开售出情况。
+  - 打开余额。
+- 更新文档：
+  - `docs/payment-provider-health.md`
+  - `docs/system-health-check.md`
+  - `docs/system-health-issue-samples.md`
+  - `docs/需求文档.md`
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api test -- tests/admin-payment-provider-health.test.ts`：通过；当前脚本实际运行 API 全量测试，73/73 通过。
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd build`：通过。
+- `pnpm.cmd -r test`：通过；API 73/73、Admin 3/3。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=7234322`
+  - `deployed_at=20260611T214329Z`
+- 部署包使用 `git -c core.autocrlf=false archive HEAD:user` 生成，避免 shell 脚本被本地 `core.autocrlf=true` 转为 CRLF。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听端口：
+  - `4100`：API 已监听。
+  - `3100`：Web 已监听。
+  - `3101`：Admin 已监听。
+  - `8080`：Sub2API 已监听。
+- 未发现残留 `/opt/zhisuan-yizhan/user.new-*` staging 目录。
+- `/tmp/sub2share-user-7234322.tar` 已不在服务器上。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 新增支付样本字段：
+  - `payments.status=warning`
+  - `payments.summary=生产环境仍启用 mock 充值`
+  - `payments.metrics.provider=mock`
+  - `payments.metrics.rechargeWindowHours=24`
+  - `payments.metrics.recentRechargeTransactions=0`
+  - `payments.metrics.recentRechargeAmount=0.000000`
+  - `payments.metrics.latestRechargeAt=null`
+  - `payments.metrics.recentRechargeSamples=0`
+  - `payments.detail.issues=1`
+  - `payments.detail.samples=[]`
+- 当前线上最近 24 小时没有非 smoke 充值流水，所以样本数量为 `0`；若后续出现生产 mock 充值，管理员可直接从系统健康页跳转到用户、余额、余额流水和售出情况页面核查影响。
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+支付充值巡检现在不只提示“生产仍启用 mock 充值”，还会在存在真实充值影响时给出最近流水样本与后台跳转入口。当前线上系统基础入口与部署状态可用，真实 OpenAI/Codex `/v1/responses` 仍未恢复，根因仍集中在有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失。
