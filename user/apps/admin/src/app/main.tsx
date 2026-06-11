@@ -177,6 +177,8 @@ interface SystemHealthIssueRow {
   userId?: string;
   orderId?: string;
   rentalId?: string;
+  walletList?: boolean;
+  walletTransactionList?: boolean;
   walletLookup?: string;
   apiKeyLookup?: string;
   usageLookup?: string;
@@ -2016,6 +2018,8 @@ function App() {
             onOpenResources={() => { void refresh("resources"); }}
             onOpenResource={openResourceCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenWallets={() => { void refresh("wallets"); }}
+            onOpenWalletTransactions={() => { void refresh("walletTransactions"); }}
             onOpenUser={openUserCandidate}
             onOpenWallet={openWalletCandidate}
             onOpenOrder={openOrderCandidate}
@@ -2378,7 +2382,7 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenWallets, onOpenWalletTransactions, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2387,6 +2391,8 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenResources: () => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
+  onOpenWallets: () => void;
+  onOpenWalletTransactions: () => void;
   onOpenUser: (userId: string) => void;
   onOpenWallet: (lookup: string) => void;
   onOpenOrder: (orderId: string) => void;
@@ -2471,6 +2477,8 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
                 {issue.userId && <button className="secondary mini" onClick={() => onOpenUser(issue.userId!)}>打开用户</button>}
+                {issue.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
+                {issue.walletTransactionList && <button className="secondary mini" onClick={onOpenWalletTransactions}>打开余额流水</button>}
                 {issue.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(issue.walletLookup!)}>打开余额</button>}
                 {issue.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(issue.apiKeyLookup!)}>打开 Key</button>}
                 {issue.usageLookup && <button className="secondary mini" onClick={() => onOpenUsage(issue.usageLookup!)}>打开用量</button>}
@@ -4603,6 +4611,8 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       userId: textValue(record.userId),
       orderId: textValue(record.orderId),
       rentalId: textValue(record.rentalId),
+      walletList: record.walletList === true || textValue(record.walletList)?.toLowerCase() === "true",
+      walletTransactionList: record.walletTransactionList === true || textValue(record.walletTransactionList)?.toLowerCase() === "true",
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId),
@@ -4662,6 +4672,8 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
     || issue.orderId
     || issue.rentalId
     || issue.userId
+    || issue.walletList
+    || issue.walletTransactionList
     || issue.walletLookup
     || issue.apiKeyLookup
     || issue.usageLookup
