@@ -188,6 +188,7 @@ interface SystemHealthIssueRow {
   productLookup?: string;
   settlementLookup?: string;
   withdrawalLookup?: string;
+  sub2AccountId?: string;
   sub2Status?: boolean;
   auditLogLookup?: string;
 }
@@ -199,6 +200,7 @@ interface SystemHealthSampleRow {
   ref: string;
   summary: string;
   resourceId?: string;
+  sub2AccountId?: string;
   sub2Status?: boolean;
 }
 
@@ -947,6 +949,7 @@ function App() {
   const [sub2Tests, setSub2Tests] = useState<Record<number, Sub2AccountTestResult>>({});
   const [sub2Smoke, setSub2Smoke] = useState<Sub2ProxySmokeTestResult | null>(null);
   const [sub2Bindings, setSub2Bindings] = useState<Sub2BindingReconciliationResult | null>(null);
+  const [preferredSub2AccountId, setPreferredSub2AccountId] = useState<string | null>(null);
   const [proxyRequests, setProxyRequests] = useState<ProxyRequestLogRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRow[]>([]);
   const [listQueries, setListQueries] = useState<Record<ManagedListView, ListQueryState>>(() => createDefaultListQueries());
@@ -1748,9 +1751,12 @@ function App() {
     await openFilteredListCandidate("audit", lookup, "已打开巡检关联审计记录");
   }
 
-  async function openSub2StatusCandidate() {
+  async function openSub2StatusCandidate(accountId?: string) {
+    setPreferredSub2AccountId(accountId ?? null);
     await refresh("sub2");
-    setMessage("Opened Sub2/OpenAI proxy status for the selected health issue");
+    setMessage(accountId
+      ? `Opened Sub2/OpenAI proxy status for account #${accountId}`
+      : "Opened Sub2/OpenAI proxy status for the selected health issue");
   }
 
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
@@ -2243,6 +2249,7 @@ function App() {
             tests={sub2Tests}
             smoke={sub2Smoke}
             bindings={sub2Bindings}
+            preferredAccountId={preferredSub2AccountId}
             onRefreshAccount={refreshSub2Account}
             onTestAccount={testSub2Account}
             onSmokeTest={runSub2SmokeTest}
@@ -2437,7 +2444,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenProduct: (lookup: string) => void;
   onOpenSettlement: (lookup: string) => void;
   onOpenWithdrawal: (lookup: string) => void;
-  onOpenSub2Status: () => void;
+  onOpenSub2Status: (accountId?: string) => void;
   onOpenAuditLog: (lookup: string) => void;
 }) {
   const checks = health?.checks ?? [];
@@ -2506,7 +2513,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td>
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
-                {issue.sub2Status && <button className="secondary mini" onClick={onOpenSub2Status}>打开反代状态</button>}
+                {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(issue.sub2AccountId)}>打开反代状态</button>}
                 {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ resourceType: issue.resourceType, status: issue.resourceStatus })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
@@ -2544,7 +2551,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {sample.resourceId
                   ? <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>
                   : sample.sub2Status
-                    ? <button className="secondary mini" onClick={onOpenSub2Status}>打开反代状态</button>
+                    ? <button className="secondary mini" onClick={() => onOpenSub2Status(sample.sub2AccountId)}>打开反代状态</button>
                   : <small>-</small>}
               </td>
             </tr>
@@ -3871,11 +3878,12 @@ function RentalDetailPanel({ rental, onClose }: { rental: RentalDetailRow; onClo
   );
 }
 
-function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTestAccount, onSmokeTest, onCheckBindings, onRepairBindings, onApplyRefreshToken }: {
+function Sub2StatusView({ status, tests, smoke, bindings, preferredAccountId, onRefreshAccount, onTestAccount, onSmokeTest, onCheckBindings, onRepairBindings, onApplyRefreshToken }: {
   status: Sub2Status | null;
   tests: Record<number, Sub2AccountTestResult>;
   smoke: Sub2ProxySmokeTestResult | null;
   bindings: Sub2BindingReconciliationResult | null;
+  preferredAccountId?: string | null;
   onRefreshAccount: (accountId: number) => void;
   onTestAccount: (accountId: number) => void;
   onSmokeTest: () => void;
@@ -3889,7 +3897,11 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
     ? openAiAccounts.filter((account) => account.groupIds.includes(status.defaultGroupId!))
     : [];
   const activeAccounts = groupAccounts.filter((account) => account.status === "active");
-  const repairAccount = groupAccounts.find((account) => account.status !== "active" || account.schedulable === false)
+  const preferredAccount = preferredAccountId
+    ? openAiAccounts.find((account) => String(account.id) === preferredAccountId)
+    : undefined;
+  const repairAccount = preferredAccount
+    ?? groupAccounts.find((account) => account.status !== "active" || account.schedulable === false)
     ?? openAiAccounts.find((account) => account.status !== "active" || account.schedulable === false)
     ?? openAiAccounts[0];
   const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
@@ -3970,10 +3982,10 @@ function Sub2StatusView({ status, tests, smoke, bindings, onRefreshAccount, onTe
       </div>
       <form className="panel glass-panel inline-form credential-form" onSubmit={onApplyRefreshToken}>
         <span className="eyebrow">Apply OpenAI Credentials</span>
-        <select key={repairAccount?.id ?? "none"} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
+        <select key={`${repairAccount?.id ?? "none"}-${preferredAccountId ?? "auto"}`} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
           <option value="">选择上游账号</option>
           {openAiAccounts.map((account) => (
-            <option key={account.id} value={account.id}>#{account.id} {account.name}{repairAccount?.id === account.id ? " · 建议修复" : ""}</option>
+            <option key={account.id} value={account.id}>#{account.id} {account.name}{preferredAccount?.id === account.id ? " · 巡检定位" : repairAccount?.id === account.id ? " · 建议修复" : ""}</option>
           ))}
         </select>
         <input name="refreshToken" type="password" placeholder="OpenAI refresh token" autoComplete="off" required />
@@ -4657,6 +4669,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       productLookup: textValue(record.productId) ?? textValue(record.priceId),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
       withdrawalLookup: textValue(record.withdrawalId),
+      sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: check.id === "sub2" || sub2StatusFlag || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
       auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
     };
@@ -4676,6 +4689,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       ref: systemHealthIssueRef(record),
       summary: systemHealthSampleSummary(record, sample),
       resourceId: textValue(record.resourceId),
+      sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: sub2StatusFlag
     };
   });
