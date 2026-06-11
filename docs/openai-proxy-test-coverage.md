@@ -64,3 +64,18 @@ pnpm.cmd --filter @zyz/api run build
 - 降低反代门禁规则后续改动时的回归风险。
 - 确保模型列表等诊断型请求继续不消耗套餐请求数、RPM 和 TPM。
 - 确保 Responses、Chat Completions 等真实生成请求继续进入本地风控和可观测链路。
+
+## 2026-06-12 追补：反代运行契约可见化
+
+- `inspectOpenAiProxyContract()` 支持接收生产运行参数：
+  - `bodyLimitBytes`
+  - `upstreamTimeoutMs`
+  - `streamIdleTimeoutMs`
+- 健康检查摘要会暴露反代请求体和流式转发关键策略：
+  - 全内容类型按 raw buffer 接收。
+  - GET/HEAD 不带请求体转发。
+  - 非 GET/HEAD 请求保持原始字节转发给 Sub2API。
+  - 上游请求使用 `accept-encoding: identity`。
+  - 入站 `authorization` 会被剥离，并用本地售出 Key 重新注入到 Sub2API 请求。
+  - 上游响应流完成、异常、客户端中断和空闲超时都会进入代理请求日志。
+- 测试新增正常运行契约断言，并覆盖运行参数为非正整数时的 `error` 问题样本。

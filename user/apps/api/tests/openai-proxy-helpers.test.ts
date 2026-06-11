@@ -188,7 +188,11 @@ test("labels upstream HTTP errors for proxy request logs", () => {
 });
 
 test("inspects the local OpenAI proxy public contract", () => {
-  const result = inspectOpenAiProxyContract(" https://api.example.com/v1/ ");
+  const result = inspectOpenAiProxyContract(" https://api.example.com/v1/ ", {
+    bodyLimitBytes: 52_428_800,
+    upstreamTimeoutMs: 300_000,
+    streamIdleTimeoutMs: 300_000
+  });
 
   assert.equal(result.ok, true);
   assert.equal(result.summary.endpoint, "https://api.example.com/v1");
@@ -203,6 +207,23 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
   assert.equal(result.summary.corsExposesRequestId, true);
+  assert.equal(result.summary.requestBodyMode, "raw-buffer");
+  assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
+  assert.equal(result.summary.forwardsOriginalBodyBytes, true);
+  assert.equal(result.summary.bodylessMethods, "GET,HEAD");
+  assert.equal(result.summary.bodyLimitBytes, 52_428_800);
+  assert.equal(result.summary.upstreamTimeoutMs, 300_000);
+  assert.equal(result.summary.streamIdleTimeoutMs, 300_000);
+  assert.equal(result.summary.upstreamAcceptEncoding, "identity");
+  assert.equal(result.summary.stripsInboundAuthorization, true);
+  assert.equal(result.summary.stripsInboundAcceptEncoding, true);
+  assert.equal(result.summary.reinjectsLocalBearerToSub2, true);
+  assert.equal(result.summary.forwardsRequestId, true);
+  assert.equal(result.summary.forwardsForwardedHostAndProto, true);
+  assert.equal(result.summary.abortsUpstreamOnClientClose, true);
+  assert.equal(result.summary.logsStreamCompletion, true);
+  assert.equal(result.summary.logsStreamErrors, true);
+  assert.equal(result.summary.hasStreamIdleTimeout, true);
   assert.equal(result.summary.insufficientQuotaErrorType, "insufficient_quota");
   assert.equal(result.summary.rateLimitErrorType, "rate_limit_error");
   assert.equal(result.summary.apiErrorType, "api_error");
@@ -227,6 +248,19 @@ test("reports invalid OpenAI proxy contract endpoints", () => {
   const invalidProtocol = inspectOpenAiProxyContract("ftp://api.example.com/v1");
   assert.equal(invalidProtocol.ok, false);
   assert.equal(invalidProtocol.issues.some((issue) => issue.type === "invalid_endpoint_protocol"), true);
+});
+
+test("reports invalid OpenAI proxy runtime contract options", () => {
+  const result = inspectOpenAiProxyContract("https://api.example.com/v1", {
+    bodyLimitBytes: 0,
+    upstreamTimeoutMs: -1,
+    streamIdleTimeoutMs: 1.5
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.issues.some((issue) => issue.type === "invalid_body_limit"), true);
+  assert.equal(result.issues.some((issue) => issue.type === "invalid_upstream_timeout"), true);
+  assert.equal(result.issues.some((issue) => issue.type === "invalid_stream_idle_timeout"), true);
 });
 
 test("flags production OpenAI proxy runtime when limiter state is process-local", () => {

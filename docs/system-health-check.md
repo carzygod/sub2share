@@ -116,3 +116,29 @@
 | 本地 Admin typecheck | 通过 |
 | 本地 API build | 通过 |
 | 本地 Admin build | 通过 |
+
+## 2026-06-12 Update: OpenAI Proxy Runtime Contract
+
+`openAiProxyContract` 巡检从静态接口契约扩展为“接口契约 + 运行契约”：
+
+- 继续检查公开 endpoint 是否指向 `/v1`、`/v1/*` 路由覆盖、GET/HEAD/POST/PUT/PATCH/DELETE 方法、核心 OpenAI/Codex 路径、CORS `x-proxy-request-id` 暴露和 OpenAI 风格错误类型。
+- 新增运行指标：
+  - `requestBodyMode=raw-buffer`
+  - `parsesAllContentTypesAsBuffer=true`
+  - `forwardsOriginalBodyBytes=true`
+  - `bodylessMethods=GET,HEAD`
+  - `bodyLimitBytes`
+  - `upstreamTimeoutMs`
+  - `streamIdleTimeoutMs`
+  - `upstreamAcceptEncoding=identity`
+  - `stripsInboundAuthorization=true`
+  - `reinjectsLocalBearerToSub2=true`
+  - `stripsInboundAcceptEncoding=true`
+  - `forwardsRequestId=true`
+  - `abortsUpstreamOnClientClose=true`
+  - `logsStreamCompletion=true`
+  - `logsStreamErrors=true`
+  - `hasStreamIdleTimeout=true`
+- 如果 `bodyLimitBytes`、`upstreamTimeoutMs` 或 `streamIdleTimeoutMs` 不是正整数，巡检会标记 `error`。
+
+该检查仍然不会主动发起真实上游请求；真实 Sub2API/OpenAI 可调度性仍由 `Sub2/OpenAI 上游`、`本地反代自检` 和 `反代请求` 日志共同证明。

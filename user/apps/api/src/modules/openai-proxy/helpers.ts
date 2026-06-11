@@ -11,6 +11,29 @@ export interface OpenAiProxyContractIssue {
   message: string;
 }
 
+export interface OpenAiProxyContractRuntimeOptions {
+  bodyLimitBytes?: number;
+  upstreamTimeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+}
+
+export const openAiProxyForwardingContract = {
+  requestBodyMode: "raw-buffer",
+  parsesAllContentTypesAsBuffer: true,
+  forwardsOriginalBodyBytes: true,
+  bodylessMethods: "GET,HEAD",
+  upstreamAcceptEncoding: "identity",
+  stripsInboundAuthorization: true,
+  stripsInboundAcceptEncoding: true,
+  reinjectsLocalBearerToSub2: true,
+  forwardsRequestId: true,
+  forwardsForwardedHostAndProto: true,
+  abortsUpstreamOnClientClose: true,
+  logsStreamCompletion: true,
+  logsStreamErrors: true,
+  hasStreamIdleTimeout: true
+} as const;
+
 export interface ProxyRateLimitWindow {
   requests: number[];
   tokens: Array<{ at: number; tokens: number }>;
@@ -77,7 +100,7 @@ export function upstreamHttpProxyErrorCode(statusCode: number | null | undefined
   return `upstream_http_${statusCode}`;
 }
 
-export function inspectOpenAiProxyContract(endpoint: string) {
+export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: OpenAiProxyContractRuntimeOptions = {}) {
   const trimmedEndpoint = endpoint.trim();
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
   const issues: OpenAiProxyContractIssue[] = [];
@@ -148,6 +171,10 @@ export function inspectOpenAiProxyContract(endpoint: string) {
     });
   }
 
+  validatePositiveIntegerRuntimeOption(issues, "bodyLimitBytes", runtimeOptions.bodyLimitBytes, "invalid_body_limit", "OpenAI proxy body limit must be a positive integer");
+  validatePositiveIntegerRuntimeOption(issues, "upstreamTimeoutMs", runtimeOptions.upstreamTimeoutMs, "invalid_upstream_timeout", "OpenAI proxy upstream timeout must be a positive integer");
+  validatePositiveIntegerRuntimeOption(issues, "streamIdleTimeoutMs", runtimeOptions.streamIdleTimeoutMs, "invalid_stream_idle_timeout", "OpenAI proxy stream idle timeout must be a positive integer");
+
   const errorTypes = {
     insufficientQuota: openAiProxyErrorPayload(402, "insufficient_balance", "Wallet balance is not enough").error.type,
     rateLimit: openAiProxyErrorPayload(429, "rpm_limit_exceeded", "RPM limit has been reached").error.type,
@@ -192,6 +219,23 @@ export function inspectOpenAiProxyContract(endpoint: string) {
       routesModelMetadata,
       requestIdHeader: proxyRequestIdHeaderName,
       corsExposesRequestId,
+      requestBodyMode: openAiProxyForwardingContract.requestBodyMode,
+      parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,
+      forwardsOriginalBodyBytes: openAiProxyForwardingContract.forwardsOriginalBodyBytes,
+      bodylessMethods: openAiProxyForwardingContract.bodylessMethods,
+      bodyLimitBytes: runtimeOptions.bodyLimitBytes ?? null,
+      upstreamTimeoutMs: runtimeOptions.upstreamTimeoutMs ?? null,
+      streamIdleTimeoutMs: runtimeOptions.streamIdleTimeoutMs ?? null,
+      upstreamAcceptEncoding: openAiProxyForwardingContract.upstreamAcceptEncoding,
+      stripsInboundAuthorization: openAiProxyForwardingContract.stripsInboundAuthorization,
+      stripsInboundAcceptEncoding: openAiProxyForwardingContract.stripsInboundAcceptEncoding,
+      reinjectsLocalBearerToSub2: openAiProxyForwardingContract.reinjectsLocalBearerToSub2,
+      forwardsRequestId: openAiProxyForwardingContract.forwardsRequestId,
+      forwardsForwardedHostAndProto: openAiProxyForwardingContract.forwardsForwardedHostAndProto,
+      abortsUpstreamOnClientClose: openAiProxyForwardingContract.abortsUpstreamOnClientClose,
+      logsStreamCompletion: openAiProxyForwardingContract.logsStreamCompletion,
+      logsStreamErrors: openAiProxyForwardingContract.logsStreamErrors,
+      hasStreamIdleTimeout: openAiProxyForwardingContract.hasStreamIdleTimeout,
       insufficientQuotaErrorType: errorTypes.insufficientQuota,
       rateLimitErrorType: errorTypes.rateLimit,
       apiErrorType: errorTypes.apiError
@@ -199,6 +243,23 @@ export function inspectOpenAiProxyContract(endpoint: string) {
     errorTypes,
     issues
   };
+}
+
+function validatePositiveIntegerRuntimeOption(
+  issues: OpenAiProxyContractIssue[],
+  field: string,
+  value: number | undefined,
+  type: string,
+  message: string
+) {
+  if (value === undefined) return;
+  if (!Number.isInteger(value) || value <= 0) {
+    issues.push({
+      type,
+      severity: "error",
+      message: `${message}: ${field}=${value}`
+    });
+  }
 }
 
 export function isOpenAiProxyRoutedPath(url: string) {

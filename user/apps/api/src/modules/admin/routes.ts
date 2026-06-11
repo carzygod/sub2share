@@ -3406,7 +3406,11 @@ async function buildSystemHealthReport() {
     inspectFrontendRuntimeEndpoints()
   ]);
   const sub2Status = await fetchSub2HealthStatus();
-  const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint);
+  const openAiProxyContract = inspectOpenAiProxyContract(openAiProxyPublicEndpoint, {
+    bodyLimitBytes: env.OPENAI_PROXY_BODY_LIMIT_BYTES,
+    upstreamTimeoutMs: env.OPENAI_PROXY_UPSTREAM_TIMEOUT_MS,
+    streamIdleTimeoutMs: env.OPENAI_PROXY_STREAM_IDLE_TIMEOUT_MS
+  });
   const openAiProxyRuntime = await inspectOpenAiProxyRuntimeState(checkedAt.getTime());
   const resourceCredentialReadiness = await inspectResourceCredentialReadiness(sub2Status);
   const apiCorsPolicy = apiCorsPolicyHealthCheck();
