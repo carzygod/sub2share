@@ -6,8 +6,13 @@ import { z } from "zod";
 import { requireRole } from "../../common/auth.js";
 import { AppError } from "../../common/errors.js";
 import {
+  legacyE2eUserEmailDomain,
+  legacyE2eUserEmailPrefix,
   legacyHealthCheckUserEmailDomain,
   legacyHealthCheckUserEmailPrefix,
+  legacyLocalProxySmokeProductPrefix,
+  legacySmokeWithdrawalNotePrefix,
+  legacySmokeWithdrawalPayoutRefPrefix,
   localProxySmokeBuyerId,
   localProxySmokeProductName,
   localProxySmokeUserEmail
@@ -477,7 +482,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       prisma.user.count({ where: nonSmokeUserWhere() }),
       prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
       prisma.supplierResource.count({ where: { status: "online" } }),
-      prisma.withdrawal.count({ where: { status: "pending" } }),
+      prisma.withdrawal.count({ where: { status: "pending", ...nonSmokeWithdrawalWhere() } }),
       prisma.usageRecord.aggregate({
         where: nonSmokeUsageWhere(),
         _sum: { buyerCharge: true, supplierIncome: true },
@@ -3652,7 +3657,7 @@ async function findBillingReconciliationIssues() {
       take: reconciliationScanLimit
     }),
     prisma.withdrawal.findMany({
-      where: { status: { in: ["pending", "approved", "paid"] } },
+      where: { status: { in: ["pending", "approved", "paid"] }, ...nonSmokeWithdrawalWhere() },
       select: {
         id: true,
         amount: true,
@@ -5593,17 +5598,30 @@ function internalHealthCheckUserWhere(): Prisma.UserWhereInput {
           startsWith: legacyHealthCheckUserEmailPrefix,
           endsWith: legacyHealthCheckUserEmailDomain
         }
+      },
+      { email: { endsWith: legacyHealthCheckUserEmailDomain } },
+      {
+        email: {
+          startsWith: legacyE2eUserEmailPrefix,
+          endsWith: legacyE2eUserEmailDomain
+        }
       }
     ]
   };
 }
 
 function nonSmokeOrderWhere(): Prisma.OrderWhereInput {
-  return { user: nonSmokeUserWhere() };
+  return {
+    user: nonSmokeUserWhere(),
+    items: { none: { product: internalHealthCheckProductWhere() } }
+  };
 }
 
 function nonSmokeRentalWhere(): Prisma.RentalWhereInput {
-  return { user: nonSmokeUserWhere() };
+  return {
+    user: nonSmokeUserWhere(),
+    product: { NOT: internalHealthCheckProductWhere() }
+  };
 }
 
 function nonSmokeWalletWhere(): Prisma.WalletAccountWhereInput {
@@ -5619,7 +5637,27 @@ function nonSmokeUsageWhere(): Prisma.UsageRecordWhereInput {
 }
 
 function nonSmokeProductWhere(): Prisma.ProductWhereInput {
-  return { name: { not: localProxySmokeProductName } };
+  return { NOT: internalHealthCheckProductWhere() };
+}
+
+function internalHealthCheckProductWhere(): Prisma.ProductWhereInput {
+  return {
+    OR: [
+      { name: localProxySmokeProductName },
+      { name: { startsWith: legacyLocalProxySmokeProductPrefix } }
+    ]
+  };
+}
+
+function nonSmokeWithdrawalWhere(): Prisma.WithdrawalWhereInput {
+  return {
+    NOT: {
+      OR: [
+        { payoutRef: { startsWith: legacySmokeWithdrawalPayoutRefPrefix } },
+        { note: { startsWith: legacySmokeWithdrawalNotePrefix } }
+      ]
+    }
+  };
 }
 
 function parseListQuery(raw: unknown): ListQuery {
@@ -6155,16 +6193,26 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   const smokeUserIds = smokeUsers.map((user) => user.id);
   const staleRentals = await prisma.rental.findMany({
     where: {
-      userId: { in: smokeUserIds },
-      OR: [
-        { createdAt: { lte: cutoff } },
-        { endsAt: { lte: checkedAt } },
-        { apiKeys: { some: { status: { not: "inactive" }, createdAt: { lte: cutoff } } } },
-        { order: { status: { not: "closed" }, createdAt: { lte: cutoff } } }
+      AND: [
+        {
+          OR: [
+            { userId: { in: smokeUserIds } },
+            { product: internalHealthCheckProductWhere() }
+          ]
+        },
+        {
+          OR: [
+            { createdAt: { lte: cutoff } },
+            { endsAt: { lte: checkedAt } },
+            { apiKeys: { some: { status: { not: "inactive" }, createdAt: { lte: cutoff } } } },
+            { order: { status: { not: "closed" }, createdAt: { lte: cutoff } } }
+          ]
+        }
       ]
     },
     select: {
       id: true,
+      userId: true,
       orderId: true,
       sub2UserId: true,
       sub2KeyId: true,
@@ -6262,7 +6310,10 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
   const [staleOrders, staleApiKeys] = await Promise.all([
     prisma.order.updateMany({
       where: {
-        userId: { in: smokeUserIds },
+        OR: [
+          { userId: { in: smokeUserIds } },
+          { items: { some: { product: internalHealthCheckProductWhere() } } }
+        ],
         createdAt: { lte: cutoff },
         status: { not: "closed" }
       },
@@ -6270,7 +6321,10 @@ async function cleanupStaleLocalProxySmokeData(input: { ageMinutes: number; limi
     }),
     prisma.apiKey.updateMany({
       where: {
-        userId: { in: smokeUserIds },
+        OR: [
+          { userId: { in: smokeUserIds } },
+          { rental: { product: internalHealthCheckProductWhere() } }
+        ],
         createdAt: { lte: cutoff },
         status: { not: "inactive" }
       },
