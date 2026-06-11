@@ -542,3 +542,68 @@ Sub2 账号复查：
   - message：OpenAI `token_invalidated`。
 
 结论：管理员现在可以在统一巡检页先看到具体失效的 Sub2 OpenAI 账号，再进入反代状态页执行账号刷新、测试、应用 refresh token 或端到端自检。真实 `/v1/responses` 仍需要有效 OpenAI refresh token 或重新授权。
+
+## 2026-06-11 18:50 本地反代自检维修入口补强
+
+### 发布版本
+
+- `37d8e75 fix: link proxy smoke health repairs`
+
+### 本轮修复
+
+- `localProxySmoke.detail.issues` 新增 `sub2Status=true`，使管理后台 `可用性巡检 -> 巡检问题样本` 在本地 OpenAI/Codex 端到端自检失败、过期或跳过时可以直接显示 `打开反代状态`。
+- 由 `admin.resource.credential_apply_sub2` 触发的 smoke 证据会把审计日志 `objectId` 暴露为 `resourceId`，管理员可以从同一条问题样本回到共享资源详情继续处理凭据、Sub2 账号绑定、资源测试或上线。
+- 补充 API 单元测试 `local proxy smoke issues link operators back to repair surfaces`，锁定直接 smoke 与资源凭据触发 smoke 的可跳转字段。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：44/44 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/admin run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：44/44 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`，database、Sub2API、OAuth Redis state、OpenAI proxy Redis limiter 均为 `ok`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+- 当前 release marker：`commit=37d8e75`。
+- 4100、3100、3101 监听进程 cwd 均已确认位于 `/opt/zhisuan-yizhan/user` 当前 release 下。
+
+### 线上复查结果
+
+`GET /api/admin/system-health` 当前总览：
+
+- totalChecks：`26`
+- ok：`21`
+- warning：`2`
+- error：`3`
+
+`localProxySmoke` 当前仍为 error，但问题样本已经带有维修跳转字段：
+
+- status：`error`
+- summary：`Latest local OpenAI/Codex smoke test failed at /v1/responses.`
+- issueType：`local_proxy_smoke_failed`
+- sub2Status：`true`
+- auditLogId：`bc499b11-e4b4-4070-9382-89159224f581`
+
+CORS 复查：
+
+- `Origin: http://192.168.31.26:3101` 请求 `GET /health` 返回 `access-control-allow-origin: http://192.168.31.26:3101`。
+- 响应继续暴露 `access-control-expose-headers: x-proxy-request-id`。
+
+剩余阻塞保持一致：
+
+- `resourceCredentials` error：没有 active 且可应用的 OpenAI refresh token。
+- `sub2` error：默认 OpenAI 分组 `oai` 下 2 个 OpenAI 账号均非 active，OpenAI 返回 token invalidated / revoked。
+- `localProxySmoke` error：`/v1/models` 可通过，真实 `/v1/responses` 仍由失效 OpenAI 上游 token 阻断。
+- `payments` warning：生产仍使用 `PAYMENT_PROVIDER=mock`。
+- `resources` warning：当前没有 online Codex shared resource。
+
+结论：本轮未伪造或绕过 OpenAI 上游凭据问题，而是把最后的端到端自检失败入口打通到管理员可维修页面。完整 OpenAI/Codex 反代闭环仍需要管理员补入有效 OpenAI refresh token 或重新授权 Sub2 OpenAI 账号后，再运行端到端自检确认 `/v1/responses` 成功。
