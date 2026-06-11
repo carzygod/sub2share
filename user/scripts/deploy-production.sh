@@ -153,6 +153,14 @@ stop_ports() {
   stop_port "$api_port"
   stop_port "$web_port"
   stop_port "$admin_port"
+  stop_legacy_preview_processes
+}
+
+stop_legacy_preview_processes() {
+  pkill -TERM -f "vite preview --host 0.0.0.0 --port ${web_port}" 2>/dev/null || true
+  pkill -TERM -f "vite preview --host 0.0.0.0 --port ${admin_port}" 2>/dev/null || true
+  pkill -TERM -f "pnpm .*@zyz/web.*--port ${web_port}" 2>/dev/null || true
+  pkill -TERM -f "pnpm .*@zyz/admin.*--port ${admin_port}" 2>/dev/null || true
 }
 
 start_services() {
@@ -162,8 +170,8 @@ start_services() {
   mkdir -p "$current/logs"
 
   ( cd -P "$current/apps/api" && nohup node dist/main.js > "$current/logs/api.log" 2>&1 & )
-  ( cd -P "$current/apps/web" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$web_port" > "$current/logs/web.log" 2>&1 & )
-  ( cd -P "$current/apps/admin" && nohup pnpm exec vite preview --host 0.0.0.0 --port "$admin_port" > "$current/logs/admin.log" 2>&1 & )
+  ( cd -P "$current" && nohup node scripts/serve-static.mjs apps/web/dist "$web_port" > "$current/logs/web.log" 2>&1 & )
+  ( cd -P "$current" && nohup node scripts/serve-static.mjs apps/admin/dist "$admin_port" > "$current/logs/admin.log" 2>&1 & )
 }
 
 wait_http() {
