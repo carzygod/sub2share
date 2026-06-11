@@ -17,7 +17,7 @@
   - 级别：`error`、`warning` 或检查项状态。
   - 检查项：检查项名称和 ID。
   - 类型：后端返回的 `type`。
-  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`resourceId`、`resourceType`、`resourceStatus`、`resourceScope`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`walletTransactionType`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
+  - 对象：自动拼接 `requestId`、`proxyRequestLogId`、`auditLogId`、`auditAction`、`areaId`、`view`、`resourceId`、`resourceType`、`resourceStatus`、`resourceScope`、`productId`、`priceId`、`orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`model`、`smokeTestSkippedReason`、`usageId`、`userId`、`walletId`、`walletAccountId`、`walletTransactionType`、`bindingId`、`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`sub2BlockingReason`、`sub2GroupId`、`sub2GroupName`、`sub2GroupStatus`、`openAiAccountCount`、`activeOpenAiAccountCount`、`gatewayReachable`、`settlementId`、`settlementRecordId`、`withdrawalId`、`refId`、`expected`、`actual` 等定位字段。
   - 说明：后端返回的 `message`，没有 message 时回退为紧凑 JSON；如果后端返回 `actionHint`，页面会追加展示维修建议。
   - 操作：如果样本包含可定位字段，可直接打开相应管理入口；当前支持共享资源列表、资源详情、用户、订单、租赁、余额账户、API Key、用量、商品、结算、提现和反代请求日志。
 - 候选样本展示字段：
@@ -52,6 +52,7 @@
 - 如果本地反代自检问题与 Sub2/OpenAI 上游无 active 账号同时存在，smoke 问题会继承首个修复候选的 `sub2AccountId`、账号状态、凭据状态和 `repairAction=apply_openai_refresh_token_to_sub2_account`；点击 `打开反代状态` 会直接预选该账号。
 - 管理员可以从巡检问题样本一键进入对应的用户、余额、售出订单、租赁、Key、用量、商品、结算、提现、反代状态、审计记录或反代请求列表，减少在可用性巡检和各运营页面之间手动复制 ID 的时间。
 - 订单状态巡检发现 `failed` 或 `refunding` 订单时，会把具体订单作为问题样本暴露；`failed_order_retry_candidate` 可直接打开订单详情继续执行失败订单 `Retry`，`failed_order_manual_review` 会提示阻塞原因。
+- 管理前端入口巡检发现必需管理范围缺失、列表型页面没有侧边栏入口或 view 重复时，会以 `adminSurfaceCoverage.detail.issues` 返回 `areaId`、`view`、`refId` 和维修建议，避免管理员入口退化只靠人工点击发现。
 
 ## 验收方式
 

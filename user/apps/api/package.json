@@ -6,16 +6,20 @@
   "main": "dist/main.js",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "prebuild": "pnpm --filter @zyz/shared run build",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "lint": "eslint src",
+    "pretypecheck": "pnpm --filter @zyz/shared run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pretest": "pnpm --filter @zyz/shared run build",
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
     "@fastify/jwt": "^9.0.2",
     "@prisma/client": "^6.1.0",
+    "@zyz/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.2",
     "dotenv": "^16.4.7",

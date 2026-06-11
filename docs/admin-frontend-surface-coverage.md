@@ -6,12 +6,12 @@
 
 ## 已实现范围
 
-- 新增 `apps/admin/src/app/admin-surfaces.ts`，集中声明管理后台入口：
+- 新增 `packages/shared/src/index.ts` 中的 Admin surface 清单，集中声明管理后台入口：
   - 必需范围：`users`、`sharing`、`wallets`、`sales`、`openaiProxy`。
   - 侧边栏导航项。
   - 列表型管理页面。
   - 目标关键入口标记：用户管理、共享资源、余额管理、售出情况、反代状态。
-- Admin 侧边栏不再维护一份硬编码按钮清单，而是由 `adminNavigationItems` 渲染。
+- Admin 侧边栏不再维护一份硬编码按钮清单，而是由共享包 `adminNavigationItems` 渲染。
 - 新增 `inspectAdminSurfaceCoverage()`：
   - 检查所有必需范围都有入口。
   - 检查所有列表型管理页面都能从侧边栏进入。
@@ -20,17 +20,23 @@
   - 必需管理范围。
   - 目标关键入口。
   - 所有列表型页面可达。
+- API 系统巡检新增 `adminSurfaceCoverage` 检查项：
+  - 复用共享包 `inspectAdminSurfaceCoverage()`。
+  - 将缺失必需范围、缺失列表入口和重复 view 转换为 `detail.issues`。
+  - 与 `adminCapabilities` 后端能力矩阵分开展示，分别证明前端入口完整和 API 路由完整。
 - `apps/admin/package.json` 的 `test` 脚本从占位输出改为真实执行 Node test。
-- `scripts/deploy-production.sh` 发布门禁新增 `pnpm --filter @zyz/admin test`。
+- `scripts/deploy-production.sh` 发布门禁新增 `pnpm --filter @zyz/shared run build` 和 `pnpm --filter @zyz/admin test`。
 
 ## 管理员价值
 
 - “用户情况、共享情况、余额情况、售出情况、反代状态”这些核心入口现在有前端自动化覆盖。
 - 后续修改侧边栏或新增列表管理页时，如果忘记接入导航，Admin 测试会失败。
 - 生产部署不再只验证 API tests，也会验证 Admin 入口覆盖清单。
+- 线上 `GET /api/admin/system-health` 能直接暴露前端入口覆盖状态，管理员无需等到人工点击页面才发现入口缺失。
 
 ## 验证方式
 
+- `pnpm.cmd --filter @zyz/shared run build`
 - `pnpm.cmd --filter @zyz/admin test`
 - `pnpm.cmd --filter @zyz/admin run typecheck`
 - `pnpm.cmd --filter @zyz/admin run build`

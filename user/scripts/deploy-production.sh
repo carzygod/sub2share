@@ -351,6 +351,7 @@ pnpm db:generate
 log "applying database migrations"
 pnpm exec prisma migrate deploy
 log "running type checks and API tests"
+pnpm --filter @zyz/shared run build
 pnpm --filter @zyz/api run typecheck
 pnpm --filter @zyz/admin run typecheck
 pnpm --filter @zyz/api test

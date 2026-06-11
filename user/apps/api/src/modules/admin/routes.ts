@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
+import { inspectAdminSurfaceCoverage } from "@zyz/shared/admin-surfaces";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { requireRole } from "../../common/auth.js";
@@ -162,6 +163,17 @@ interface SystemHealthCheck {
   summary: string;
   metrics?: Record<string, string | number | boolean | null>;
   detail?: unknown;
+}
+
+interface AdminSurfaceCoverageIssue {
+  id: string;
+  type: "required_surface_area_missing" | "managed_list_view_missing" | "duplicate_navigation_view";
+  severity: "error";
+  areaId?: string;
+  view?: string;
+  refId?: string;
+  message: string;
+  actionHint: string;
 }
 
 interface OrderStatusIssue {
@@ -3412,6 +3424,7 @@ async function buildSystemHealthReport() {
   const failedOrders = (ordersByStatus.failed ?? 0) + (ordersByStatus.refunding ?? 0);
   const resourceAvailability = await resourceAvailabilityHealthCheck(resourcesByStatus, sub2Status.accountSamples);
   const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
+  const adminSurfaceCoverage = inspectAdminSurfaceCoverage();
   const deploymentRuntime = deploymentRuntimeHealthCheck();
 
   const checks: SystemHealthCheck[] = [
@@ -3422,6 +3435,7 @@ async function buildSystemHealthReport() {
     deploymentRuntime,
     frontendRuntimeHealthCheck(frontendRuntime),
     adminCapabilityHealthCheck(adminCapabilityCoverage),
+    adminSurfaceCoverageHealthCheck(adminSurfaceCoverage),
     systemHealthCheck(
       "users",
       "用户状态",
@@ -4911,6 +4925,52 @@ function adminCapabilityHealthCheck(result: ReturnType<typeof inspectRegisteredA
     result.summary,
     result.issues.length > 0 ? { issues: result.issues } : undefined
   );
+}
+
+function adminSurfaceCoverageHealthCheck(result: ReturnType<typeof inspectAdminSurfaceCoverage>) {
+  const issues = adminSurfaceCoverageIssues(result);
+  return systemHealthCheck(
+    "adminSurfaceCoverage",
+    "管理前端入口",
+    result.ok ? "ok" : "error",
+    result.ok
+      ? `管理前端入口覆盖 ${result.summary.coveredRequiredAreas}/${result.summary.requiredAreas} 个核心管理范围`
+      : `${issues.length} 个管理前端入口覆盖问题`,
+    result.summary,
+    issues.length > 0 ? { issues, criticalViews: result.criticalViews } : { criticalViews: result.criticalViews }
+  );
+}
+
+function adminSurfaceCoverageIssues(result: ReturnType<typeof inspectAdminSurfaceCoverage>): AdminSurfaceCoverageIssue[] {
+  return [
+    ...result.missingRequiredAreas.map((areaId) => ({
+      id: `admin_surface:${areaId}:missing_required_area`,
+      type: "required_surface_area_missing" as const,
+      severity: "error" as const,
+      areaId,
+      refId: areaId,
+      message: `Required admin frontend area ${areaId} has no navigation entry.`,
+      actionHint: "Restore the admin navigation entry for this required management area."
+    })),
+    ...result.missingManagedListViews.map((view) => ({
+      id: `admin_surface:${view}:missing_managed_list`,
+      type: "managed_list_view_missing" as const,
+      severity: "error" as const,
+      view,
+      refId: view,
+      message: `Managed admin list view ${view} is not reachable from the sidebar navigation.`,
+      actionHint: "Add the managed list view to adminNavigationItems before treating the admin portal as complete."
+    })),
+    ...result.duplicateViews.map((view) => ({
+      id: `admin_surface:${view}:duplicate_navigation_view`,
+      type: "duplicate_navigation_view" as const,
+      severity: "error" as const,
+      view,
+      refId: view,
+      message: `Admin sidebar navigation declares view ${view} more than once.`,
+      actionHint: "Keep exactly one sidebar navigation item for each admin view."
+    }))
+  ];
 }
 
 async function inspectFrontendRuntimeEndpoints() {

@@ -32,6 +32,9 @@
 - OAuth State：检查 OAuth state 存储是否适合当前环境；生产环境内存存储或 Redis 不可达会标记 error。
 - Auth Tokens：检查 access/refresh token 有效期配置，以及生产环境是否使用独立的 `JWT_REFRESH_SECRET`。
 - 部署运行态：检查 API 当前进程 cwd、release root 和 `.release-marker`；当进程仍运行在 `user-replaced-*` 旧 release 或 `user.new-*` staging 目录时标记 error。
+- 前端入口：检查 Web/Admin 静态入口是否可访问，并确认返回 HTML。
+- 管理员后端能力覆盖：检查用户、共享资源、余额、售出和 OpenAI/Codex 反代相关管理员 API 路由是否按能力矩阵注册。
+- 管理前端入口：检查 Admin 侧边栏是否覆盖用户、共享资源、余额、售出和 OpenAI/Codex 反代核心范围，所有列表型管理页面是否可达，以及 view 是否重复。
 - CORS 白名单：检查生产环境 API CORS 是否收敛到明确 origin，是否误用 `*`，以及是否继续暴露 `x-proxy-request-id`。
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error。
 - 共享资源：检查异常资源、Codex 资源总数和 online Codex 资源数量；当没有 online Codex 共享资源或存在异常资源时返回问题样本和候选资源样本。
@@ -83,6 +86,7 @@
 - OAuth State 巡检只判断 state 存储模式和 Redis 连通性，不会发起真实第三方 OAuth 登录。
 - Auth Tokens 巡检只检查环境配置，不解码真实用户 token，也不会撤销既有 token。
 - 部署运行态巡检只读取当前进程目录和 release marker，不会主动重启服务；若发现旧 release 或 staging 目录，仍需管理员重新从当前 release 启动服务。
+- 管理前端入口巡检只读取共享 Admin surface 清单，不主动加载浏览器或点击页面；真实静态入口可达性由 `frontendRuntime` 检查覆盖。
 - CORS 白名单巡检只检查配置和暴露头，不主动发起跨域请求；真实浏览器 preflight 仍由 Fastify CORS 中间件执行。
 - 资源凭据巡检只做只读统计，不解密凭据、不返回密文或明文；候选样本只展示资源 ID、Sub2 账号 ID、供给方邮箱和凭据摘要。
 - 共享资源巡检只做只读统计，不自动上线、下线或测试资源；异常资源和非 online Codex 资源样本只展示资源 ID、类型、状态、Sub2 账号 ID、供给方邮箱和更新时间。

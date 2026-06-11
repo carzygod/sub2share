@@ -14,6 +14,7 @@ const {
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
 const { registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
   const capabilities = adminCapabilities();
@@ -53,4 +54,16 @@ test("registered admin routes cover the declared capability matrix", async () =>
   assert.equal(result.summary.registeredOperations, result.summary.totalOperations);
 
   await app.close();
+});
+
+test("shared admin frontend surface matrix covers the required management areas", () => {
+  const result = inspectAdminSurfaceCoverage();
+
+  assert.equal(result.ok, true);
+  assert.equal(result.summary.requiredAreas, 5);
+  assert.equal(result.summary.coveredRequiredAreas, 5);
+  assert.equal(result.summary.criticalViews, 5);
+  assert.deepEqual(result.missingRequiredAreas, []);
+  assert.deepEqual(result.missingManagedListViews, []);
+  assert.deepEqual(result.duplicateViews, []);
 });

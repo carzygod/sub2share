@@ -5,7 +5,7 @@ import {
   inspectAdminSurfaceCoverage,
   managedListViews,
   requiredAdminSurfaceAreas
-} from "../src/app/admin-surfaces.ts";
+} from "@zyz/shared";
 
 test("admin navigation covers the required management areas", () => {
   const coverage = inspectAdminSurfaceCoverage();

@@ -1,6 +1,12 @@
 import { FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  adminNavigationItems,
+  managedListViews,
+  type AdminManagedListView as ManagedListView,
+  type AdminView as View
+} from "@zyz/shared";
+import {
   Activity,
   AlertTriangle,
   BarChart3,
@@ -26,7 +32,6 @@ import {
   X
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
-import { adminNavigationItems, managedListViews, type AdminManagedListView as ManagedListView, type AdminView as View } from "./admin-surfaces";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
