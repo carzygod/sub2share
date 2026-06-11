@@ -477,3 +477,68 @@ Sub2 账号复查：
 - error：`3`
 
 结论：余额充值风险现在已经能在巡检问题样本中明确定位到环境配置和真实支付接入边界。完整 OpenAI/Codex 反代真实生成仍由 Sub2/OpenAI 上游凭据失效阻断。
+
+## 2026-06-11 18:25 Sub2 账号级巡检样本
+
+### 发布版本
+
+- `7ac5061 fix: surface sub2 account health samples`
+
+### 本轮修复
+
+- `sub2.detail.samples` 新增默认 OpenAI 分组下非 active 或不可调度账号样本。
+- 样本字段包括：
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `groupIds` / `groupNames`
+  - `rateLimitedAt` / `overloadUntil` / `tempUnschedulableUntil`
+  - `tempUnschedulableReason`
+  - `updatedAt`
+  - `message`
+- 管理后台 `巡检候选样本` 支持 Sub2 账号样本，并提供 `打开反代状态` 操作。
+
+### 验证
+
+- 本地 `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- 本地 `pnpm.cmd --filter @zyz/api test`：41/41 通过。
+- 本地 `pnpm.cmd --filter @zyz/api run build`：通过。
+- 本地 `pnpm.cmd --filter @zyz/admin run build`：通过。
+- 服务端 `pnpm --filter @zyz/api run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/admin run typecheck`：通过。
+- 服务端 `pnpm --filter @zyz/api test`：41/41 通过。
+- 服务端 `pnpm build`：通过。
+- `GET /health`：`200`。
+- `GET /ready`：`200`。
+- `GET /` on `3100`：`200`。
+- `GET /` on `3101`：`200`。
+
+### 线上复查结果
+
+`sub2` 当前仍为 error：
+
+- summary：`阻断：openai_group_has_no_active_accounts`
+- metrics：
+  - accounts：`2`
+  - openAiAccounts：`2`
+  - activeOpenAiAccounts：`0`
+  - defaultGroupId：`2`
+  - gatewayReachable：`true`
+
+`sub2.detail.samples` 当前列出两个失效账号：
+
+- account `2` / `1`：
+  - accountStatus：`error`
+  - credentialsStatus：`configured(3)`
+  - schedulable：`false`
+  - message：OpenAI token revoked / authentication token invalidated。
+- account `1` / `main`：
+  - accountStatus：`error`
+  - credentialsStatus：`configured(3)`
+  - schedulable：`false`
+  - message：OpenAI `token_invalidated`。
+
+结论：管理员现在可以在统一巡检页先看到具体失效的 Sub2 OpenAI 账号，再进入反代状态页执行账号刷新、测试、应用 refresh token 或端到端自检。真实 `/v1/responses` 仍需要有效 OpenAI refresh token 或重新授权。
