@@ -2340,3 +2340,74 @@ CORS 复查：
 ### 结论
 
 本轮已把“保存初始凭据”推进为“创建共享资源时可显式立即应用到 Sub2，并可触发账号测试和端到端反代自检”。管理员入口、能力矩阵、资源配置入口和本地 OpenAI/Codex `/v1/*` 反代框架均已在线验证；真实 Codex Responses 生成仍未恢复，原因不是当前部署缺失，而是 Sub2/OpenAI 上游没有 active 账号且现有 OAuth token 已失效。下一步需要在 Admin 共享资源创建页或 Sub2 状态页提交有效 OpenAI refresh token，应用到账号 #2 后重新运行 `/v1/responses` 烟测。
+## 2026-06-12 04:22 资源凭据应用历史发布与线上复查
+
+### 发布版本
+
+- `610798e feat: show resource credential apply history`
+
+### 本轮修复
+
+- `GET /api/admin/resources/:id` 新增 `credentialApplyLogs` 字段。
+- 该字段返回最近 5 条当前资源的 `admin.resource.credential_apply_sub2` 审计摘要。
+- 返回内容只包含脱敏后的审计 `after` 摘要、操作者、时间和请求来源，不包含 OpenAI refresh token 明文或密文。
+- Admin 共享资源详情页新增“最近凭据应用”区块，展示：
+  - Sub2 账号。
+  - 应用结果、`refreshed` / `applied` 状态或错误。
+  - 账号测试结果。
+  - 端到端 `/v1/responses` 烟测结果。
+  - 关联代理请求路径、HTTP 状态、错误码和 requestId。
+- 新增文档：`docs/admin-resource-credential-apply-history.md`。
+- 总需求文档追加 `18.134 共享资源详情展示最近凭据应用历史`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：71/71 通过。
+- `pnpm.cmd --filter @zyz/api run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run build`：通过。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=610798e`
+  - `deployed_at=20260611T202235Z`
+- 发布脚本在服务器端完成：
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：71/71 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- 监听进程目录：
+  - `4100`：`/opt/zhisuan-yizhan/user/apps/api`
+  - `3100`：`/opt/zhisuan-yizhan/user`
+  - `3101`：`/opt/zhisuan-yizhan/user`
+- 未发现残留 `user.new-*` staging 目录。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/resources?page=1&pageSize=10`：
+  - total：`1`
+  - resourceId：`8b7706ac-2ac6-4962-83e5-0ed6ae49e067`
+- `GET /api/admin/resources/8b7706ac-2ac6-4962-83e5-0ed6ae49e067`：
+  - `credentialApplyLogs` 字段存在。
+  - 当前长度为 `0`，原因是线上尚无 `admin.resource.credential_apply_sub2` 审计记录。
+- `GET /api/admin/audit-logs?action=admin.resource.credential_apply_sub2&page=1&pageSize=1`：
+  - total：`0`
+- 生产 Admin JS 资源包含 `credentialApplyLogs`，确认资源详情新增逻辑已发布。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`28`
+  - ok：`23`
+  - warning：`2`
+  - error：`3`
+
+### 结论
+
+管理员共享资源详情现在可以直接展示“最近凭据应用到 Sub2”的历史证据。当前线上没有凭据应用审计记录，因此字段为空数组；一旦管理员提交有效 OpenAI refresh token 并应用到 Sub2，资源详情页会保留应用、账号测试、端到端烟测和 requestId 摘要。真实 `/v1/responses` 生成仍未恢复，剩余阻断仍是 Sub2/OpenAI 上游无 active 账号和生产支付 mock warning。
