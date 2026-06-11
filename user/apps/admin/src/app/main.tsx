@@ -643,6 +643,8 @@ interface ProxyRequestLogRow {
   user?: Pick<UserRow, "id" | "email" | "displayName"> | null;
   rental?: {
     id: string;
+    orderId?: string | null;
+    productId?: string | null;
     resourceType: string;
     status: string;
     product?: { name: string } | null;
@@ -2368,6 +2370,12 @@ function App() {
             onPage={(page) => changeListPage("proxyRequests", page)}
             onExport={() => exportFilteredList("proxyRequests")}
             onCopyRequestId={copyProxyRequestId}
+            onOpenUser={openUserCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenUsage={openUsageCandidate}
           />
         )}
         {view === "suppliers" && (
@@ -4241,9 +4249,15 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
   );
 }
 
-function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId }: {
+function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId, onOpenUser, onOpenOrder, onOpenRental, onOpenApiKey, onOpenProduct, onOpenUsage }: {
   logs: ProxyRequestLogRow[];
   onCopyRequestId: (requestId: string) => void;
+  onOpenUser: (userId: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -4259,31 +4273,47 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="OpenAI/Codex 反代请求" count={meta.total} headers={["请求 ID", "用户", "租赁 / Key", "请求", "状态", "耗时", "用量估算", "来源", "时间"]}>
-        {logs.map((log) => (
-          <tr key={log.id}>
-            <td>
-              <strong>{log.requestId}</strong>
-              <button className="secondary mini" type="button" title="复制请求 ID" onClick={() => onCopyRequestId(log.requestId)}><Copy size={14} /></button>
-              {log.upstreamRequestId && <small>upstream {log.upstreamRequestId}</small>}
-            </td>
-            <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.user?.displayName ?? log.user?.id ?? "-"}</small></td>
-            <td>
-              <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
-              <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
-            </td>
-            <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
-            <td>
-              <StatusPill status={proxyStatusTone(log.statusCode)} />
-              <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
-              {log.errorCode && <small>{log.errorCode}</small>}
-            </td>
-            <td>{log.durationMs}ms</td>
-            <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
-            <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
-            <td>{dateTime(log.createdAt)}</td>
-          </tr>
-        ))}
+      <TablePanel title="OpenAI/Codex 反代请求" count={meta.total} headers={["请求 ID", "用户", "租赁 / Key", "请求", "状态", "耗时", "用量估算", "来源", "时间", "操作"]}>
+        {logs.map((log) => {
+          const orderId = log.rental?.orderId;
+          const productId = log.rental?.productId;
+          const apiKeyLookup = log.apiKeyId ?? log.apiKey?.id ?? log.apiKeyPrefix ?? log.apiKey?.keyPrefix;
+          const usageLookup = log.upstreamRequestId ?? log.requestId;
+          return (
+            <tr key={log.id}>
+              <td>
+                <strong>{log.requestId}</strong>
+                <button className="secondary mini" type="button" title="复制请求 ID" onClick={() => onCopyRequestId(log.requestId)}><Copy size={14} /></button>
+                {log.upstreamRequestId && <small>upstream {log.upstreamRequestId}</small>}
+              </td>
+              <td><strong>{log.user?.email ?? log.userId ?? "-"}</strong><small>{log.user?.displayName ?? log.user?.id ?? "-"}</small></td>
+              <td>
+                <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
+                <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
+              </td>
+              <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
+              <td>
+                <StatusPill status={proxyStatusTone(log.statusCode)} />
+                <small>{log.statusCode ?? "-"} / upstream {log.upstreamStatusCode ?? "-"}</small>
+                {log.errorCode && <small>{log.errorCode}</small>}
+              </td>
+              <td>{log.durationMs}ms</td>
+              <td><strong>{log.estimatedInputTokens} tokens</strong><small>{log.requestBytes} bytes</small></td>
+              <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
+              <td>{dateTime(log.createdAt)}</td>
+              <td>
+                <div className="row-actions">
+                  {log.userId && <button className="secondary mini" onClick={() => onOpenUser(log.userId!)}>用户</button>}
+                  {orderId && <button className="secondary mini" onClick={() => onOpenOrder(orderId)}>订单</button>}
+                  {log.rentalId && <button className="secondary mini" onClick={() => onOpenRental(log.rentalId!)}>租赁</button>}
+                  {apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(apiKeyLookup)}>API Key</button>}
+                  {productId && <button className="secondary mini" onClick={() => onOpenProduct(productId)}>商品</button>}
+                  <button className="secondary mini" onClick={() => onOpenUsage(usageLookup)}>用量</button>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </TablePanel>
     </>
   );

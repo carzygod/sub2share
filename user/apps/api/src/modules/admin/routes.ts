@@ -968,7 +968,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where: { rental: { orderId: id } },
         include: {
           user: { select: { id: true, email: true, displayName: true } },
-          rental: { select: { id: true, resourceType: true, status: true, product: { select: { name: true } } } },
+          rental: { select: { id: true, orderId: true, productId: true, resourceType: true, status: true, product: { select: { name: true } } } },
           apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
         },
         orderBy: { createdAt: "desc" },
@@ -2936,7 +2936,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where,
         include: {
           user: { select: { id: true, email: true, displayName: true } },
-          rental: { select: { id: true, resourceType: true, status: true, product: { select: { name: true } } } },
+          rental: { select: { id: true, orderId: true, productId: true, resourceType: true, status: true, product: { select: { name: true } } } },
           apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
         },
         orderBy: { createdAt: "desc" },
