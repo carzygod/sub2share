@@ -2954,3 +2954,96 @@ CORS 复查：
 ### 结论
 
 支付充值巡检现在不只提示“生产仍启用 mock 充值”，还会在存在真实充值影响时给出最近流水样本与后台跳转入口。当前线上系统基础入口与部署状态可用，真实 OpenAI/Codex `/v1/responses` 仍未恢复，根因仍集中在有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失。
+
+## 2026-06-12 06:01 反代上游 Request ID 追踪发布与线上复查
+
+### 发布版本
+
+- `e5f8fe4 feat: track upstream proxy request ids`
+
+### 本轮修复
+
+- `ProxyRequestLog` 新增 `upstreamRequestId` 字段。
+- 新增 Prisma migration：`0015_proxy_request_log_upstream_request_id`。
+- `/v1/*` 反代收到 Sub2API 响应后，按优先级提取上游 request id：
+  - `x-request-id`
+  - `openai-request-id`
+  - `x-openai-request-id`
+  - `request-id`
+- CORS `Access-Control-Expose-Headers` 新增常见上游 request id 响应头。
+- `GET /api/admin/proxy-requests` 支持按 `upstreamRequestId` 搜索。
+- Admin `反代请求` 列表和 CSV 导出展示 `upstreamRequestId`。
+- `GET /api/admin/system-health` 的 `proxy` 异常样本新增 `upstreamRequestId`。
+- `openAiProxyContract.metrics` 新增：
+  - `upstreamRequestIdHeaders=x-request-id,openai-request-id,x-openai-request-id,request-id`
+  - `corsExposesUpstreamRequestIds=true`
+  - `capturesUpstreamRequestId=true`
+- 新增文档：`docs/proxy-request-upstream-request-id.md`，并同步更新 CORS、反代日志、系统健康、问题样本和总需求文档。
+
+### 本地验证
+
+- `pnpm.cmd db:generate`：通过。
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test -- tests/openai-proxy-helpers.test.ts tests/api-cors.test.ts`：通过；当前脚本实际运行 API 全量测试，74/74 通过。
+- `pnpm.cmd -r test`：通过；API 74/74、Admin 3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - `commit=e5f8fe4`
+  - `deployed_at=20260611T215842Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：已应用 `0015_proxy_request_log_upstream_request_id`。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- 数据库列确认：
+  - `ProxyRequestLog.upstreamRequestId:text`
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+- CORS 探针：
+  - `Access-Control-Expose-Headers=x-proxy-request-id, x-request-id, openai-request-id, x-openai-request-id, request-id`
+  - `x-proxy-request-id` 可返回给浏览器端。
+- 未发现残留 `/opt/zhisuan-yizhan/user.new-*` staging 目录。
+- `/tmp/sub2share-user-e5f8fe4.tar` 已由部署脚本删除。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+- 新增契约字段：
+  - `openAiProxyContract.status=ok`
+  - `upstreamRequestIdHeaders=x-request-id,openai-request-id,x-openai-request-id,request-id`
+  - `corsExposesUpstreamRequestIds=true`
+  - `capturesUpstreamRequestId=true`
+- CORS 巡检：
+  - `corsPolicy.status=ok`
+  - `exposesHeaders=x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id`
+- 反代请求巡检：
+  - `proxy.status=ok`
+  - `proxyRecentTotal=0`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康异常样本中携带上游 request id。后续 `/v1/responses` 若继续返回上游错误，管理员可以同时拿到本地 `x-proxy-request-id` 和 Sub2API/OpenAI 侧 request id 进行跨系统排障。真实 `/v1/responses` 仍未恢复，剩余条件仍是提供有效 OpenAI refresh token / active Sub2 OpenAI 账号。
