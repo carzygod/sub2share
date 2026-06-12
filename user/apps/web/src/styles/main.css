@@ -59,6 +59,13 @@ button {
   font-weight: 650;
 }
 button:hover { background: #ffffff; }
+button:disabled {
+  color: var(--faint);
+  background: var(--surface-3);
+  border-color: var(--line-soft);
+  cursor: not-allowed;
+}
+button:disabled:hover { background: var(--surface-3); }
 .secondary {
   color: var(--text);
   background: transparent;
@@ -426,6 +433,14 @@ select option { color: #111; }
 .product-head strong {
   font-size: 34px;
   font-weight: 560;
+}
+.delivery-warning {
+  border: 1px solid rgba(240, 210, 139, 0.28);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--warning);
+  background: rgba(240, 210, 139, 0.08);
+  line-height: 1.5;
 }
 dl {
   display: grid;

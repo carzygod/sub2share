@@ -256,3 +256,14 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 该检查与 `POST /api/orders` 的 `codex_resource_not_ready_for_delivery` 闸门保持一致：管理员会在用户购买失败前看到“商品可售但交付资源缺失”的经营风险。
 
 该检查仍然不主动调用 OpenAI，也不自动下架商品；真实恢复仍需要有效 OpenAI refresh token、active Sub2 OpenAI 账号、ready Codex 共享资源和 `/v1/responses` smoke 共同证明。
+
+## 2026-06-12 Update: Buyer Catalog Delivery Readiness
+
+买家侧商品目录现在也消费同一套 ready Codex 资源口径：
+
+- `GET /api/products` 为每个商品返回 `deliveryRequired`、`deliveryReady`、`readyDeliveryResources` 和 `deliveryBlockedReason`。
+- Codex 商品没有 ready production Codex shared resource 时，响应中 `deliveryReady=false`，`deliveryBlockedReason=codex_resource_not_ready_for_delivery`。
+- Web 套餐页在 `deliveryReady=false` 时展示资源池暂不可交付提示，并禁用开通按钮。
+- 非 Codex 商品不受该闸门影响。
+
+这让用户界面、商品目录巡检和下单交付闸门保持一致：管理员能在系统健康中看到风险，买家也不会在资源不可交付时继续点击开通。

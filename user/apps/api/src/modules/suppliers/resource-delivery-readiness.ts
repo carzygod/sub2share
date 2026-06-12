@@ -39,6 +39,21 @@ export function codexDeliveryResourceMissingDetails(resourceType: string) {
   };
 }
 
+export function publicProductDeliveryReadinessFields(input: {
+  resourceType: string;
+  readyCodexDeliveryResources: number;
+}) {
+  const deliveryRequired = isDeliveryResourceReadinessRequired(input.resourceType);
+  const deliveryReady = !deliveryRequired || input.readyCodexDeliveryResources > 0;
+
+  return {
+    deliveryRequired,
+    deliveryReady,
+    readyDeliveryResources: deliveryRequired ? input.readyCodexDeliveryResources : null,
+    deliveryBlockedReason: deliveryReady ? null : "codex_resource_not_ready_for_delivery"
+  };
+}
+
 export function codexCatalogDeliveryReadinessIssueFields(input: {
   productId: string;
   productName: string;

@@ -31,6 +31,12 @@
   - `codexProductsWithoutReadyDeliveryResources>0`
   - issue type 为 `active_codex_product_without_ready_delivery_resource`
   - issue 携带共享资源修复入口字段和 `repairAction=apply_openai_refresh_token_to_sub2_account`
+- `GET /api/products` 会把同一套 readiness 暴露给买家侧：
+  - `deliveryRequired`
+  - `deliveryReady`
+  - `readyDeliveryResources`
+  - `deliveryBlockedReason`
+- 买家 Web 套餐页在 `deliveryReady=false` 时显示资源池暂不可交付提示，并禁用开通按钮。
 
 ## 管理员价值
 
@@ -57,4 +63,13 @@ pnpm --filter @zyz/api test
 - `resource-delivery-readiness.test.ts`：6/6 通过。
 - `@zyz/api typecheck`：通过。
 - `@zyz/api test`：105/105 通过。
+- `@zyz/api build`：通过。
+
+2026-06-12 买家目录补充验收：
+
+- `resource-delivery-readiness.test.ts`：8/8 通过。
+- `@zyz/api typecheck`：通过。
+- `@zyz/web typecheck`：通过。
+- `@zyz/api test`：107/107 通过。
+- `@zyz/web build`：通过。
 - `@zyz/api build`：通过。

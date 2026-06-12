@@ -4,6 +4,7 @@ import {
   codexDeliveryResourceMissingDetails,
   codexCatalogDeliveryReadinessIssueFields,
   isDeliveryResourceReadinessRequired,
+  publicProductDeliveryReadinessFields,
   readyCodexSupplierResourceDeliveryWhere,
   requireReadySupplierResourceForDelivery
 } from "../src/modules/suppliers/resource-delivery-readiness.js";
@@ -76,4 +77,37 @@ test("catalog delivery readiness ignores ready Codex resources and non-Codex pro
     resourceType: "gemini",
     readyCodexDeliveryResources: 0
   }), null);
+});
+
+test("public product delivery readiness blocks unavailable Codex products", () => {
+  assert.deepEqual(publicProductDeliveryReadinessFields({
+    resourceType: "codex",
+    readyCodexDeliveryResources: 0
+  }), {
+    deliveryRequired: true,
+    deliveryReady: false,
+    readyDeliveryResources: 0,
+    deliveryBlockedReason: "codex_resource_not_ready_for_delivery"
+  });
+});
+
+test("public product delivery readiness allows ready Codex and non-Codex products", () => {
+  assert.deepEqual(publicProductDeliveryReadinessFields({
+    resourceType: "codex",
+    readyCodexDeliveryResources: 1
+  }), {
+    deliveryRequired: true,
+    deliveryReady: true,
+    readyDeliveryResources: 1,
+    deliveryBlockedReason: null
+  });
+  assert.deepEqual(publicProductDeliveryReadinessFields({
+    resourceType: "gemini",
+    readyCodexDeliveryResources: 0
+  }), {
+    deliveryRequired: false,
+    deliveryReady: true,
+    readyDeliveryResources: null,
+    deliveryBlockedReason: null
+  });
 });

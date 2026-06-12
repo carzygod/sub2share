@@ -54,6 +54,10 @@ interface Product {
   name: string;
   resourceType: string;
   description?: string;
+  deliveryRequired?: boolean;
+  deliveryReady?: boolean;
+  readyDeliveryResources?: number | null;
+  deliveryBlockedReason?: string | null;
   prices: ProductPrice[];
 }
 
@@ -469,6 +473,11 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                 <strong>{priceAmountLabel(price.fixedPrice)}</strong>
               </div>
               <p>{product.description}</p>
+              {product.deliveryReady === false && (
+                <div className="delivery-warning">
+                  当前资源池暂不可交付，请等待管理员恢复共享资源后再开通。
+                </div>
+              )}
               <dl>
                 <dt>套餐</dt><dd>{price.displayName}</dd>
                 <dt>周期</dt><dd>{price.durationDays ?? "-"} 天</dd>
@@ -478,7 +487,10 @@ function Products({ products, onBuy }: { products: Product[]; onBuy: (productId:
                 <dt>请求量</dt><dd>{price.requestLimit ?? "不限"}</dd>
                 <dt>消费上限</dt><dd>{price.spendLimit ?? "不限"}</dd>
               </dl>
-              <button onClick={() => onBuy(product.id, price.id)}>{price.fixedPrice ? "购买并开通" : "开通按量"}<ArrowRight size={18} /></button>
+              <button disabled={product.deliveryReady === false} onClick={() => onBuy(product.id, price.id)}>
+                {product.deliveryReady === false ? "暂不可开通" : price.fixedPrice ? "购买并开通" : "开通按量"}
+                <ArrowRight size={18} />
+              </button>
             </div>
           ))}
         </Fragment>
