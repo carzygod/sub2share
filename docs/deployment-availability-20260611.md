@@ -4477,3 +4477,72 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 系统健康页现在能在 Sub2Binding 巡检发现问题时保留具体 issue，管理员可以从统一可用性巡检页直达受影响租赁。当前线上 Sub2Binding 一致性为 ok，没有新增噪声；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 15:34 系统巡检账务对账问题直达发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`5f5c874`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=5f5c874`
+  - `deployed_at=20260612T073439Z`
+- 本次能力：`GET /api/admin/system-health` 的 `reconciliation` 检查项在存在账务对账问题时返回 `detail.issues`；Admin 可用性巡检页可按 `refType/refId` 直达用量、余额流水、结算、提现或订单管理入口。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，78/78。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：78/78 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*-5f5c874` staging 目录已清理。
+- `/tmp/sub2share-user-5f5c874.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/dashboard`：200。
+  - `users=1`
+  - `activeRentals=0`
+  - `onlineResources=0`
+  - `pendingWithdrawals=0`
+  - `latestSystemHealth.status=error`
+  - `latestSystemHealth.criticalChecks.length=8`
+  - `criticalChecks`：`sub2,localProxySmoke,resourceCredentials,resources,payments,openAiProxyContract,openAiProxyRuntime,proxy`
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=5f5c874`
+  - `reconciliation.status=ok`
+  - `reconciliation.metrics.totalIssues=0`
+  - `reconciliation.detail` 未返回，说明当前没有账务对账问题样本噪声。
+  - non-ok checks：`payments,resources,resourceCredentials,sub2,localProxySmoke`
+
+### 结论
+
+系统健康页现在能在账务对账发现问题时保留具体 issue，管理员可以从统一可用性巡检页直达用量、余额流水、结算、提现或订单管理对象。当前线上账务对账为 ok，没有新增噪声；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
