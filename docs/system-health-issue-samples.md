@@ -88,3 +88,10 @@
 - 完整 `可用性巡检` 的 sample summary 字段白名单新增 `staleAt`。
 - issue/sample 行进入 `反代状态` 或 `共享资源` 修复入口时，会继续携带 `staleAt`。
 - 管理员可以在同一行或修复诊断条中确认 smoke 证据的绝对过期时刻，减少根据 `freshMinutesRemaining` 手工换算的步骤。
+
+## 2026-06-13 扩展：Sub2 修复问题共享 smoke 失败证据
+
+- `resources`、`resourceCredentials`、`sub2` 和 `productCatalog` 的可修复 issue 会在缺少字段时继承最新 `localProxySmoke` issue 的失败证据。
+- 问题样本对象可展示 `model`、`modelsOk`、`responsesOk`、`localProxyOk`、`proxyRequestLogId`、`requestId`、`upstreamRequestId`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`ageMinutes`、`stale`、`staleThresholdMinutes`、`freshMinutesRemaining` 和 `staleAt`。
+- 行内 `打开反代状态` 或 `打开共享资源` 会继续携带这些字段，方便管理员从任意相关问题进入同一条 `/v1/responses` 失败证据。
+- 该能力不改变样本抽取数量、不触发新的系统巡检，也不覆盖原 issue 的 `message` 或 `actionHint`。

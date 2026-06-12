@@ -55,6 +55,13 @@
 - Dashboard 关键巡检预览、完整巡检 issue/sample 摘要、`反代状态` 修复定位和共享资源创建诊断都会保留该字段。
 - 该字段只帮助管理员确认 smoke 证据什么时候过期，不触发新的 OpenAI/Codex 请求，也不改变 stale 判定。
 
+## 2026-06-13 扩展：作为共享修复证据源
+
+- 最新 `localProxySmoke` 可修复失败 issue 会作为共享修复证据源，补齐相关 `apply_openai_refresh_token_to_sub2_account` 问题缺失的 smoke 字段。
+- `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 等巡检项可以继承 `/v1/responses` 失败路径、状态码、代理错误码、请求 ID、证据年龄、剩余新鲜时间和 `staleAt`。
+- 原问题已有字段不会被覆盖，因此各巡检项仍保留自己的商品、资源、账号、消息和修复建议。
+- 该扩展只复用最近一次审计证据，不主动运行 live smoke，也不写入 Sub2API 或业务数据。
+
 ## 验证方式
 
 - `npm.cmd --prefix user/apps/api run typecheck`

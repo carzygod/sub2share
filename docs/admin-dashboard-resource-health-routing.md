@@ -87,3 +87,11 @@
 - 从 Dashboard 或完整 `可用性巡检` 打开共享资源修复入口时，`ResourceCreateDefaults` 会继续保留 `staleAt`。
 - 创建表单诊断条的 `Failure` 项会在证据年龄、过期阈值和剩余新鲜时间后显示 `staleAt <ISO 时间>`。
 - 该字段用于让管理员确认 smoke 证据的绝对过期时刻，不改变共享资源创建、凭据保存、Sub2 应用或端到端 smoke 执行条件。
+
+## 2026-06-13 扩展：共享修复入口继承 smoke 失败证据
+
+- `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 的共享修复问题会在字段缺失时继承最新 `localProxySmoke` 失败证据。
+- 共享资源创建默认值可继续获得 `model`、`responsesOk`、`localProxyOk`、失败请求路径、HTTP 状态、代理错误码、请求 ID、证据年龄、剩余新鲜时间和 `staleAt`。
+- 原有商品、账号、资源和修复建议字段不会被覆盖。
+- 管理员从共享资源或商品入口进入修复时，也能直接确认当前真实阻断是否落在 `/v1/responses`。
+- 该能力只透传已有巡检证据，不改变共享资源创建、凭据保存、Sub2 应用或端到端 smoke 执行条件。

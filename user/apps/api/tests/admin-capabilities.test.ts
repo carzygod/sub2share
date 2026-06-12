@@ -372,3 +372,100 @@ test("sub2 repair context enrichment shares product context with resource repair
   assert.equal(credentialIssue.resourceType, "codex");
   assert.equal(credentialIssue.sub2AccountId, 2);
 });
+
+test("sub2 repair context enrichment shares local smoke evidence with repair issues", () => {
+  const checks = enrichSub2RepairContextChecks([
+    {
+      id: "resources",
+      label: "鍏变韩璧勬簮",
+      status: "warning",
+      summary: "No online production Codex shared resource",
+      detail: {
+        issues: [{
+          id: "resource:codex-online-missing",
+          type: "codex_online_resource_missing",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          resourceType: "codex"
+        }]
+      }
+    },
+    {
+      id: "resourceCredentials",
+      label: "璧勬簮鍑嵁",
+      status: "error",
+      summary: "No applicable credential",
+      detail: {
+        issues: [{
+          id: "openai-refresh-token-candidate-missing",
+          type: "openai_refresh_token_candidate_missing",
+          repairAction: "apply_openai_refresh_token_to_sub2_account"
+        }]
+      }
+    },
+    {
+      id: "sub2",
+      label: "Sub2/OpenAI 涓婃父",
+      status: "error",
+      summary: "No active accounts",
+      detail: {
+        issues: [{
+          id: "sub2_upstream:openai_group_has_no_active_accounts",
+          type: "openai_group_has_no_active_accounts",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          actionHint: "Apply a valid token."
+        }]
+      }
+    },
+    {
+      id: "localProxySmoke",
+      label: "鏈湴鍙嶄唬鑷",
+      status: "error",
+      summary: "Latest local OpenAI/Codex smoke test failed at /v1/responses.",
+      detail: {
+        issues: [{
+          id: "local_proxy_smoke:failed",
+          type: "local_proxy_smoke_failed",
+          sub2Status: true,
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          model: "gpt-5.3-codex",
+          modelsOk: true,
+          responsesOk: false,
+          localProxyOk: false,
+          smokeTestSkippedReason: null,
+          proxyRequestLogId: "proxy-log-1",
+          requestId: "req-local",
+          upstreamRequestId: "req-upstream",
+          proxyRequestPath: "/v1/responses",
+          proxyRequestStatusCode: 503,
+          proxyRequestErrorCode: "upstream_http_503",
+          ageMinutes: 1366,
+          stale: false,
+          staleThresholdMinutes: 1440,
+          freshMinutesRemaining: 74,
+          staleAt: "2026-06-12T20:13:33.340Z"
+        }]
+      }
+    }
+  ], null, []);
+
+  const resourceIssue = (checks[0].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  const credentialIssue = (checks[1].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  const sub2Issue = (checks[2].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+
+  for (const issue of [resourceIssue, credentialIssue, sub2Issue]) {
+    assert.equal(issue.model, "gpt-5.3-codex");
+    assert.equal(issue.responsesOk, false);
+    assert.equal(issue.localProxyOk, false);
+    assert.equal(issue.proxyRequestPath, "/v1/responses");
+    assert.equal(issue.proxyRequestStatusCode, 503);
+    assert.equal(issue.proxyRequestErrorCode, "upstream_http_503");
+    assert.equal(issue.requestId, "req-local");
+    assert.equal(issue.proxyRequestLogId, "proxy-log-1");
+    assert.equal(issue.upstreamRequestId, "req-upstream");
+    assert.equal(issue.ageMinutes, 1366);
+    assert.equal(issue.staleThresholdMinutes, 1440);
+    assert.equal(issue.freshMinutesRemaining, 74);
+    assert.equal(issue.staleAt, "2026-06-12T20:13:33.340Z");
+  }
+  assert.equal(sub2Issue.actionHint, "Apply a valid token.");
+});

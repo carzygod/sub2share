@@ -4018,7 +4018,8 @@ export function enrichSub2RepairContextChecks(
   sub2AccountCandidates: ResourceCredentialSub2AccountCandidate[] = []
 ) {
   const productContext = productCatalogRepairContextFields(checks);
-  if (!supplierEmail && sub2AccountCandidates.length === 0 && !productContext) return checks;
+  const smokeContext = localProxySmokeRepairContextFields(checks);
+  if (!supplierEmail && sub2AccountCandidates.length === 0 && !productContext && !smokeContext) return checks;
   const repairCandidateFields = resourceCredentialRepairCandidateFields(sub2AccountCandidates);
 
   return checks.map((check) => {
@@ -4041,6 +4042,13 @@ export function enrichSub2RepairContextChecks(
           if (productContext.productName && !record.productName) additions.productName = productContext.productName;
           if (productContext.priceId && !record.priceId) additions.priceId = productContext.priceId;
         }
+        if (smokeContext && (!record.resourceType || record.resourceType === "codex")) {
+          for (const [field, value] of Object.entries(smokeContext)) {
+            if (value !== undefined && value !== null && (record[field] === undefined || record[field] === null)) {
+              additions[field] = value;
+            }
+          }
+        }
         if (record.sub2AccountId === undefined || record.sub2AccountId === null) {
           for (const [field, value] of Object.entries(repairCandidateFields)) {
             if (value !== undefined && (record[field] === undefined || record[field] === null)) additions[field] = value;
@@ -4058,6 +4066,44 @@ export function enrichSub2RepairContextChecks(
 
     return changed ? { ...check, detail: nextDetail } : check;
   });
+}
+
+function localProxySmokeRepairContextFields(checks: SystemHealthCheck[]) {
+  const repairFields = [
+    "model",
+    "modelsOk",
+    "responsesOk",
+    "localProxyOk",
+    "smokeTestSkippedReason",
+    "proxyRequestLogId",
+    "requestId",
+    "upstreamRequestId",
+    "proxyRequestPath",
+    "proxyRequestStatusCode",
+    "proxyRequestErrorCode",
+    "ageMinutes",
+    "stale",
+    "staleThresholdMinutes",
+    "freshMinutesRemaining",
+    "staleAt"
+  ] as const;
+
+  for (const check of checks) {
+    if (check.id !== "localProxySmoke") continue;
+    const detail = jsonObject(check.detail);
+    const rows = detail?.issues;
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const record = jsonObject(row);
+      if (!record || record.sub2Status !== true) continue;
+      const fields: Record<string, unknown> = {};
+      for (const field of repairFields) {
+        if (record[field] !== undefined && record[field] !== null) fields[field] = record[field];
+      }
+      return Object.keys(fields).length > 0 ? fields : null;
+    }
+  }
+  return null;
 }
 
 function productCatalogRepairContextFields(checks: SystemHealthCheck[]) {

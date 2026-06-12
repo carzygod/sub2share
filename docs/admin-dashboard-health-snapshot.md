@@ -216,3 +216,10 @@
 - `localProxySmoke`、`sub2`、`resourceCredentials`、`resources` 或 `productCatalog` 相关修复入口携带 `staleAt` 时，Admin 会把该字段传入 `反代状态` 或 `共享资源` 修复上下文。
 - `反代状态 -> 修复定位 -> 失败请求` 与共享资源创建表单 `Failure` 项会显示 `staleAt <ISO 时间>`，用于确认当前 smoke 证据的绝对过期时刻。
 - 该能力只补齐诊断上下文，不触发新的系统巡检、Sub2API 调用或真实 OpenAI/Codex smoke 请求。
+
+## 2026-06-13 扩展：跨巡检项 smoke 证据继承
+
+- 系统健康在生成 dashboard 快照前，会把最新 `localProxySmoke` 可修复失败证据补入相关 Sub2 修复问题。
+- 首页关键巡检中的 `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 主问题在缺少字段时会保留 `/v1/responses` 失败路径、状态码、代理错误码、请求 ID、证据年龄、剩余新鲜时间和 `staleAt`。
+- 首页从任一相关风险进入 `反代状态` 或 `共享资源` 时，都能携带同一份 smoke 失败上下文。
+- 该继承只补齐缺失字段，不覆盖原巡检项的消息、修复建议或商品/账号定位。
