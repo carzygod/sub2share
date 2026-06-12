@@ -4223,3 +4223,64 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 管理员现在进入后台首页即可看到最近巡检中的关键问题预览，不需要先打开完整巡检页才能定位 Sub2/OpenAI 上游、资源凭据、本地反代 smoke、共享资源、支付充值或反代运行态风险。当前生产入口与部署状态正常；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 14:29 管理员首页关键巡检直达入口发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`6c9c45e`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=6c9c45e`
+  - `deployed_at=20260612T062948Z`
+- 本次能力：Admin 首页关键巡检项新增行内操作按钮，可按检查项直接进入反代状态、共享资源、反代请求、售出情况、API Key、用量记录、账务对账等管理入口。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：76/76 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*-6c9c45e` staging 目录已清理。
+- `/tmp/sub2share-user-6c9c45e.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/dashboard`：200。
+  - `latestSystemHealth.status=error`
+  - `latestSystemHealth.criticalChecks.length=8`
+  - `criticalChecks`：`sub2,localProxySmoke,resourceCredentials,resources,payments,openAiProxyContract,openAiProxyRuntime,proxy`
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=6c9c45e`
+  - `sub2.status=error`
+  - `localProxySmoke.status=error`
+
+### 结论
+
+管理员首页现在不只是展示关键健康问题，还能从每条问题直接进入对应管理入口。对于当前线上 `sub2`、`localProxySmoke`、`resourceCredentials`、`resources`、`payments` 和 `proxy` 等信号，管理员可以更快到达反代状态、共享资源、售出情况和反代请求页面。真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
