@@ -65,8 +65,8 @@ import {
 import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } from "./payment-provider-health.js";
 import {
   internalHealthCheckSupplierResourceWhere,
-  inspectSupplierResourceCredentialMutationStatusTransition,
   inspectSupplierResourceManualOnlineReadiness,
+  inspectSupplierResourceReadinessMutationStatusTransition,
   inspectSupplierResourceTestStatusTransition,
   nonSmokeSupplierResourceWhere,
   supplierResourceAvailabilityMetrics,
@@ -2493,6 +2493,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         credentialSecret: input.credentialSecret
       }, env.API_KEY_ENCRYPTION_SECRET!)
       : null;
+    const initialOnlineReadiness = inspectSupplierResourceManualOnlineReadiness({
+      resourceType: input.resourceType,
+      targetStatus: input.status,
+      sub2AccountId: input.sub2AccountId,
+      credential: initialCredential
+    });
+    if (input.status === "online" && !initialOnlineReadiness.ok) {
+      throw new AppError(initialOnlineReadiness.code, initialOnlineReadiness.message, 400, { issues: initialOnlineReadiness.issues });
+    }
+    const initialStatusTransition = inspectSupplierResourceReadinessMutationStatusTransition({
+      currentStatus: input.status,
+      resourceType: input.resourceType,
+      sub2AccountId: input.sub2AccountId,
+      credential: initialCredential
+    });
     const resource = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { email } });
       if (!user) throw new AppError("supplier_user_not_found", "Supplier user not found", 404);
@@ -2510,7 +2525,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         data: {
           supplierId: supplier.id,
           resourceType: input.resourceType,
-          status: input.status,
+          status: initialStatusTransition.status,
           level: input.level,
           maxConcurrency: input.maxConcurrency,
           shareRate: new Prisma.Decimal(input.shareRate),
@@ -2532,7 +2547,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       level: resource.level,
       maxConcurrency: resource.maxConcurrency,
       sub2AccountId: resource.sub2AccountId,
-      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
+      statusTransition: initialStatusTransition
     });
     const credentialApply = input.applyCredentialToSub2
       ? await applyStoredResourceCredentialToSub2(request, actor.id, resource.id, {
@@ -2609,6 +2625,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       where: { id },
       select: {
         id: true,
+        resourceType: true,
         status: true,
         level: true,
         maxConcurrency: true,
@@ -2616,10 +2633,28 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         reserveRatio: true,
         dailyCap: true,
         sub2AccountId: true,
-        lastCheckedAt: true
+        lastCheckedAt: true,
+        credential: { select: resourceCredentialSummarySelect }
       }
     });
     if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    const nextStatus = input.status ?? before.status;
+    const nextSub2AccountId = input.sub2AccountId !== undefined ? input.sub2AccountId : before.sub2AccountId;
+    const onlineReadiness = inspectSupplierResourceManualOnlineReadiness({
+      resourceType: before.resourceType,
+      targetStatus: nextStatus,
+      sub2AccountId: nextSub2AccountId,
+      credential: before.credential
+    });
+    if (input.status === "online" && !onlineReadiness.ok) {
+      throw new AppError(onlineReadiness.code, onlineReadiness.message, 400, { issues: onlineReadiness.issues });
+    }
+    const statusTransition = inspectSupplierResourceReadinessMutationStatusTransition({
+      currentStatus: nextStatus,
+      resourceType: before.resourceType,
+      sub2AccountId: nextSub2AccountId,
+      credential: before.credential
+    });
 
     const data: Prisma.SupplierResourceUpdateInput = {};
     if (input.status !== undefined) data.status = input.status;
@@ -2632,6 +2667,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       data.sub2AccountId = input.sub2AccountId;
       data.lastCheckedAt = null;
     }
+    if (statusTransition.changed) {
+      data.status = statusTransition.status;
+      data.lastCheckedAt = null;
+    }
 
     const resource = await prisma.supplierResource.update({
       where: { id },
@@ -2641,8 +2680,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         credential: { select: resourceCredentialSummarySelect }
       }
     });
-    await writeAuditLog(request, actor.id, "admin.resource.update", "supplier_resource", id, resourceConfigAuditPayload(before), resourceConfigAuditPayload(resource));
-    return adminOk(reply, resource);
+    await writeAuditLog(request, actor.id, "admin.resource.update", "supplier_resource", id, resourceConfigAuditPayload(before), {
+      ...resourceConfigAuditPayload(resource),
+      statusTransition
+    });
+    return adminOk(reply, { ...resource, statusTransition });
   });
 
   app.put("/api/admin/resources/:id/credential", async (request, reply) => {
@@ -2686,7 +2728,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       },
       select: resourceCredentialSummarySelect
     });
-    const statusTransition = inspectSupplierResourceCredentialMutationStatusTransition({
+    const statusTransition = inspectSupplierResourceReadinessMutationStatusTransition({
       currentStatus: resource.status,
       resourceType: resource.resourceType,
       sub2AccountId: resource.sub2AccountId,
@@ -2740,7 +2782,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const deleted = await prisma.supplierResourceCredential.deleteMany({
       where: { supplierResourceId: id }
     });
-    const statusTransition = inspectSupplierResourceCredentialMutationStatusTransition({
+    const statusTransition = inspectSupplierResourceReadinessMutationStatusTransition({
       currentStatus: resource.status,
       resourceType: resource.resourceType,
       sub2AccountId: resource.sub2AccountId,

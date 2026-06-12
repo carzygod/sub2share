@@ -223,6 +223,17 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 资源是否仍有 `sub2AccountId`。
 - 凭据是否仍为 `credentialType=openai_refresh_token` 且 `status=active`。
 
-如果凭据变更后资源不再 ready，资源状态会自动收敛为 `abnormal`，并清空 `lastCheckedAt`，避免旧测试时间继续证明已经失效的交付状态。凭据 upsert/delete 的审计日志会包含 `statusTransition.changed`、`statusTransition.reason=codex_resource_not_ready_after_credential_change` 和 `onlineReadiness.issues`。
+如果凭据变更后资源不再 ready，资源状态会自动收敛为 `abnormal`，并清空 `lastCheckedAt`，避免旧测试时间继续证明已经失效的交付状态。凭据 upsert/delete 的审计日志会包含 `statusTransition.changed`、`statusTransition.reason=codex_resource_not_ready_after_readiness_change` 和 `onlineReadiness.issues`。
 
 这补齐了“进入 online”和“退出 ready”的双向一致性：手动上线、测试自动上线、凭据应用上线、凭据失效降级和系统巡检都围绕同一套 Codex ready 条件运行。
+
+## 2026-06-12 Update: Resource Create And Config Readiness Gate
+
+资源创建和配置修改入口现在也复用 ready online 语义：
+
+- `POST /api/admin/resources` 创建 Codex 资源并请求初始 `status=online` 时，必须同时提供 `sub2AccountId` 和 active `openai_refresh_token` 初始凭据；否则返回 `400 codex_resource_not_ready_for_online`。
+- 创建资源时如果请求 `busy` 等在线交付状态但不满足 ready 条件，后端会通过 readiness 状态转移收敛为 `abnormal`，并在 `admin.resource.create` 审计中记录 `statusTransition`。
+- `PATCH /api/admin/resources/:id` 修改资源配置时，显式把 Codex 资源改为 `online` 会执行同样 ready 校验。
+- 如果配置修改导致已有 `online` 或 `busy` Codex 资源失去 ready 条件，例如清空 `sub2AccountId`，资源状态会自动收敛为 `abnormal` 并清空 `lastCheckedAt`。
+
+这让共享资源创建、配置维护、手动状态变更、资源测试、凭据维护和系统巡检的 Codex ready 口径保持一致。

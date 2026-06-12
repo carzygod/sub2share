@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   internalHealthCheckSupplierResourceWhere,
-  inspectSupplierResourceCredentialMutationStatusTransition,
   inspectSupplierResourceManualOnlineReadiness,
+  inspectSupplierResourceReadinessMutationStatusTransition,
   inspectSupplierResourceTestStatusTransition,
   isInternalHealthCheckSupplierResource,
   nonSmokeSupplierResourceWhere,
@@ -203,7 +203,7 @@ test("resource tests still move failing active resources to abnormal", () => {
 });
 
 test("credential mutations demote online Codex resources when readiness is lost", () => {
-  const result = inspectSupplierResourceCredentialMutationStatusTransition({
+  const result = inspectSupplierResourceReadinessMutationStatusTransition({
     currentStatus: "online",
     resourceType: "codex",
     sub2AccountId: "2",
@@ -212,12 +212,12 @@ test("credential mutations demote online Codex resources when readiness is lost"
 
   assert.equal(result.status, "abnormal");
   assert.equal(result.changed, true);
-  assert.equal(result.reason, "codex_resource_not_ready_after_credential_change");
+  assert.equal(result.reason, "codex_resource_not_ready_after_readiness_change");
   assert.deepEqual(result.onlineReadiness.issues, ["active_openai_refresh_token_missing"]);
 });
 
 test("credential deletion demotes busy Codex resources", () => {
-  const result = inspectSupplierResourceCredentialMutationStatusTransition({
+  const result = inspectSupplierResourceReadinessMutationStatusTransition({
     currentStatus: "busy",
     resourceType: "codex",
     sub2AccountId: "2",
@@ -230,7 +230,7 @@ test("credential deletion demotes busy Codex resources", () => {
 });
 
 test("credential mutations keep ready Codex and non-Codex resources unchanged", () => {
-  assert.deepEqual(inspectSupplierResourceCredentialMutationStatusTransition({
+  assert.deepEqual(inspectSupplierResourceReadinessMutationStatusTransition({
     currentStatus: "online",
     resourceType: "codex",
     sub2AccountId: "2",
@@ -247,9 +247,35 @@ test("credential mutations keep ready Codex and non-Codex resources unchanged", 
     }
   });
 
-  assert.equal(inspectSupplierResourceCredentialMutationStatusTransition({
+  assert.equal(inspectSupplierResourceReadinessMutationStatusTransition({
     currentStatus: "online",
     resourceType: "gemini",
     credential: null
   }).status, "online");
+});
+
+test("readiness mutations demote online Codex resources when Sub2 binding is removed", () => {
+  const result = inspectSupplierResourceReadinessMutationStatusTransition({
+    currentStatus: "online",
+    resourceType: "codex",
+    sub2AccountId: null,
+    credential: { credentialType: "openai_refresh_token", status: "active" }
+  });
+
+  assert.equal(result.status, "abnormal");
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.onlineReadiness.issues, ["sub2_account_missing"]);
+});
+
+test("online creation readiness rejects Codex resources without initial active credential", () => {
+  const result = inspectSupplierResourceManualOnlineReadiness({
+    resourceType: "codex",
+    targetStatus: "online",
+    sub2AccountId: "2",
+    credential: null
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "codex_resource_not_ready_for_online");
+  assert.deepEqual(result.issues, ["active_openai_refresh_token_missing"]);
 });
