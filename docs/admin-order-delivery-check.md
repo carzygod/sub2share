@@ -47,3 +47,12 @@ npm --prefix user/apps/admin run typecheck
 npm --prefix user/apps/api run build
 npm --prefix user/apps/admin run build
 ```
+
+## 2026-06-13 扩展：售出交付巡检纳入共享资源归因
+
+- 全局 `salesDelivery` 巡检会检查 Codex 租赁是否存在 `supplierResourceId`。
+- 缺少归因时返回 `rental_missing_supplier_resource`，并携带 `orderId`、`rentalId`、`userId`、`userEmail` 与共享资源修复上下文。
+- 已有关联但资源不是 `online` 或缺少 `sub2AccountId` 时返回 `rental_supplier_resource_not_ready`，并携带 `resourceId`、资源状态、供应方邮箱和 Sub2 Account ID。
+- Dashboard 交付阻断摘要会保留这些订单/租赁/用户定位字段，便于管理员从首页直接进入共享资源修复。
+
+这样订单交付核查从单笔详情延伸到全局巡检，既能发现 endpoint/key 缺口，也能发现租赁背后的共享资源归因缺口。

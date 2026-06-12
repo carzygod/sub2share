@@ -233,7 +233,7 @@ export function resourceRepairCandidateHasResourceFilter(candidate: ResourceRepa
 }
 
 export function resourceRepairActionShouldOpenResources(candidate: ResourceRepairActionCandidate) {
-  return repairCandidateText(candidate.checkId) === "productCatalog" && resourceRepairCandidateHasResourceFilter(candidate);
+  return ["productCatalog", "salesDelivery"].includes(repairCandidateText(candidate.checkId)) && resourceRepairCandidateHasResourceFilter(candidate);
 }
 
 export function proxyRequestFilterTarget(candidate: ProxyRequestFilterCandidate): ProxyRequestFilterTarget | null {

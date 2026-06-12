@@ -343,6 +343,10 @@ interface DashboardDeliveryBlockerPreview {
   productId?: string | null;
   productName?: string | null;
   priceId?: string | null;
+  orderId?: string | null;
+  rentalId?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
   supplierEmail?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
@@ -400,6 +404,10 @@ const dashboardHealthDetailPreviewFields = [
   "productId",
   "productName",
   "priceId",
+  "orderId",
+  "rentalId",
+  "userId",
+  "userEmail",
   "requestId",
   "proxyRequestLookup",
   "proxyRequestLogId",
@@ -577,6 +585,15 @@ interface SalesDeliveryIssue {
   userId: string;
   userEmail?: string | null;
   rentalId?: string;
+  resourceId?: string | null;
+  resourceList?: boolean;
+  resourceScope?: "production";
+  resourceType?: string;
+  resourceStatus?: string | null;
+  supplierEmail?: string | null;
+  sub2AccountId?: string | null;
+  repairAction?: string;
+  actionHint?: string;
   message: string;
 }
 
@@ -5012,8 +5029,19 @@ async function inspectSalesDeliveryReadiness() {
           select: {
             id: true,
             status: true,
+            resourceType: true,
+            supplierResourceId: true,
             endpointUrl: true,
             sub2KeyId: true,
+            supplierResource: {
+              select: {
+                id: true,
+                status: true,
+                resourceType: true,
+                sub2AccountId: true,
+                supplier: { select: { user: { select: { email: true } } } }
+              }
+            },
             apiKeys: { select: { id: true, status: true, keyPrefix: true } }
           }
         }
@@ -5030,7 +5058,9 @@ async function inspectSalesDeliveryReadiness() {
     activeOrdersWithoutActiveRentals: 0,
     rentalsMissingEndpoint: 0,
     rentalsMissingSub2Key: 0,
-    rentalsMissingActiveApiKey: 0
+    rentalsMissingActiveApiKey: 0,
+    rentalsMissingSupplierResource: 0,
+    rentalsWithUnavailableSupplierResource: 0
   };
   let errors = 0;
 
@@ -5070,6 +5100,45 @@ async function inspectSalesDeliveryReadiness() {
     }
 
     for (const rental of order.rentals) {
+      if (rental.resourceType === "codex") {
+        if (!rental.supplierResourceId || !rental.supplierResource) {
+          counters.rentalsMissingSupplierResource += 1;
+          addIssue({
+            type: "rental_missing_supplier_resource",
+            orderId: order.id,
+            rentalId: rental.id,
+            userId: order.userId,
+            userEmail: order.user.email,
+            resourceList: true,
+            resourceScope: "production",
+            resourceType: "codex",
+            resourceStatus: "online",
+            repairAction: "assign_ready_supplier_resource_to_rental",
+            actionHint: "Create or repair a production Codex shared resource, then assign it to this rental.",
+            message: `Codex rental ${rental.id} has no shared resource attribution.`
+          });
+        } else if (rental.supplierResource.status !== "online" || !rental.supplierResource.sub2AccountId) {
+          counters.rentalsWithUnavailableSupplierResource += 1;
+          addIssue({
+            type: "rental_supplier_resource_not_ready",
+            orderId: order.id,
+            rentalId: rental.id,
+            userId: order.userId,
+            userEmail: order.user.email,
+            resourceId: rental.supplierResource.id,
+            resourceList: true,
+            resourceScope: "production",
+            resourceType: "codex",
+            resourceStatus: rental.supplierResource.status,
+            supplierEmail: rental.supplierResource.supplier?.user?.email ?? null,
+            sub2AccountId: rental.supplierResource.sub2AccountId,
+            repairAction: "repair_supplier_resource_delivery_readiness",
+            actionHint: "Bring the linked Codex shared resource online with a Sub2 account and active OpenAI credential.",
+            message: `Codex rental ${rental.id} is linked to shared resource ${rental.supplierResource.id}, but the resource is not ready for delivery.`
+          });
+        }
+      }
+
       if (!rental.endpointUrl) {
         counters.rentalsMissingEndpoint += 1;
         addIssue({
@@ -6052,6 +6121,10 @@ function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBloc
     productId: textJsonValue(detail.productId) ?? null,
     productName: textJsonValue(detail.productName) ?? null,
     priceId: textJsonValue(detail.priceId) ?? null,
+    orderId: textJsonValue(detail.orderId) ?? null,
+    rentalId: textJsonValue(detail.rentalId) ?? null,
+    userId: textJsonValue(detail.userId) ?? null,
+    userEmail: textJsonValue(detail.userEmail) ?? null,
     supplierEmail: textJsonValue(detail.supplierEmail) ?? null,
     resourceId: dashboardHealthScalarValue(detail.resourceId) ?? null,
     resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,

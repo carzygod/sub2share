@@ -210,7 +210,7 @@ test("resource create defaults continue the OpenAI credential repair flow", () =
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
 });
 
-test("product catalog repair action exposes shared resource drilldown", () => {
+test("catalog and sales delivery repair actions expose shared resource drilldown", () => {
   assert.equal(resourceRepairCandidateHasResourceFilter({ resourceList: "true" }), true);
   assert.equal(resourceRepairCandidateHasResourceFilter({ resourceType: "codex" }), true);
   assert.equal(resourceRepairCandidateHasResourceFilter({ resourceList: "false" }), false);
@@ -223,6 +223,12 @@ test("product catalog repair action exposes shared resource drilldown", () => {
     resourceType: "codex",
     resourceScope: "production",
     sub2AccountId: "2"
+  }), true);
+  assert.equal(resourceRepairActionShouldOpenResources({
+    checkId: "salesDelivery",
+    resourceType: "codex",
+    resourceScope: "production",
+    resourceList: true
   }), true);
   assert.equal(resourceRepairActionShouldOpenResources({
     checkId: "resources",

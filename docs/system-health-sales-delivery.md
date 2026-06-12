@@ -34,3 +34,13 @@ npm --prefix user/apps/admin run typecheck
 npm --prefix user/apps/api run build
 npm --prefix user/apps/admin run build
 ```
+
+## 2026-06-13 扩展：租赁共享资源归因可用性
+
+- `salesDelivery` 巡检新增 Codex 租赁共享资源归因检查。
+- `rental_missing_supplier_resource` 表示租赁没有 `supplierResourceId` 或关联资源缺失，修复动作是创建或修复生产 Codex 共享资源后为租赁补齐归因。
+- `rental_supplier_resource_not_ready` 表示租赁已关联共享资源，但该资源不是 `online` 或缺少 `sub2AccountId`，修复动作是恢复该资源的交付可用性。
+- 巡检 counters 新增 `rentalsMissingSupplierResource` 与 `rentalsWithUnavailableSupplierResource`。
+- 问题样本会携带 `resourceList=true`、`resourceType=codex`、`resourceStatus`、`resourceScope=production`、供应方和 Sub2 Account 信息，供 Admin 首页和共享资源页复用。
+
+这样全局售出交付巡检可以同时覆盖“交付字段是否完整”和“交付背后的生产共享资源是否可追溯、可维修”。

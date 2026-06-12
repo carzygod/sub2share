@@ -591,8 +591,25 @@ test("dashboard latest system health preview exposes actionable delivery blocker
       {
         id: "salesDelivery",
         label: "售出交付",
-        status: "ok",
-        summary: "应交付订单未发现交付阻断"
+        status: "warning",
+        summary: "1 个售出交付问题",
+        detail: {
+          issues: [{
+            id: "rental_missing_supplier_resource:order-1:rental-1",
+            type: "rental_missing_supplier_resource",
+            orderId: "order-1",
+            rentalId: "rental-1",
+            userId: "user-1",
+            userEmail: "buyer@example.com",
+            resourceList: true,
+            resourceType: "codex",
+            resourceStatus: "online",
+            resourceScope: "production",
+            repairAction: "assign_ready_supplier_resource_to_rental",
+            actionHint: "Create or repair a production Codex shared resource, then assign it to this rental.",
+            message: "Codex rental rental-1 has no shared resource attribution."
+          }]
+        }
       }
     ],
     createdAt: new Date("2026-06-12T10:00:00.000Z")
@@ -602,26 +619,32 @@ test("dashboard latest system health preview exposes actionable delivery blocker
 
   assert.equal(preview.deliveryBlocker?.blocked, true);
   assert.equal(preview.deliveryBlocker?.status, "warning");
-  assert.equal(preview.deliveryBlocker?.checkId, "productCatalog");
-  assert.equal(preview.deliveryBlocker?.label, "商品目录");
-  assert.equal(preview.deliveryBlocker?.repairAction, "apply_openai_refresh_token_to_sub2_account");
-  assert.equal(preview.deliveryBlocker?.productId, "product-1");
-  assert.equal(preview.deliveryBlocker?.productName, "Codex 标准租赁");
-  assert.equal(preview.deliveryBlocker?.priceId, "price-1");
+  assert.equal(preview.deliveryBlocker?.checkId, "salesDelivery");
+  assert.equal(preview.deliveryBlocker?.repairAction, "assign_ready_supplier_resource_to_rental");
+  assert.equal(preview.deliveryBlocker?.actionHint, "Create or repair a production Codex shared resource, then assign it to this rental.");
+  assert.equal(preview.deliveryBlocker?.orderId, "order-1");
+  assert.equal(preview.deliveryBlocker?.rentalId, "rental-1");
+  assert.equal(preview.deliveryBlocker?.userId, "user-1");
+  assert.equal(preview.deliveryBlocker?.userEmail, "buyer@example.com");
+  assert.equal(preview.deliveryBlocker?.productId, null);
+  assert.equal(preview.deliveryBlocker?.productName, null);
+  assert.equal(preview.deliveryBlocker?.priceId, null);
   assert.equal(preview.deliveryBlocker?.resourceList, true);
   assert.equal(preview.deliveryBlocker?.resourceType, "codex");
   assert.equal(preview.deliveryBlocker?.resourceStatus, "online");
   assert.equal(preview.deliveryBlocker?.resourceScope, "production");
-  assert.equal(preview.deliveryBlocker?.supplierEmail, "admin@zhisuan.local");
-  assert.equal(preview.deliveryBlocker?.sub2AccountId, 2);
-  assert.equal(preview.deliveryBlocker?.sub2AccountName, "main");
-  assert.equal(preview.deliveryBlocker?.accountStatus, "error");
-  assert.equal(preview.deliveryBlocker?.credentialsStatus, "configured(3)");
-  assert.equal(preview.deliveryBlocker?.schedulable, false);
-  assert.equal(preview.deliveryBlocker?.accountMessage, "token_invalidated");
+  assert.equal(preview.deliveryBlocker?.supplierEmail, null);
+  assert.equal(preview.deliveryBlocker?.sub2AccountId, null);
+  assert.equal(preview.deliveryBlocker?.sub2AccountName, null);
+  assert.equal(preview.deliveryBlocker?.accountStatus, null);
+  assert.equal(preview.deliveryBlocker?.credentialsStatus, null);
+  assert.equal(preview.deliveryBlocker?.schedulable, null);
+  assert.equal(preview.deliveryBlocker?.accountMessage, null);
   assert.equal(preview.deliveryBlocker?.proxyRequestFilterStatus, null);
   assert.equal(preview.deliveryBlocker?.proxyRequestFilterLookup, null);
-  assert.equal(preview.deliveryBlocker?.check.primaryIssue?.productName, "Codex 标准租赁");
+  assert.equal(preview.deliveryBlocker?.check.primaryIssue?.orderId, "order-1");
+  assert.equal(preview.deliveryBlocker?.check.primaryIssue?.rentalId, "rental-1");
+  assert.equal(preview.deliveryBlocker?.check.primaryIssue?.userEmail, "buyer@example.com");
 });
 
 test("dashboard latest system health preview always exposes admin entry coverage", () => {

@@ -6712,7 +6712,7 @@ function dashboardHealthCheckHasSub2Repair(check: DashboardHealthCheckPreview) {
 }
 
 function dashboardHealthShouldOpenResourcesFirst(check: DashboardHealthCheckPreview, record: DashboardHealthDetailPreview | undefined) {
-  return check.id === "resources" && dashboardHealthHasResourceFilter(record);
+  return ["resources", "salesDelivery"].includes(check.id) && dashboardHealthHasResourceFilter(record);
 }
 
 function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): Sub2RepairContext {
@@ -6856,6 +6856,10 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "productId",
     "productName",
     "priceId",
+    "orderId",
+    "rentalId",
+    "userId",
+    "userEmail",
     "requestId",
     "proxyRequestLogId",
     "upstreamRequestId",

@@ -462,3 +462,13 @@
 - API 单元测试覆盖 Dashboard 失败类别推导；Admin 单元测试覆盖 lookup 优先级。
 
 这样管理员在首页看到 Sub2/OpenAI 上游阻断或 Codex 交付阻断时，可以直接进入相关反代失败日志集合，再继续跳转到用户、租赁、售出订单、API Key 或用量记录。
+
+## 2026-06-13 扩展：售出交付资源归因直达共享资源
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.deliveryBlocker` 新增 `orderId`、`rentalId`、`userId` 和 `userEmail`。
+- Dashboard 健康预览白名单同步保留这些字段，避免 `salesDelivery` 问题进入首页后丢失订单和租赁定位。
+- 当 `salesDelivery` 问题携带 `resourceList=true`、`resourceType=codex`、`resourceStatus=online` 或 `resourceScope=production` 时，首页主按钮优先打开 `共享资源`。
+- 共享资源修复按钮判断从 `productCatalog` 扩展到 `salesDelivery`，用于处理 `rental_missing_supplier_resource` 与 `rental_supplier_resource_not_ready`。
+- 首页摘要会展示订单、租赁、用户和资源上下文，管理员可以先修复生产 Codex 共享资源，再回到售出交付链路复查。
+
+这样租赁资源归因缺口不会只停留在完整巡检详情里，管理员从首页的交付阻断卡片即可进入正确的共享资源修复入口。
