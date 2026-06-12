@@ -4746,3 +4746,76 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 管理员首页现在不仅能看到关键健康项和跳转入口，还能直接看到首个问题/候选样本的维修动作与定位对象。当前线上首页已明确显示 Sub2 账号 #2 需要执行 `apply_openai_refresh_token_to_sub2_account`，并能看到 `/v1/responses` 失败请求的 request id 与代理日志 id。真实 OpenAI/Codex `/v1/responses` 仍需有效 OpenAI refresh token 或 active Sub2 OpenAI 账号才能最终通过。
+
+## 2026-06-12 16:33 管理员首页关键巡检项上下文跳转发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`d6ea283`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=d6ea283`
+  - `deployed_at=20260612T083313Z`
+- 本次能力：Admin 首页关键巡检项按钮会读取 `primaryIssue` / `primarySample` 上下文，优先打开目标 Sub2/OpenAI 账号修复入口，其次打开代理请求或带筛选的共享资源列表；dashboard 预览字段补充 `resourceStatus`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`：通过，5/5。
+- `pnpm.cmd --filter @zyz/admin test`：通过，4/4。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：79/79 通过。
+  - Admin tests：4/4 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*` staging 目录已清理。
+- `/tmp/sub2share-user-d6ea283.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=d6ea283`
+- `GET /api/admin/dashboard`：200。
+  - `latestSystemHealth.status=error`
+  - `criticalChecks[0].id=sub2`
+  - `criticalChecks[0].primaryIssue.repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `criticalChecks[0].primaryIssue.sub2AccountId=2`
+  - `criticalChecks[1].id=localProxySmoke`
+  - `criticalChecks[1].primaryIssue.repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `criticalChecks[1].primaryIssue.sub2AccountId=2`
+  - `criticalChecks[1].primaryIssue.requestId=c3c3450f-5b06-4c72-aad4-449af98b6beb`
+  - `criticalChecks[1].primaryIssue.proxyRequestLogId=2732cfa3-9df0-4488-96e2-c5a14df5d9fc`
+  - `criticalChecks[2].id=resourceCredentials`
+  - `criticalChecks[2].primarySample.sampleType=sub2_account_repair_candidate`
+  - `criticalChecks[2].primarySample.sub2AccountId=2`
+  - `criticalChecks[3].id=resources`
+  - `criticalChecks[3].primaryIssue.repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `criticalChecks[3].primaryIssue.sub2AccountId=2`
+- 当前 non-ok checks 仍为：`payments`、`resources`、`resourceCredentials`、`sub2`、`localProxySmoke`。
+
+### 结论
+
+管理员首页关键巡检按钮现在已经不只是模块级跳转，而是可以带着问题样本上下文进入目标账号、代理请求或资源筛选结果。当前线上仍未恢复真实 OpenAI/Codex `/v1/responses`，剩余阻断继续是缺少有效 OpenAI refresh token 或 active Sub2 OpenAI 账号。
