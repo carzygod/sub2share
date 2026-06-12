@@ -212,3 +212,26 @@ test("dashboard health previews retain product catalog drilldown fields", () => 
   assert.equal(previews[0].primaryIssue?.resourceScope, "production");
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
 });
+
+test("dashboard health previews keep product catalog warnings in the critical slice", () => {
+  const checks: unknown[] = Array.from({ length: 8 }, (_, index) => ({
+    id: `customWarning${index}`,
+    label: `Custom warning ${index}`,
+    status: "warning",
+    summary: "Non-priority warning"
+  }));
+
+  checks.push({
+    id: "productCatalog",
+    label: "商品目录",
+    status: "warning",
+    summary: "1 个商品目录可购买性问题",
+    detail: { issues: [{ productId: "prod-codex", productName: "Codex Pro" }] }
+  });
+
+  const previews = dashboardHealthCheckPreviews(checks);
+
+  assert.equal(previews.length, 8);
+  assert.equal(previews[0].id, "productCatalog");
+  assert.ok(previews.some((item) => item.id === "productCatalog"));
+});

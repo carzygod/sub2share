@@ -127,6 +127,7 @@
 首页关键巡检项继续细化 `productCatalog` 的跳转口径：
 
 - `GET /api/admin/dashboard` 的 `latestSystemHealth.criticalChecks[].primaryIssue` 会保留 `productId`、`productName` 和 `priceId`。
+- `productCatalog` warning 纳入首页关键巡检优先级，避免被普通 warning 挤出最多 8 条的首页列表。
 - 当 `productCatalog` 问题携带商品定位字段时，首页按钮显示为“打开商品”，并按 `productId`、`priceId`、`productName` 的优先级打开商品管理列表。
 - 首页上下文摘要会展示商品 ID、商品名和价格 ID，管理员可以在总览页确认是哪一个可售商品受 ready Codex 交付资源缺失影响。
 - 若商品目录问题没有具体定位字段，按钮仍回退到商品配置页。

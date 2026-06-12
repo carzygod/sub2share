@@ -5239,6 +5239,7 @@ const dashboardHealthCheckPriority = [
   "localProxySmoke",
   "resourceCredentials",
   "resources",
+  "productCatalog",
   "payments",
   "openAiProxyContract",
   "openAiProxyRuntime",
