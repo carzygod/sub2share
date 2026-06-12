@@ -299,7 +299,16 @@ interface DashboardUpstreamBlockerPreview {
   evidenceStaleThresholdMinutes?: number | null;
   evidenceFreshMinutesRemaining?: number | null;
   evidenceStaleAt?: string | null;
+  credentialReadiness?: DashboardUpstreamCredentialReadinessPreview;
   check: DashboardHealthCheckPreview;
+}
+
+interface DashboardUpstreamCredentialReadinessPreview {
+  status: SystemHealthStatus;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  metrics?: DashboardHealthMetricPreview;
 }
 
 const dashboardHealthDetailPreviewFields = [
@@ -400,6 +409,13 @@ const dashboardHealthMetricPreviewFields = [
   "stripsInboundAcceptEncoding",
   "reinjectsLocalBearerToSub2",
   "capturesUpstreamRequestId",
+  "encryptionSecretConfigured",
+  "encryptionVersion",
+  "totalCredentials",
+  "activeOpenAiRefreshTokens",
+  "activeApplicableCredentials",
+  "activeMissingSub2Account",
+  "inactiveOpenAiRefreshTokens",
   "storeMode",
   "limiterScope",
   "shared",
@@ -5690,6 +5706,7 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
   if (!check) return null;
 
   const detail = dashboardUpstreamBlockerDetail(check);
+  const credentialReadiness = dashboardUpstreamCredentialReadinessPreview(previews);
   return {
     blocked: check.status === "error",
     status: check.status,
@@ -5716,7 +5733,20 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     evidenceStaleThresholdMinutes: dashboardDetailNumber(detail, "staleThresholdMinutes"),
     evidenceFreshMinutesRemaining: dashboardDetailNumber(detail, "freshMinutesRemaining"),
     evidenceStaleAt: textJsonValue(detail.staleAt) ?? null,
+    ...(credentialReadiness ? { credentialReadiness } : {}),
     check
+  };
+}
+
+function dashboardUpstreamCredentialReadinessPreview(previews: DashboardHealthCheckPreview[]): DashboardUpstreamCredentialReadinessPreview | null {
+  const check = previews.find((item) => item.id === "resourceCredentials");
+  if (!check) return null;
+  return {
+    status: check.status,
+    summary: check.summary,
+    issueCount: check.issueCount,
+    sampleCount: check.sampleCount,
+    ...(check.metrics ? { metrics: check.metrics } : {})
   };
 }
 

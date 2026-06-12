@@ -201,7 +201,16 @@ interface DashboardUpstreamBlocker {
   evidenceStaleThresholdMinutes?: number | null;
   evidenceFreshMinutesRemaining?: number | null;
   evidenceStaleAt?: string | null;
+  credentialReadiness?: DashboardUpstreamCredentialReadiness;
   check: DashboardHealthCheckPreview;
+}
+
+interface DashboardUpstreamCredentialReadiness {
+  status: "ok" | "warning" | "error";
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  metrics?: Record<string, string | number | boolean | null>;
 }
 
 interface Dashboard {
@@ -2903,6 +2912,7 @@ function DashboardView({
   const criticalChecks = latestHealth?.criticalChecks ?? [];
   const upstreamBlocker = latestHealth?.upstreamBlocker ?? null;
   const upstreamBlockerEvidence = upstreamBlocker ? dashboardUpstreamBlockerEvidenceText(upstreamBlocker) : "";
+  const upstreamCredentialReadiness = upstreamBlocker ? dashboardUpstreamCredentialReadinessText(upstreamBlocker.credentialReadiness) : "";
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -2976,6 +2986,7 @@ function DashboardView({
                   <p>{upstreamBlocker.summary}</p>
                   {upstreamBlocker.actionHint && <small>{upstreamBlocker.actionHint}</small>}
                   {upstreamBlockerEvidence && <small>{upstreamBlockerEvidence}</small>}
+                  {upstreamCredentialReadiness && <small>{upstreamCredentialReadiness}</small>}
                   <div className="health-preview-actions">
                     {(upstreamBlocker.issueCount > 0 || upstreamBlocker.sampleCount > 0) && (
                       <small>{upstreamBlocker.issueCount} issue / {upstreamBlocker.sampleCount} sample</small>
@@ -6147,7 +6158,8 @@ function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) 
 function dashboardUpstreamBlockerText(blocker: DashboardUpstreamBlocker) {
   const status = blocker.blocked ? "阻断" : "警告";
   const evidence = dashboardUpstreamBlockerEvidenceText(blocker);
-  return `${status} / ${blocker.label} / ${blocker.summary}${evidence ? ` / ${evidence}` : ""}`;
+  const credentials = dashboardUpstreamCredentialReadinessText(blocker.credentialReadiness);
+  return `${status} / ${blocker.label} / ${blocker.summary}${evidence ? ` / ${evidence}` : ""}${credentials ? ` / ${credentials}` : ""}`;
 }
 
 function dashboardUpstreamBlockerActionLabel(blocker: DashboardUpstreamBlocker) {
@@ -6182,6 +6194,24 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
     failure,
     blocker.evidenceStaleAt ? `过期于 ${blocker.evidenceStaleAt}` : ""
   ].filter(Boolean).join(" / ");
+}
+
+function dashboardUpstreamCredentialReadinessText(readiness?: DashboardUpstreamCredentialReadiness | null) {
+  if (!readiness) return "";
+  const metrics = readiness.metrics ?? {};
+  const activeTokens = dashboardMetricValue(metrics.activeOpenAiRefreshTokens);
+  const applicable = dashboardMetricValue(metrics.activeApplicableCredentials);
+  const missingAccount = dashboardMetricValue(metrics.activeMissingSub2Account);
+  const counts = [
+    activeTokens !== "" ? `active token ${activeTokens}` : "",
+    applicable !== "" ? `可应用 ${applicable}` : "",
+    missingAccount !== "" ? `缺 Sub2 账号 ${missingAccount}` : ""
+  ].filter(Boolean).join(" / ");
+  return `凭据 ${healthStatusText(readiness.status)} / ${readiness.summary}${counts ? ` / ${counts}` : ""}`;
+}
+
+function dashboardMetricValue(value: unknown) {
+  return typeof value === "number" || typeof value === "boolean" || typeof value === "string" ? String(value) : "";
 }
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {

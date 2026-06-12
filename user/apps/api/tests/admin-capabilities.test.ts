@@ -265,6 +265,15 @@ test("dashboard latest system health preview exposes actionable upstream blocker
         label: "资源凭据",
         status: "error",
         summary: "Sub2 上游无 active 账号，且没有可应用的资源凭据",
+        metrics: {
+          encryptionSecretConfigured: true,
+          encryptionVersion: "aes-256-gcm:v1",
+          totalCredentials: 2,
+          activeOpenAiRefreshTokens: 1,
+          activeApplicableCredentials: 0,
+          activeMissingSub2Account: 1,
+          inactiveOpenAiRefreshTokens: 1
+        },
         detail: {
           issues: [{
             id: "openai-refresh-token-candidate-missing",
@@ -319,6 +328,13 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.evidenceStaleThresholdMinutes, 1_440);
   assert.equal(preview.upstreamBlocker?.evidenceFreshMinutesRemaining, 0);
   assert.equal(preview.upstreamBlocker?.evidenceStaleAt, "2026-06-12T20:13:33.340Z");
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.status, "error");
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.summary, "Sub2 上游无 active 账号，且没有可应用的资源凭据");
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.encryptionSecretConfigured, true);
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.activeOpenAiRefreshTokens, 1);
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.activeApplicableCredentials, 0);
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.activeMissingSub2Account, 1);
+  assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.inactiveOpenAiRefreshTokens, 1);
   assert.equal(preview.upstreamBlocker?.check.primaryIssue?.actionHint, "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.");
 });
 

@@ -316,3 +316,25 @@
 - 该能力只提炼已有 `primaryIssue` 或 `primarySample` 字段，不触发新的 Sub2API 调用或真实 OpenAI/Codex 请求。
 
 这样当 `/v1/responses` smoke 证据已经过期时，管理员不必展开第二条 `localProxySmoke` 检查，也能在首屏上游阻断摘要里看到“需要重新跑端到端自检”。
+
+## 2026-06-13 扩展：首页上游阻断保留资源凭据可用性
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.upstreamBlocker` 新增 `credentialReadiness`。
+- 该字段从同一份巡检快照中的 `resourceCredentials` 检查提炼：
+  - `status`
+  - `summary`
+  - `issueCount`
+  - `sampleCount`
+  - `metrics`
+- `resourceCredentials.metrics` 在 Dashboard 白名单中保留：
+  - `encryptionSecretConfigured`
+  - `encryptionVersion`
+  - `totalCredentials`
+  - `activeOpenAiRefreshTokens`
+  - `activeApplicableCredentials`
+  - `activeMissingSub2Account`
+  - `inactiveOpenAiRefreshTokens`
+- Admin 首页“上游阻断”摘要会展示资源凭据状态、summary、active token 数、可应用候选数和缺 Sub2 账号数。
+- 该能力不新增凭据读取或外部调用，只复用最近系统巡检已经生成的资源凭据 readiness 结果。
+
+这样管理员可以在首屏判断：当前 Sub2/OpenAI 上游阻断是“已有可应用凭据，去应用”还是“没有可应用凭据，需要新建/粘贴 refresh token”。
