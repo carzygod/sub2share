@@ -5100,6 +5100,7 @@ function apiCorsPolicyHealthCheck() {
       allowedOriginCount: result.summary.allowedOriginCount,
       configuredOriginCount: result.summary.configuredOriginCount,
       invalidOriginCount: result.summary.invalidOriginCount,
+      allowedMethods: result.summary.allowedMethods,
       exposesHeaders: result.summary.exposesHeaders
     },
     {
