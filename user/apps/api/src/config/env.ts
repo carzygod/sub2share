@@ -60,6 +60,7 @@ const envSchema = z.object({
   OPENAI_PROXY_MIN_WALLET_BALANCE: z.coerce.number().nonnegative().default(0),
   OPENAI_PROXY_LIMITER_STORE: z.enum(["memory", "redis"]).optional(),
   PAYMENT_PROVIDER: z.enum(["mock", "disabled"]).default("mock"),
+  ALLOW_PRODUCTION_MOCK_RECHARGE: booleanString.default(false),
   OAUTH_STATE_STORE: z.enum(["memory", "redis"]).optional(),
   DEFAULT_DISCOUNT_RATE: z.coerce.number().default(0.2),
   MIN_RECHARGE_AMOUNT: z.coerce.number().default(10),

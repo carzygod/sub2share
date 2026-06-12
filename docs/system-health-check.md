@@ -164,3 +164,16 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - `DELETE`
 
 `corsPolicy.metrics.allowedMethods` 会展示该方法集合。该检查用于帮助管理员确认浏览器端 OpenAI/Codex 兼容客户端的 OPTIONS preflight 与本地反代路由一致，避免 `/v1/responses/:id` 等非 POST 请求在进入本地鉴权、余额、租赁和 Sub2API 转发前被 CORS 拦截。
+
+## 2026-06-12 Update: Production Mock Recharge Gate
+
+`payments` / `支付充值` 巡检现在把生产 mock 充值从“配置风险”拆成“入口是否真的开放”和“近期是否已经产生账务影响”：
+
+- 新增环境变量 `ALLOW_PRODUCTION_MOCK_RECHARGE`，默认 `false`。
+- 生产环境 `PAYMENT_PROVIDER=mock` 且未显式允许 mock 充值时，用户充值接口会返回 `503 recharge_unavailable`。
+- `payments.metrics` 返回 `allowProductionMockRecharge`、`rechargeEndpointEnabled` 和 `productionMockRechargeBlocked`。
+- 生产默认阻断 mock 充值且没有近期充值流水时，巡检标记为 `ok`。
+- 生产显式允许 mock 充值时，巡检标记为 `warning`，issue type 为 `production_mock_recharge`。
+- 生产已阻断 mock 充值但仍发现最近充值流水时，巡检标记为 `warning`，issue type 为 `production_mock_recharge_recent_ledger`，并继续提供充值流水样本和后台跳转字段。
+
+该检查仍然不等同于真实支付全链路验收；它只证明 mock 充值是否被生产默认阻断，以及历史或近期 mock 充值是否仍需要管理员复核。

@@ -11,17 +11,61 @@ const noRecentRecharge: PaymentRechargeActivitySummary = {
   recentRechargeSamples: []
 };
 
-test("flags production mock recharge without recent ledger impact", () => {
+const recentRechargeActivity: PaymentRechargeActivitySummary = {
+  ...noRecentRecharge,
+  recentRechargeTransactions: 3,
+  recentRechargeAmount: "42.500000",
+  latestRechargeAt: "2026-06-11T10:00:00.000Z",
+  recentRechargeSamples: [
+    {
+      id: "txn_1",
+      walletId: "wallet_1",
+      userId: "user_1",
+      userEmail: "buyer@example.com",
+      amount: "12.500000",
+      balanceAfter: "20.000000",
+      currency: "USD",
+      refType: "mock_recharge",
+      refId: "mock_1",
+      createdAt: "2026-06-11T10:00:00.000Z"
+    }
+  ]
+};
+
+test("reports production mock recharge as blocked by default", () => {
   const result = inspectPaymentProviderHealth({
     provider: "mock",
     nodeEnv: "production",
+    allowProductionMockRecharge: false,
+    minRechargeAmount: 10,
+    rechargeActivity: noRecentRecharge
+  });
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.summary, "生产 mock 充值已禁用");
+  assert.equal(result.metrics.allowProductionMockRecharge, false);
+  assert.equal(result.metrics.rechargeEndpointEnabled, false);
+  assert.equal(result.metrics.productionMockRechargeBlocked, true);
+  assert.equal(result.metrics.recentRechargeTransactions, 0);
+  assert.equal(result.metrics.recentRechargeSamples, 0);
+  assert.equal(result.issues.length, 0);
+  assert.equal(result.samples.length, 0);
+});
+
+test("flags explicitly allowed production mock recharge without recent ledger impact", () => {
+  const result = inspectPaymentProviderHealth({
+    provider: "mock",
+    nodeEnv: "production",
+    allowProductionMockRecharge: true,
     minRechargeAmount: 10,
     rechargeActivity: noRecentRecharge
   });
 
   assert.equal(result.status, "warning");
-  assert.equal(result.summary, "生产环境仍启用 mock 充值");
+  assert.equal(result.summary, "生产环境显式启用 mock 充值");
+  assert.equal(result.metrics.allowProductionMockRecharge, true);
   assert.equal(result.metrics.rechargeEndpointEnabled, true);
+  assert.equal(result.metrics.productionMockRechargeBlocked, false);
   assert.equal(result.metrics.recentRechargeTransactions, 0);
   assert.equal(result.metrics.recentRechargeSamples, 0);
   assert.equal(result.issues.length, 1);
@@ -34,37 +78,22 @@ test("flags production mock recharge without recent ledger impact", () => {
   assert.match(result.issues[0].actionHint, /real payment provider/);
 });
 
-test("highlights recent production mock recharge ledger impact", () => {
+test("highlights recent explicitly allowed production mock recharge ledger impact", () => {
   const result = inspectPaymentProviderHealth({
     provider: "mock",
     nodeEnv: "production",
+    allowProductionMockRecharge: true,
     minRechargeAmount: 10,
-    rechargeActivity: {
-      ...noRecentRecharge,
-      recentRechargeTransactions: 3,
-      recentRechargeAmount: "42.500000",
-      latestRechargeAt: "2026-06-11T10:00:00.000Z",
-      recentRechargeSamples: [
-        {
-          id: "txn_1",
-          walletId: "wallet_1",
-          userId: "user_1",
-          userEmail: "buyer@example.com",
-          amount: "12.500000",
-          balanceAfter: "20.000000",
-          currency: "USD",
-          refType: "mock_recharge",
-          refId: "mock_1",
-          createdAt: "2026-06-11T10:00:00.000Z"
-        }
-      ]
-    }
+    rechargeActivity: recentRechargeActivity
   });
 
   assert.equal(result.status, "warning");
+  assert.equal(result.metrics.rechargeEndpointEnabled, true);
+  assert.equal(result.metrics.productionMockRechargeBlocked, false);
   assert.equal(result.metrics.recentRechargeTransactions, 3);
   assert.equal(result.metrics.recentRechargeAmount, "42.500000");
   assert.equal(result.metrics.recentRechargeSamples, 1);
+  assert.equal(result.issues[0].type, "production_mock_recharge");
   assert.match(result.issues[0].message, /wrote 3 recharge transaction/);
   assert.match(result.issues[0].actionHint, /review recharge transactions/);
   assert.equal(result.samples.length, 1);
@@ -77,16 +106,38 @@ test("highlights recent production mock recharge ledger impact", () => {
   assert.match(result.samples[0].message, /buyer@example.com recharged 12.500000 USD/);
 });
 
+test("warns when blocked production mock recharge has recent ledger impact", () => {
+  const result = inspectPaymentProviderHealth({
+    provider: "mock",
+    nodeEnv: "production",
+    allowProductionMockRecharge: false,
+    minRechargeAmount: 10,
+    rechargeActivity: recentRechargeActivity
+  });
+
+  assert.equal(result.status, "warning");
+  assert.equal(result.summary, "生产 mock 充值已禁用但存在近期充值流水");
+  assert.equal(result.metrics.rechargeEndpointEnabled, false);
+  assert.equal(result.metrics.productionMockRechargeBlocked, true);
+  assert.equal(result.issues[0].type, "production_mock_recharge_recent_ledger");
+  assert.match(result.issues[0].message, /3 recharge transaction/);
+  assert.match(result.issues[0].actionHint, /now blocked by default/);
+  assert.equal(result.samples.length, 1);
+  assert.equal(result.samples[0].walletTransactionType, "recharge");
+});
+
 test("reports disabled recharge as unavailable", () => {
   const result = inspectPaymentProviderHealth({
     provider: "disabled",
     nodeEnv: "production",
+    allowProductionMockRecharge: false,
     minRechargeAmount: 10,
     rechargeActivity: noRecentRecharge
   });
 
   assert.equal(result.status, "error");
   assert.equal(result.metrics.rechargeEndpointEnabled, false);
+  assert.equal(result.metrics.productionMockRechargeBlocked, false);
   assert.equal(result.issues[0].type, "payment_provider_disabled");
   assert.equal(result.issues[0].salesList, true);
 });

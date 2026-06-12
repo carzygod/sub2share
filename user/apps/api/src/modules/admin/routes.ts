@@ -5371,6 +5371,7 @@ function paymentProviderHealthCheck(rechargeActivity: PaymentRechargeActivitySum
   const result = inspectPaymentProviderHealth({
     provider: env.PAYMENT_PROVIDER,
     nodeEnv: env.NODE_ENV,
+    allowProductionMockRecharge: env.ALLOW_PRODUCTION_MOCK_RECHARGE,
     minRechargeAmount: env.MIN_RECHARGE_AMOUNT,
     rechargeActivity
   });

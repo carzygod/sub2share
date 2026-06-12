@@ -62,3 +62,27 @@
 ## 后续边界
 
 真实支付仍需要接入外部支付渠道、支付单、回调签名校验和回调幂等。本次补强先解决配置显式化、误用防护和管理员可见性问题。
+
+## 2026-06-12 Update: 生产 mock 充值安全闸
+
+生产环境不再仅因为 `PAYMENT_PROVIDER=mock` 就开放用户充值写账。后端新增 `ALLOW_PRODUCTION_MOCK_RECHARGE`：
+
+- 默认值为 `false`。
+- `NODE_ENV=production`、`PAYMENT_PROVIDER=mock` 且 `ALLOW_PRODUCTION_MOCK_RECHARGE=false` 时，`POST /api/wallet/recharge` 返回 `503 recharge_unavailable`，不会写入 mock 充值流水。
+- 开发、测试或非生产环境仍可用 `PAYMENT_PROVIDER=mock` 执行 mock 充值。
+- 如果确实需要在生产环境临时开放 mock 充值，必须显式设置 `ALLOW_PRODUCTION_MOCK_RECHARGE=true`。
+
+`GET /api/admin/system-health` 的 `payments.metrics` 新增：
+
+- `allowProductionMockRecharge`
+- `rechargeEndpointEnabled`
+- `productionMockRechargeBlocked`
+
+巡检语义同步调整：
+
+- 生产 mock 充值被默认阻断且最近 24 小时没有充值流水时，`payments.status=ok`，summary 为 `生产 mock 充值已禁用`。
+- 生产显式允许 mock 充值时，`payments.status=warning`，issue 仍为 `production_mock_recharge`。
+- 生产 mock 充值已被阻断，但最近窗口内仍存在充值流水时，`payments.status=warning`，issue 为 `production_mock_recharge_recent_ledger`，提醒管理员复核余额、充值流水和售出收入影响。
+- `PAYMENT_PROVIDER=disabled` 仍保持 `error`，表示充值入口整体不可用。
+
+这使线上默认配置从“能写 mock 入账但后台提示风险”提升为“默认阻断 mock 入账并在后台证明阻断状态”。真实公开收费仍需后续接入真实支付 provider、支付单、回调验签和幂等入账。

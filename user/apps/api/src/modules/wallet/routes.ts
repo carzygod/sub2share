@@ -5,6 +5,7 @@ import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { env } from "../../config/env.js";
+import { isRechargeEndpointEnabled } from "./payment-provider.js";
 
 const rechargeSchema = z.object({
   amount: z.coerce.number().positive()
@@ -20,7 +21,11 @@ export async function registerWalletRoutes(app: FastifyInstance) {
 
   app.post("/api/wallet/recharge", async (request, reply) => {
     const user = await requireAuth(request);
-    if (env.PAYMENT_PROVIDER !== "mock") {
+    if (!isRechargeEndpointEnabled({
+      provider: env.PAYMENT_PROVIDER,
+      nodeEnv: env.NODE_ENV,
+      allowProductionMockRecharge: env.ALLOW_PRODUCTION_MOCK_RECHARGE
+    })) {
       throw new AppError("recharge_unavailable", "Recharge is not available for the configured payment provider", 503);
     }
 

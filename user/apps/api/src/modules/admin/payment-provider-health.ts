@@ -1,4 +1,8 @@
-export type PaymentProviderMode = "mock" | "disabled";
+import {
+  isProductionMockRechargeBlocked,
+  isRechargeEndpointEnabled,
+  type PaymentProviderMode
+} from "../wallet/payment-provider.js";
 
 export interface PaymentRechargeActivitySummary {
   rechargeWindowHours: number;
@@ -25,6 +29,7 @@ export interface PaymentRechargeActivitySample {
 export interface PaymentProviderHealthInput {
   provider: PaymentProviderMode;
   nodeEnv: string;
+  allowProductionMockRecharge: boolean;
   minRechargeAmount: number;
   rechargeActivity: PaymentRechargeActivitySummary;
 }
@@ -57,6 +62,13 @@ export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) 
   const issues: PaymentProviderHealthIssue[] = [];
   const { recentRechargeSamples, ...rechargeMetrics } = input.rechargeActivity;
   const samples = recentRechargeSamples.map(paymentProviderSample);
+  const policy = {
+    provider: input.provider,
+    nodeEnv: input.nodeEnv,
+    allowProductionMockRecharge: input.allowProductionMockRecharge
+  };
+  const rechargeEndpointEnabled = isRechargeEndpointEnabled(policy);
+  const productionMockRechargeBlocked = isProductionMockRechargeBlocked(policy);
   let status: "ok" | "warning" | "error" = "ok";
   let summary = "充值配置可用";
 
@@ -70,9 +82,9 @@ export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) 
       actionHint: "Enable a supported recharge provider only after the wallet recharge flow is intentionally available to users.",
       message: "PAYMENT_PROVIDER=disabled, user wallet recharge endpoint returns 503."
     }));
-  } else if (input.provider === "mock" && input.nodeEnv === "production") {
+  } else if (input.provider === "mock" && input.nodeEnv === "production" && input.allowProductionMockRecharge) {
     status = "warning";
-    summary = "生产环境仍启用 mock 充值";
+    summary = "生产环境显式启用 mock 充值";
     issues.push(paymentProviderIssue({
       id: "production_mock_recharge",
       type: "production_mock_recharge",
@@ -84,6 +96,18 @@ export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) 
         ? `Production is using mock wallet recharge and wrote ${input.rechargeActivity.recentRechargeTransactions} recharge transaction(s) in the last ${input.rechargeActivity.rechargeWindowHours} hours.`
         : "Production is using mock wallet recharge. Replace with a real payment provider before public billing."
     }));
+  } else if (productionMockRechargeBlocked && input.rechargeActivity.recentRechargeTransactions > 0) {
+    status = "warning";
+    summary = "生产 mock 充值已禁用但存在近期充值流水";
+    issues.push(paymentProviderIssue({
+      id: "production_mock_recharge_recent_ledger",
+      type: "production_mock_recharge_recent_ledger",
+      severity: "warning",
+      actionHint: "Production mock recharge is now blocked by default, but recent recharge ledger rows still exist; review balances and sales before treating them as real paid revenue.",
+      message: `Production mock recharge is blocked, but ${input.rechargeActivity.recentRechargeTransactions} recharge transaction(s) exist in the last ${input.rechargeActivity.rechargeWindowHours} hours.`
+    }));
+  } else if (productionMockRechargeBlocked) {
+    summary = "生产 mock 充值已禁用";
   }
 
   return {
@@ -93,7 +117,9 @@ export function inspectPaymentProviderHealth(input: PaymentProviderHealthInput) 
       provider: input.provider,
       nodeEnv: input.nodeEnv,
       minRechargeAmount: input.minRechargeAmount,
-      rechargeEndpointEnabled: input.provider === "mock",
+      allowProductionMockRecharge: input.allowProductionMockRecharge,
+      rechargeEndpointEnabled,
+      productionMockRechargeBlocked,
       ...rechargeMetrics,
       recentRechargeSamples: samples.length
     },
