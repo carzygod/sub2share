@@ -105,3 +105,17 @@ pnpm.cmd --filter @zyz/api run build
 - 单元测试确认 `/v1` 与 `/v1/` 都属于本地 OpenAI/Codex 反代范围，同时 `/v10/responses` 和 `/api/admin/*` 不会误入反代。
 
 这项补齐让公开 endpoint `https://api.example.com/v1` 的基路径本身也能进入 Sub2API 代理链路；即使上游返回 404 或其他响应，也会产生本地代理请求 ID 和可审计日志，而不是被 API 服务自己的 404 提前截断。
+
+## 2026-06-12 追补：本地错误 payload 结构契约
+
+- 本地 OpenAI/Codex 反代拦截错误继续使用统一 `openAiProxyErrorPayload()`。
+- 错误对象现在稳定包含：
+  - `error.message`
+  - `error.type`
+  - `error.param`
+  - `error.code`
+- 本地无具体参数定位时，`error.param=null`。
+- `inspectOpenAiProxyContract()` 摘要新增 `localErrorPayloadIncludesParam=true`。
+- 单元测试覆盖 429 限流错误 payload 中的 `param: null`，并锁定系统健康契约会检查该字段。
+
+该契约减少通用 OpenAI SDK 或调用方在解析本地拦截错误时遇到字段缺失的风险。

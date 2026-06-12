@@ -20,6 +20,8 @@
 - CORS 暴露头除 `x-proxy-request-id` 外，也暴露常见上游 request id 响应头，便于浏览器客户端把本地和上游诊断 ID 一并提交给管理员。
 - 新增 Node test 覆盖类型映射和 payload 结构，避免后续网关错误格式回归。
 - `GET /api/admin/system-health` 新增 `openAiProxyContract` 检查项，会验证公开 endpoint、CORS 请求 ID 暴露头和关键本地错误类型映射。
+- 2026-06-12 追补：本地拦截错误的 `error` 对象补齐 `param: null`，与常见 OpenAI 错误对象结构保持一致。
+- `openAiProxyContract` 巡检摘要新增 `localErrorPayloadIncludesParam`，当本地错误 payload 缺少 `error.param` 时返回 `local_error_param_missing`。
 
 ## 管理员价值
 
@@ -27,6 +29,7 @@
 - 管理员排障时仍可依赖原有 `error.code`、HTTP 状态码和 `x-proxy-request-id` 精确定位；如果上游返回 request id，也可以用 `upstreamRequestId` 串联 Sub2API 或 OpenAI 上游侧日志。
 - 管理员可以在 `可用性巡检` 中提前发现反代契约配置或本地错误结构回归。
 - 该能力提升 OpenAI/Codex 反代入口对通用 OpenAI 客户端的兼容性，同时不改变已有业务错误码。
+- 需要解析 OpenAI 错误对象的 SDK 或客户端现在可以稳定读取 `error.message`、`error.type`、`error.param` 和 `error.code` 四个常见字段。
 
 ## 验收方式
 

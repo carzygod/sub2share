@@ -98,6 +98,7 @@ export function openAiProxyErrorPayload(statusCode: number, code: string, messag
     error: {
       message,
       type: openAiProxyErrorType(statusCode, code),
+      param: null,
       code
     }
   };
@@ -236,6 +237,16 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "5xx local proxy errors must map to api_error"
     });
   }
+  const sampleErrorPayload = openAiProxyErrorPayload(401, "missing_api_key", "Missing bearer API key");
+  const localErrorPayloadIncludesParam = Object.prototype.hasOwnProperty.call(sampleErrorPayload.error, "param")
+    && sampleErrorPayload.error.param === null;
+  if (!localErrorPayloadIncludesParam) {
+    issues.push({
+      type: "local_error_param_missing",
+      severity: "error",
+      message: "Local OpenAI proxy errors must include error.param for OpenAI-compatible clients"
+    });
+  }
 
   return {
     ok: issues.length === 0,
@@ -282,7 +293,8 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       hasStreamIdleTimeout: openAiProxyForwardingContract.hasStreamIdleTimeout,
       insufficientQuotaErrorType: errorTypes.insufficientQuota,
       rateLimitErrorType: errorTypes.rateLimit,
-      apiErrorType: errorTypes.apiError
+      apiErrorType: errorTypes.apiError,
+      localErrorPayloadIncludesParam
     },
     errorTypes,
     issues

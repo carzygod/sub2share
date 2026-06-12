@@ -226,6 +226,7 @@ test("builds OpenAI-compatible local proxy error payloads", () => {
     error: {
       message: "Rental request limit has been exhausted",
       type: "rate_limit_error",
+      param: null,
       code: "request_limit_exceeded"
     }
   });
@@ -290,6 +291,7 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.insufficientQuotaErrorType, "insufficient_quota");
   assert.equal(result.summary.rateLimitErrorType, "rate_limit_error");
   assert.equal(result.summary.apiErrorType, "api_error");
+  assert.equal(result.summary.localErrorPayloadIncludesParam, true);
   assert.deepEqual(result.errorTypes, {
     insufficientQuota: "insufficient_quota",
     rateLimit: "rate_limit_error",
