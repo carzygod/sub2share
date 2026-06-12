@@ -2151,7 +2151,13 @@ function App() {
         </header>
 
         {message && <div className="notice glass-panel">{message}</div>}
-        {view === "dashboard" && <DashboardView dashboard={dashboard} onOpenSystemHealth={() => refresh("systemHealth")} />}
+        {view === "dashboard" && (
+          <DashboardView
+            dashboard={dashboard}
+            onOpenSystemHealth={() => refresh("systemHealth")}
+            onOpenView={(nextView) => { void refresh(nextView); }}
+          />
+        )}
         {view === "systemHealth" && (
           <SystemHealthView
             health={systemHealth}
@@ -2561,7 +2567,11 @@ interface ManagedListProps {
   onExport?: () => void;
 }
 
-function DashboardView({ dashboard, onOpenSystemHealth }: { dashboard: Dashboard | null; onOpenSystemHealth: () => void }) {
+function DashboardView({ dashboard, onOpenSystemHealth, onOpenView }: {
+  dashboard: Dashboard | null;
+  onOpenSystemHealth: () => void;
+  onOpenView: (view: View) => void;
+}) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
   const cards = [
@@ -2617,18 +2627,28 @@ function DashboardView({ dashboard, onOpenSystemHealth }: { dashboard: Dashboard
               </table>
               {criticalChecks.length > 0 && (
                 <div className="dashboard-health-list">
-                  {criticalChecks.map((check) => (
-                    <div className="dashboard-health-item" key={check.id}>
-                      <div className={healthRowClass(check.status)}>
-                        {check.status === "ok" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                        <strong>{check.label}</strong>
+                  {criticalChecks.map((check) => {
+                    const target = dashboardHealthCheckTarget(check.id);
+                    return (
+                      <div className="dashboard-health-item" key={check.id}>
+                        <div className={healthRowClass(check.status)}>
+                          {check.status === "ok" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                          <strong>{check.label}</strong>
+                        </div>
+                        <p>{check.summary}</p>
+                        <div className="health-preview-actions">
+                          {(check.issueCount > 0 || check.sampleCount > 0) && (
+                            <small>{check.issueCount} issue / {check.sampleCount} sample</small>
+                          )}
+                          {target && (
+                            <button className="secondary mini" onClick={() => onOpenView(target.view)}>
+                              <ChevronRight size={14} />{target.label}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <p>{check.summary}</p>
-                      {(check.issueCount > 0 || check.sampleCount > 0) && (
-                        <small>{check.issueCount} issue / {check.sampleCount} sample</small>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <div className="actions left">
@@ -5530,6 +5550,29 @@ function healthRowClass(status: SystemHealthResult["status"]) {
   if (status === "ok") return "health-row";
   if (status === "warning") return "health-row warning";
   return "health-row error";
+}
+
+function dashboardHealthCheckTarget(checkId: string): { view: View; label: string } | null {
+  if (["sub2", "localProxySmoke", "openAiProxyContract", "openAiProxyRuntime"].includes(checkId)) {
+    return { view: "sub2", label: "打开反代状态" };
+  }
+  if (["resources", "resourceCredentials"].includes(checkId)) {
+    return { view: "resources", label: "打开共享资源" };
+  }
+  if (checkId === "proxy") return { view: "proxyRequests", label: "打开反代请求" };
+  if (["salesDelivery", "payments"].includes(checkId)) return { view: "sales", label: "打开售出情况" };
+  if (checkId === "apiKeys") return { view: "apiKeys", label: "打开 API Key" };
+  if (["billingSync", "pendingUsageBilling"].includes(checkId)) return { view: "usages", label: "打开用量记录" };
+  if (checkId === "reconciliation") return { view: "reconciliation", label: "打开账务对账" };
+  if (checkId === "productCatalog") return { view: "products", label: "打开商品配置" };
+  if (checkId === "orders") return { view: "orders", label: "打开订单管理" };
+  if (checkId === "rentals") return { view: "rentals", label: "打开租赁通道" };
+  if (checkId === "wallets") return { view: "wallets", label: "打开余额管理" };
+  if (checkId === "settlements") return { view: "settlements", label: "打开结算" };
+  if (["adminCapabilities", "adminSurfaceCoverage", "deploymentRuntime", "frontendRuntime", "corsPolicy", "authTokens", "oauthStateStore"].includes(checkId)) {
+    return { view: "systemHealth", label: "打开巡检详情" };
+  }
+  return null;
 }
 
 function deliveryStatusText(status: DeliverySummary["status"]) {

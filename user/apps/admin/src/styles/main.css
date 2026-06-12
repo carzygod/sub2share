@@ -362,6 +362,13 @@ select option { color: #111; }
   line-height: 1.45;
 }
 .dashboard-health-item small { color: var(--faint); }
+.health-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .diagnostic-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
