@@ -1,4 +1,4 @@
-import { openAiProxyCorsExposedHeaders } from "../modules/openai-proxy/helpers.js";
+import { openAiProxyCorsExposedHeaders, openAiProxyRouteMethods } from "../modules/openai-proxy/helpers.js";
 
 export interface ApiCorsPolicyInput {
   nodeEnv?: string;
@@ -14,6 +14,7 @@ export function buildApiCorsOptions(input: ApiCorsPolicyInput = process.env) {
   return {
     origin: policy.summary.enforced ? policy.summary.allowedOrigins : true,
     credentials: true,
+    methods: [...openAiProxyRouteMethods],
     exposedHeaders: openAiProxyCorsExposedHeaders
   };
 }
@@ -87,6 +88,7 @@ export function inspectApiCorsPolicy(input: ApiCorsPolicyInput = process.env) {
       allowedOriginCount: allowedOrigins.length,
       configuredOriginCount: configuredEntries.length,
       invalidOriginCount: invalidEntries.length,
+      allowedMethods: openAiProxyRouteMethods.join(","),
       exposesHeaders: openAiProxyCorsExposedHeaders.join(",")
     },
     issues

@@ -79,3 +79,15 @@ pnpm.cmd --filter @zyz/api run build
   - 入站 `authorization` 会被剥离，并用本地售出 Key 重新注入到 Sub2API 请求。
   - 上游响应流完成、异常、客户端中断和空闲超时都会进入代理请求日志。
 - 测试新增正常运行契约断言，并覆盖运行参数为非正整数时的 `error` 问题样本。
+
+## 2026-06-12 追补：反代 CORS 方法契约
+
+- API CORS 配置的 `methods` 显式复用 `openAiProxyRouteMethods`。
+- `inspectApiCorsPolicy()` 摘要新增 `allowedMethods`，便于系统巡检展示浏览器端允许方法。
+- `api-cors.test.ts` 新增 OPTIONS preflight 测试，覆盖：
+  - URL：`/v1/responses/:id`
+  - 请求方法：`PATCH`
+  - 请求头：`authorization, content-type`
+  - 响应：`204`
+  - `access-control-allow-methods` 与 `GET,HEAD,POST,PUT,PATCH,DELETE` 完全一致。
+- 该测试确保浏览器端 OpenAI/Codex 兼容客户端不会因为 CORS 默认方法漂移而无法调用非 POST 的 `/v1/*` 路径。

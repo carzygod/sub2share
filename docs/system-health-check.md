@@ -35,7 +35,7 @@
 - 前端入口：检查 Web/Admin 静态入口是否可访问，并确认返回 HTML。
 - 管理员后端能力覆盖：检查用户、共享资源、余额、售出和 OpenAI/Codex 反代相关管理员 API 路由是否按能力矩阵注册。
 - 管理前端入口：检查 Admin 侧边栏是否覆盖用户、共享资源、余额、售出和 OpenAI/Codex 反代核心范围，所有列表型管理页面是否可达，以及 view 是否重复。
-- CORS 白名单：检查生产环境 API CORS 是否收敛到明确 origin，是否误用 `*`，以及是否继续暴露本地和上游 request id 诊断响应头。
+- CORS 白名单：检查生产环境 API CORS 是否收敛到明确 origin，是否误用 `*`，是否允许本地 OpenAI/Codex 反代的完整方法集合，以及是否继续暴露本地和上游 request id 诊断响应头。
 - 支付充值：检查 `PAYMENT_PROVIDER` 配置，生产环境 mock 充值标记 warning，禁用充值标记 error，并返回最近 5 条充值流水候选样本。
 - 共享资源：检查异常资源、Codex 资源总数和 online Codex 资源数量；当没有 online Codex 共享资源或存在异常资源时返回问题样本和候选资源样本。
 - 资源凭据：检查 `API_KEY_ENCRYPTION_SECRET` 是否已配置，并统计 active OpenAI refresh token 是否已绑定可应用的 Sub2 账号；当 Sub2 上游无 active OpenAI 账号且没有可应用凭据时标记 error。
@@ -87,7 +87,7 @@
 - Auth Tokens 巡检只检查环境配置，不解码真实用户 token，也不会撤销既有 token。
 - 部署运行态巡检只读取当前进程目录和 release marker，不会主动重启服务；若发现旧 release 或 staging 目录，仍需管理员重新从当前 release 启动服务。
 - 管理前端入口巡检只读取共享 Admin surface 清单，不主动加载浏览器或点击页面；真实静态入口可达性由 `frontendRuntime` 检查覆盖。
-- CORS 白名单巡检只检查配置和暴露头，不主动发起跨域请求；真实浏览器 preflight 仍由 Fastify CORS 中间件执行。
+- CORS 白名单巡检只检查配置、允许方法和暴露头，不主动发起跨域请求；真实浏览器 preflight 仍由 Fastify CORS 中间件执行，并由 API 测试覆盖 `/v1/responses/:id` 的 `PATCH` 预检。
 - 资源凭据巡检只做只读统计，不解密凭据、不返回密文或明文；候选样本只展示资源 ID、Sub2 账号 ID、供给方邮箱和凭据摘要。
 - 共享资源巡检只做只读统计，不自动上线、下线或测试资源；异常资源和非 online Codex 资源样本只展示资源 ID、类型、状态、Sub2 账号 ID、供给方邮箱和更新时间。
 - 支付充值巡检只判断当前后端充值模式是否可用或存在明显风险，不等同于真实支付渠道的全链路验收。
@@ -151,3 +151,16 @@
 - 如果 `bodyLimitBytes`、`upstreamTimeoutMs` 或 `streamIdleTimeoutMs` 不是正整数，巡检会标记 `error`。
 
 该检查仍然不会主动发起真实上游请求；真实 Sub2API/OpenAI 可调度性仍由 `Sub2/OpenAI 上游`、`本地反代自检` 和 `反代请求` 日志共同证明。
+
+## 2026-06-12 Update: OpenAI Proxy CORS Methods
+
+API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
+
+- `GET`
+- `HEAD`
+- `POST`
+- `PUT`
+- `PATCH`
+- `DELETE`
+
+`corsPolicy.metrics.allowedMethods` 会展示该方法集合。该检查用于帮助管理员确认浏览器端 OpenAI/Codex 兼容客户端的 OPTIONS preflight 与本地反代路由一致，避免 `/v1/responses/:id` 等非 POST 请求在进入本地鉴权、余额、租赁和 Sub2API 转发前被 CORS 拦截。

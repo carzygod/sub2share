@@ -3,7 +3,7 @@ import test from "node:test";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { apiCorsOptions, buildApiCorsOptions, inspectApiCorsPolicy } from "../src/common/cors.js";
-import { openAiProxyCorsExposedHeaders, proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
+import { openAiProxyCorsExposedHeaders, openAiProxyRouteMethods, proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
 
 test("api cors exposes local and upstream proxy request id headers on browser requests", async () => {
   const app = Fastify({ logger: false });
@@ -63,6 +63,30 @@ test("production api cors only exposes approved origins", async () => {
   }
 });
 
+test("api cors preflight allows every local OpenAI proxy route method", async () => {
+  const app = Fastify({ logger: false });
+  try {
+    await app.register(cors, apiCorsOptions);
+    app.patch("/v1/responses/:id", async () => ({ ok: true }));
+
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/responses/resp_123",
+      headers: {
+        origin: "https://app.example.test",
+        "access-control-request-method": "PATCH",
+        "access-control-request-headers": "authorization, content-type"
+      }
+    });
+
+    assert.equal(response.statusCode, 204);
+    assert.deepEqual(csvHeaderValues(response.headers["access-control-allow-methods"]), [...openAiProxyRouteMethods]);
+    assert.equal(response.headers["access-control-allow-headers"], "authorization, content-type");
+  } finally {
+    await app.close();
+  }
+});
+
 test("api cors policy reports production wildcard and missing origins", () => {
   const wildcard = inspectApiCorsPolicy({
     nodeEnv: "production",
@@ -78,4 +102,10 @@ test("api cors policy reports production wildcard and missing origins", () => {
   const nonProduction = inspectApiCorsPolicy({ nodeEnv: "test" });
   assert.equal(nonProduction.ok, true);
   assert.equal(nonProduction.summary.enforced, false);
+  assert.equal(nonProduction.summary.allowedMethods, openAiProxyRouteMethods.join(","));
 });
+
+function csvHeaderValues(value: string | string[] | number | undefined) {
+  assert.equal(typeof value, "string");
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
