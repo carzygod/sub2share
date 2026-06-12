@@ -17,11 +17,12 @@
 user/prisma/migrations/0014_proxy_request_log_model/migration.sql
 ```
 
-- `/v1/*` 反代写日志时，会从 JSON 请求体顶层提取 `model`。
+- `/v1/*` 反代写日志时，会从 JSON 请求体顶层或 multipart/form-data 的 `model` part 提取模型名。
 - 提取规则：
   - 支持 Buffer、Uint8Array 和对象形式请求体。
   - 只读取顶层 `model` 字符串。
-  - 空字符串、缺失字段、无效 JSON 或非对象 JSON 记录为空。
+  - multipart 请求只读取 `Content-Disposition` 中 `name="model"` 或 `name=model` 的字段值。
+  - 空字符串、缺失字段、无效 JSON、非对象 JSON 或缺少 model part 记录为空。
   - 最长保留 160 个字符。
 - 不保存请求体和响应体。
 - 管理员 `GET /api/admin/proxy-requests` 搜索支持按模型名匹配。
@@ -46,3 +47,4 @@ user/prisma/migrations/0014_proxy_request_log_model/migration.sql
 - `ProxyRequestLog` 新增 `upstreamRequestId`，用于保存 Sub2API/OpenAI 响应头中的上游 request id。
 - 管理员 `反代请求` 列表、CSV 和系统健康异常样本会展示该字段。
 - 详细说明见 `docs/proxy-request-upstream-request-id.md`。
+- Codex/Responses 兼容性继续补强：multipart 请求的 `model` part 现在也会进入 `ProxyRequestLog.model`，便于管理员按模型筛选上传类或混合输入类请求。

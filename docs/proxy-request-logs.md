@@ -15,7 +15,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - `requestId`：Fastify 请求 ID，便于和服务日志关联。
 - `userId` / `rentalId` / `apiKeyId` / `apiKeyPrefix`：本地用户、租赁和 Key 追踪信息。
 - `method` / `path`：OpenAI 兼容路径。
-- `model`：客户端请求体顶层 `model` 字段；无效 JSON、缺失字段或非 JSON 请求为空。
+- `model`：客户端请求体顶层 `model` 字段；支持 JSON 顶层字段和 multipart/form-data 的 `model` part；无效 JSON、缺失字段或无法识别时为空。
 - `statusCode`：最终返回给客户端的状态码。
 - `upstreamStatusCode`：Sub2API 上游状态码，本地拦截时为空。
 - `upstreamRequestId`：Sub2API/OpenAI 响应头中的上游 request id，本地拦截或上游未返回时为空。
@@ -31,7 +31,7 @@ OpenAI/Codex `/v1/*` 反代已经具备本地 Key 校验、租赁状态校验、
 - 不保存响应体。
 - 不保存 API Key 明文。
 - 仅保存本地已经存在的 `keyPrefix`。
-- 仅从请求体中提取顶层 `model` 字符串，不保存 prompt、messages、input 或工具参数。
+- 仅从请求体中提取顶层 `model` 字符串或 multipart `model` part，不保存 prompt、messages、input、文件内容或工具参数。
 
 ## 后端能力
 

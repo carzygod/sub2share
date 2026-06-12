@@ -27,6 +27,7 @@ export const openAiProxyForwardingContract = {
   stripsInboundAuthorization: true,
   stripsInboundAcceptEncoding: true,
   reinjectsLocalBearerToSub2: true,
+  extractsMultipartModelForLogs: true,
   forwardsRequestId: true,
   capturesUpstreamRequestId: true,
   forwardsForwardedHostAndProto: true,
@@ -251,6 +252,7 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       stripsInboundAuthorization: openAiProxyForwardingContract.stripsInboundAuthorization,
       stripsInboundAcceptEncoding: openAiProxyForwardingContract.stripsInboundAcceptEncoding,
       reinjectsLocalBearerToSub2: openAiProxyForwardingContract.reinjectsLocalBearerToSub2,
+      extractsMultipartModelForLogs: openAiProxyForwardingContract.extractsMultipartModelForLogs,
       forwardsRequestId: openAiProxyForwardingContract.forwardsRequestId,
       capturesUpstreamRequestId: openAiProxyForwardingContract.capturesUpstreamRequestId,
       forwardsForwardedHostAndProto: openAiProxyForwardingContract.forwardsForwardedHostAndProto,
@@ -348,8 +350,8 @@ export function proxyBodyByteLength(body: unknown) {
 
 export function proxyRequestModel(body: unknown) {
   const record = proxyBodyRecord(body);
-  const model = record && typeof record.model === "string" ? record.model.trim() : "";
-  return model ? model.slice(0, 160) : null;
+  const model = record && typeof record.model === "string" ? normalizeProxyModel(record.model) : "";
+  return model || proxyMultipartModel(body);
 }
 
 function proxyBodyRecord(body: unknown): Record<string, unknown> | null {
@@ -368,6 +370,19 @@ function proxyBodyRecord(body: unknown): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function proxyMultipartModel(body: unknown) {
+  const text = proxyBodyText(body);
+  if (!text.includes('name="model"') && !text.match(/\bname=model\b/i)) return null;
+
+  const match = text.match(/(?:^|\r?\n)content-disposition:[^\r\n]*;\s*name=(?:"model"|model)(?:;[^\r\n]*)?\r?\n(?:[A-Za-z0-9-]+:[^\r\n]*\r?\n)*\r?\n([\s\S]*?)(?=\r?\n--[^\r\n]*|$)/i);
+  return normalizeProxyModel(match?.[1]);
+}
+
+function normalizeProxyModel(value: string | undefined) {
+  const model = value?.trim() ?? "";
+  return model ? model.slice(0, 160) : null;
 }
 
 export function evaluateProxyRateLimitWindow(options: {

@@ -128,8 +128,34 @@ test("measures proxy body text and bytes for buffers and json objects", () => {
 test("extracts a top-level proxy model without retaining request bodies", () => {
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "gpt-5.3-codex", input: "ping" }))), "gpt-5.3-codex");
   assert.equal(proxyRequestModel({ model: " o4-mini ", input: "ping" }), "o4-mini");
+  assert.equal(proxyRequestModel(Buffer.from([
+    "--boundary",
+    'Content-Disposition: form-data; name="model"',
+    "",
+    "gpt-5.3-codex",
+    "--boundary",
+    'Content-Disposition: form-data; name="input"',
+    "",
+    "ping",
+    "--boundary--"
+  ].join("\r\n"))), "gpt-5.3-codex");
+  assert.equal(proxyRequestModel(Buffer.from([
+    "--boundary",
+    "Content-Disposition: form-data; name=model",
+    "Content-Type: text/plain",
+    "",
+    " o4-mini ",
+    "--boundary--"
+  ].join("\r\n"))), "o4-mini");
   assert.equal(proxyRequestModel(Buffer.from("{not-json")), null);
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ input: "ping" }))), null);
+  assert.equal(proxyRequestModel(Buffer.from([
+    "--boundary",
+    'Content-Disposition: form-data; name="not_model"',
+    "",
+    "gpt-5.3-codex",
+    "--boundary--"
+  ].join("\r\n"))), null);
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "" }))), null);
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "m".repeat(200) }))), "m".repeat(160));
 });
@@ -230,6 +256,7 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.stripsInboundAuthorization, true);
   assert.equal(result.summary.stripsInboundAcceptEncoding, true);
   assert.equal(result.summary.reinjectsLocalBearerToSub2, true);
+  assert.equal(result.summary.extractsMultipartModelForLogs, true);
   assert.equal(result.summary.forwardsRequestId, true);
   assert.equal(result.summary.capturesUpstreamRequestId, true);
   assert.equal(result.summary.forwardsForwardedHostAndProto, true);
