@@ -28,6 +28,8 @@ export const openAiProxyForwardingContract = {
   stripsInboundAcceptEncoding: true,
   reinjectsLocalBearerToSub2: true,
   extractsMultipartModelForLogs: true,
+  extractsFormUrlEncodedModelForLogs: true,
+  extractsUrlModelForLogs: true,
   forwardsRequestId: true,
   capturesUpstreamRequestId: true,
   forwardsForwardedHostAndProto: true,
@@ -253,6 +255,8 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       stripsInboundAcceptEncoding: openAiProxyForwardingContract.stripsInboundAcceptEncoding,
       reinjectsLocalBearerToSub2: openAiProxyForwardingContract.reinjectsLocalBearerToSub2,
       extractsMultipartModelForLogs: openAiProxyForwardingContract.extractsMultipartModelForLogs,
+      extractsFormUrlEncodedModelForLogs: openAiProxyForwardingContract.extractsFormUrlEncodedModelForLogs,
+      extractsUrlModelForLogs: openAiProxyForwardingContract.extractsUrlModelForLogs,
       forwardsRequestId: openAiProxyForwardingContract.forwardsRequestId,
       capturesUpstreamRequestId: openAiProxyForwardingContract.capturesUpstreamRequestId,
       forwardsForwardedHostAndProto: openAiProxyForwardingContract.forwardsForwardedHostAndProto,
@@ -348,10 +352,14 @@ export function proxyBodyByteLength(body: unknown) {
   return Buffer.byteLength(JSON.stringify(body));
 }
 
-export function proxyRequestModel(body: unknown) {
+export function proxyRequestModel(body: unknown, url?: string, contentType?: unknown) {
   const record = proxyBodyRecord(body);
   const model = record && typeof record.model === "string" ? normalizeProxyModel(record.model) : "";
-  return model || proxyMultipartModel(body);
+  return model
+    || proxyFormUrlEncodedModel(body, contentType)
+    || proxyMultipartModel(body)
+    || proxyQueryModel(url)
+    || proxyPathModel(url);
 }
 
 function proxyBodyRecord(body: unknown): Record<string, unknown> | null {
@@ -378,6 +386,50 @@ function proxyMultipartModel(body: unknown) {
 
   const match = text.match(/(?:^|\r?\n)content-disposition:[^\r\n]*;\s*name=(?:"model"|model)(?:;[^\r\n]*)?\r?\n(?:[A-Za-z0-9-]+:[^\r\n]*\r?\n)*\r?\n([\s\S]*?)(?=\r?\n--[^\r\n]*|$)/i);
   return normalizeProxyModel(match?.[1]);
+}
+
+function proxyFormUrlEncodedModel(body: unknown, contentType: unknown) {
+  if (!isFormUrlEncodedContentType(contentType)) return null;
+  const text = proxyBodyText(body).trim();
+  if (!text || !/(?:^|&)model=/i.test(text)) return null;
+  return normalizeProxyModel(new URLSearchParams(text).get("model") ?? undefined);
+}
+
+function isFormUrlEncodedContentType(value: unknown) {
+  const text = Array.isArray(value) ? value.join(";") : typeof value === "string" ? value : "";
+  return text.toLowerCase().split(";").some((part) => part.trim() === "application/x-www-form-urlencoded");
+}
+
+function proxyQueryModel(url: string | undefined) {
+  if (!url) return null;
+  try {
+    return normalizeProxyModel(new URL(url, "http://local.invalid").searchParams.get("model") ?? undefined);
+  } catch {
+    const query = url.split("?")[1] ?? "";
+    return normalizeProxyModel(new URLSearchParams(query).get("model") ?? undefined);
+  }
+}
+
+function proxyPathModel(url: string | undefined) {
+  const path = proxyUrlPath(url);
+  const match = path?.match(/^\/v1\/models\/([^/]+)$/);
+  if (!match) return null;
+  const encodedModel = match[1];
+  if (!encodedModel) return null;
+  try {
+    return normalizeProxyModel(decodeURIComponent(encodedModel));
+  } catch {
+    return normalizeProxyModel(encodedModel);
+  }
+}
+
+function proxyUrlPath(url: string | undefined) {
+  if (!url) return "";
+  try {
+    return new URL(url, "http://local.invalid").pathname.replace(/\/+$/, "");
+  } catch {
+    return url.split("?")[0]?.replace(/\/+$/, "") ?? "";
+  }
 }
 
 function normalizeProxyModel(value: string | undefined) {

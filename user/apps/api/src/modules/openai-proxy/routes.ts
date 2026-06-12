@@ -317,7 +317,7 @@ async function writeProxyRequestLog(
         apiKeyPrefix: entry.apiKeyPrefix ?? null,
         method: request.method.toUpperCase(),
         path: proxyRequestPath(request).slice(0, 2048),
-        model: entry.model ?? proxyRequestModel(request.body),
+        model: entry.model ?? proxyRequestModel(request.body, proxyRequestPath(request), request.headers["content-type"]),
         statusCode: entry.statusCode,
         upstreamStatusCode: entry.upstreamStatusCode ?? null,
         upstreamRequestId: entry.upstreamRequestId ?? null,

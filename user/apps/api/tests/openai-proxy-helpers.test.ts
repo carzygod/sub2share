@@ -147,6 +147,20 @@ test("extracts a top-level proxy model without retaining request bodies", () => 
     " o4-mini ",
     "--boundary--"
   ].join("\r\n"))), "o4-mini");
+  assert.equal(
+    proxyRequestModel(Buffer.from("model=gpt-5.3-codex&input=ping"), "/v1/responses", "application/x-www-form-urlencoded"),
+    "gpt-5.3-codex"
+  );
+  assert.equal(
+    proxyRequestModel(Buffer.from("input=ping&model=%20o4-mini%20"), "/v1/responses", "application/x-www-form-urlencoded; charset=utf-8"),
+    "o4-mini"
+  );
+  assert.equal(proxyRequestModel(Buffer.from("model=not-form"), "/v1/responses", "text/plain"), null);
+  assert.equal(proxyRequestModel(undefined, "/v1/responses?model=gpt-5.3-codex"), "gpt-5.3-codex");
+  assert.equal(proxyRequestModel(undefined, "https://api.example.com/v1/responses?model=o4-mini"), "o4-mini");
+  assert.equal(proxyRequestModel(undefined, "/v1/models/gpt-5.3-codex"), "gpt-5.3-codex");
+  assert.equal(proxyRequestModel(undefined, "/v1/models/gpt-5.3-codex/extra"), null);
+  assert.equal(proxyRequestModel(undefined, "/v1/responses/resp_123"), null);
   assert.equal(proxyRequestModel(Buffer.from("{not-json")), null);
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ input: "ping" }))), null);
   assert.equal(proxyRequestModel(Buffer.from([
@@ -257,6 +271,8 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.stripsInboundAcceptEncoding, true);
   assert.equal(result.summary.reinjectsLocalBearerToSub2, true);
   assert.equal(result.summary.extractsMultipartModelForLogs, true);
+  assert.equal(result.summary.extractsFormUrlEncodedModelForLogs, true);
+  assert.equal(result.summary.extractsUrlModelForLogs, true);
   assert.equal(result.summary.forwardsRequestId, true);
   assert.equal(result.summary.capturesUpstreamRequestId, true);
   assert.equal(result.summary.forwardsForwardedHostAndProto, true);
