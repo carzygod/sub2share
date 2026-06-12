@@ -3998,3 +3998,81 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从商品和价格配置直接进入售出、订单、租赁、用量和反代证据，也可以从销售概览的商品排行反向进入对应上下文。商品 ID 与价格 ID 已经能在线上命中售出、订单和租赁列表；用量和反代请求当前样本为 0，但接口和过滤路径返回正常。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 09:25 OpenAI/Codex 反代 CORS 方法契约发布与线上复查
+
+### 发布版本
+
+- `b548769 feat: align proxy cors methods`
+- `13f9105 fix: expose proxy cors methods in health`
+
+### 本轮修复
+
+- API CORS 配置的 `methods` 显式复用本地 `/v1/*` 反代方法集合。
+- `inspectApiCorsPolicy()` 摘要新增 `allowedMethods`。
+- `GET /api/admin/system-health` 的 `corsPolicy.metrics` 透出 `allowedMethods`。
+- 新增 OPTIONS preflight 测试，覆盖 `/v1/responses/:id` 的 `PATCH` 请求。
+- 新增文档：`docs/openai-proxy-cors-methods.md`。
+- 更新 `docs/api-cors-policy.md`、`docs/openai-proxy-test-coverage.md`、`docs/system-health-check.md` 和 `docs/需求文档.md`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，75/75。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=13f9105`
+  - `deployed_at=20260612T012521Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：75/75 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/tmp/sub2share-user-13f9105.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- OPTIONS preflight：
+  - URL：`http://192.168.31.26:4100/v1/responses/resp_123`
+  - Origin：`http://192.168.31.26:3100`
+  - `Access-Control-Request-Method: PATCH`
+  - `Access-Control-Request-Headers: authorization, content-type`
+  - status：`204`
+  - `access-control-allow-origin=http://192.168.31.26:3100`
+  - `access-control-allow-methods=GET, HEAD, POST, PUT, PATCH, DELETE`
+  - `access-control-allow-headers=authorization, content-type`
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=13f9105`
+  - `corsPolicy.status=ok`
+  - `corsPolicy.metrics.allowedMethods=GET,HEAD,POST,PUT,PATCH,DELETE`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+浏览器端 OpenAI/Codex 兼容客户端现在可以用与本地 `/v1/*` 反代一致的方法集合完成 CORS 预检，`PATCH /v1/responses/:id` 等非 POST 场景不会在进入本地鉴权、余额、租赁、限流和 Sub2API 转发链路前被 CORS 默认值阻断。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
