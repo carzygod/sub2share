@@ -296,3 +296,23 @@
 - Admin 首页系统状态表新增“上游阻断”行，并在关键巡检列表前展示一条可点击的阻断摘要。
 
 这样管理员进入后台首屏时，可以同时确认“真实不可用点在 Sub2/OpenAI 上游凭据”和“下一步应去哪里处理”，不需要先展开完整巡检才能定位维修入口。
+
+## 2026-06-13 扩展：首页上游阻断保留 smoke 证据新鲜度
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.upstreamBlocker` 继续补齐最近 smoke 证据字段：
+  - `evidencePath`
+  - `evidenceStatusCode`
+  - `evidenceErrorCode`
+  - `evidenceModel`
+  - `evidenceResponsesOk`
+  - `evidenceLocalProxyOk`
+  - `evidenceAgeMinutes`
+  - `evidenceStale`
+  - `evidenceStaleThresholdMinutes`
+  - `evidenceFreshMinutesRemaining`
+  - `evidenceStaleAt`
+- Admin 首页“上游阻断”行会把 smoke 路径、模型、证据是否过期、证据年龄、HTTP 状态和代理错误码拼入摘要。
+- 阻断卡片也会在修复建议下方展示同一段 smoke 证据新鲜度。
+- 该能力只提炼已有 `primaryIssue` 或 `primarySample` 字段，不触发新的 Sub2API 调用或真实 OpenAI/Codex 请求。
+
+这样当 `/v1/responses` smoke 证据已经过期时，管理员不必展开第二条 `localProxySmoke` 检查，也能在首屏上游阻断摘要里看到“需要重新跑端到端自检”。

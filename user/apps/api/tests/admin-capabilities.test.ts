@@ -273,7 +273,18 @@ test("dashboard latest system health preview exposes actionable upstream blocker
             actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.",
             resourceList: true,
             resourceType: "codex",
-            resourceScope: "production"
+            resourceScope: "production",
+            proxyRequestPath: "/v1/responses",
+            proxyRequestStatusCode: 503,
+            proxyRequestErrorCode: "upstream_http_503",
+            model: "gpt-5.3-codex",
+            responsesOk: false,
+            localProxyOk: false,
+            ageMinutes: 1_448,
+            stale: true,
+            staleThresholdMinutes: 1_440,
+            freshMinutesRemaining: 0,
+            staleAt: "2026-06-12T20:13:33.340Z"
           }]
         }
       },
@@ -297,6 +308,17 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.resourceList, true);
   assert.equal(preview.upstreamBlocker?.resourceType, "codex");
   assert.equal(preview.upstreamBlocker?.resourceScope, "production");
+  assert.equal(preview.upstreamBlocker?.evidencePath, "/v1/responses");
+  assert.equal(preview.upstreamBlocker?.evidenceStatusCode, 503);
+  assert.equal(preview.upstreamBlocker?.evidenceErrorCode, "upstream_http_503");
+  assert.equal(preview.upstreamBlocker?.evidenceModel, "gpt-5.3-codex");
+  assert.equal(preview.upstreamBlocker?.evidenceResponsesOk, false);
+  assert.equal(preview.upstreamBlocker?.evidenceLocalProxyOk, false);
+  assert.equal(preview.upstreamBlocker?.evidenceAgeMinutes, 1_448);
+  assert.equal(preview.upstreamBlocker?.evidenceStale, true);
+  assert.equal(preview.upstreamBlocker?.evidenceStaleThresholdMinutes, 1_440);
+  assert.equal(preview.upstreamBlocker?.evidenceFreshMinutesRemaining, 0);
+  assert.equal(preview.upstreamBlocker?.evidenceStaleAt, "2026-06-12T20:13:33.340Z");
   assert.equal(preview.upstreamBlocker?.check.primaryIssue?.actionHint, "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.");
 });
 

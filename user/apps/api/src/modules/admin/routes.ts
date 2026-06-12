@@ -288,6 +288,17 @@ interface DashboardUpstreamBlockerPreview {
   resourceList?: string | number | boolean | null;
   resourceType?: string | number | boolean | null;
   resourceScope?: string | number | boolean | null;
+  evidencePath?: string | null;
+  evidenceStatusCode?: number | null;
+  evidenceErrorCode?: string | null;
+  evidenceModel?: string | null;
+  evidenceResponsesOk?: boolean | null;
+  evidenceLocalProxyOk?: boolean | null;
+  evidenceAgeMinutes?: number | null;
+  evidenceStale?: boolean | null;
+  evidenceStaleThresholdMinutes?: number | null;
+  evidenceFreshMinutesRemaining?: number | null;
+  evidenceStaleAt?: string | null;
   check: DashboardHealthCheckPreview;
 }
 
@@ -5694,6 +5705,17 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,
     resourceType: dashboardHealthScalarValue(detail.resourceType) ?? null,
     resourceScope: dashboardHealthScalarValue(detail.resourceScope) ?? null,
+    evidencePath: textJsonValue(detail.proxyRequestPath) ?? null,
+    evidenceStatusCode: dashboardDetailNumber(detail, "proxyRequestStatusCode"),
+    evidenceErrorCode: textJsonValue(detail.proxyRequestErrorCode) ?? null,
+    evidenceModel: textJsonValue(detail.model) ?? null,
+    evidenceResponsesOk: dashboardDetailBoolean(detail, "responsesOk"),
+    evidenceLocalProxyOk: dashboardDetailBoolean(detail, "localProxyOk"),
+    evidenceAgeMinutes: dashboardDetailNumber(detail, "ageMinutes"),
+    evidenceStale: dashboardDetailBoolean(detail, "stale"),
+    evidenceStaleThresholdMinutes: dashboardDetailNumber(detail, "staleThresholdMinutes"),
+    evidenceFreshMinutesRemaining: dashboardDetailNumber(detail, "freshMinutesRemaining"),
+    evidenceStaleAt: textJsonValue(detail.staleAt) ?? null,
     check
   };
 }
@@ -5777,6 +5799,16 @@ function dashboardHealthMetricPreview(value: unknown): DashboardHealthMetricPrev
 function dashboardMetricNumber(metrics: DashboardHealthMetricPreview, field: string) {
   const value = metrics[field];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dashboardDetailNumber(detail: DashboardHealthDetailPreview, field: string) {
+  const value = detail[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dashboardDetailBoolean(detail: DashboardHealthDetailPreview, field: string) {
+  const value = detail[field];
+  return typeof value === "boolean" ? value : null;
 }
 
 function dashboardHealthScalarValue(value: unknown) {

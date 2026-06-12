@@ -190,6 +190,17 @@ interface DashboardUpstreamBlocker {
   resourceList?: string | number | boolean | null;
   resourceType?: string | number | boolean | null;
   resourceScope?: string | number | boolean | null;
+  evidencePath?: string | null;
+  evidenceStatusCode?: number | null;
+  evidenceErrorCode?: string | null;
+  evidenceModel?: string | null;
+  evidenceResponsesOk?: boolean | null;
+  evidenceLocalProxyOk?: boolean | null;
+  evidenceAgeMinutes?: number | null;
+  evidenceStale?: boolean | null;
+  evidenceStaleThresholdMinutes?: number | null;
+  evidenceFreshMinutesRemaining?: number | null;
+  evidenceStaleAt?: string | null;
   check: DashboardHealthCheckPreview;
 }
 
@@ -2891,6 +2902,7 @@ function DashboardView({
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
   const upstreamBlocker = latestHealth?.upstreamBlocker ?? null;
+  const upstreamBlockerEvidence = upstreamBlocker ? dashboardUpstreamBlockerEvidenceText(upstreamBlocker) : "";
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -2963,6 +2975,7 @@ function DashboardView({
                   </div>
                   <p>{upstreamBlocker.summary}</p>
                   {upstreamBlocker.actionHint && <small>{upstreamBlocker.actionHint}</small>}
+                  {upstreamBlockerEvidence && <small>{upstreamBlockerEvidence}</small>}
                   <div className="health-preview-actions">
                     {(upstreamBlocker.issueCount > 0 || upstreamBlocker.sampleCount > 0) && (
                       <small>{upstreamBlocker.issueCount} issue / {upstreamBlocker.sampleCount} sample</small>
@@ -6133,11 +6146,42 @@ function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) 
 
 function dashboardUpstreamBlockerText(blocker: DashboardUpstreamBlocker) {
   const status = blocker.blocked ? "阻断" : "警告";
-  return `${status} / ${blocker.label} / ${blocker.summary}`;
+  const evidence = dashboardUpstreamBlockerEvidenceText(blocker);
+  return `${status} / ${blocker.label} / ${blocker.summary}${evidence ? ` / ${evidence}` : ""}`;
 }
 
 function dashboardUpstreamBlockerActionLabel(blocker: DashboardUpstreamBlocker) {
   return dashboardHealthCheckTarget(blocker.check)?.label ?? "打开巡检详情";
+}
+
+function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker) {
+  if (
+    !blocker.evidencePath
+    && !blocker.evidenceModel
+    && !blocker.evidenceStatusCode
+    && !blocker.evidenceErrorCode
+    && typeof blocker.evidenceAgeMinutes !== "number"
+    && typeof blocker.evidenceStale !== "boolean"
+    && typeof blocker.evidenceFreshMinutesRemaining !== "number"
+    && !blocker.evidenceStaleAt
+  ) return "";
+  const freshness = blocker.evidenceStale
+    ? "smoke 证据已过期"
+    : typeof blocker.evidenceFreshMinutesRemaining === "number"
+      ? `smoke 证据有效，${blocker.evidenceFreshMinutesRemaining} 分钟后过期`
+      : "smoke 证据有效";
+  const age = typeof blocker.evidenceAgeMinutes === "number" ? `${blocker.evidenceAgeMinutes} 分钟前` : "";
+  const failure = blocker.evidenceStatusCode
+    ? `HTTP ${blocker.evidenceStatusCode}${blocker.evidenceErrorCode ? ` / ${blocker.evidenceErrorCode}` : ""}`
+    : blocker.evidenceErrorCode ?? "";
+  return [
+    blocker.evidencePath,
+    blocker.evidenceModel,
+    freshness,
+    age,
+    failure,
+    blocker.evidenceStaleAt ? `过期于 ${blocker.evidenceStaleAt}` : ""
+  ].filter(Boolean).join(" / ");
 }
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {
