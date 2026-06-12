@@ -48,3 +48,10 @@
 - `adminSystemHealthSampleSummaryFields` 新增 `productName`。
 - 完整可用性巡检页在展示 `productCatalog`、`resources`、`resourceCredentials`、`sub2`、`localProxySmoke` 等跨链路问题时，会同时显示商品名、商品 ID 和价格 ID。
 - Admin 测试覆盖 issue ref 与 sample summary 都保留 `productName`，避免后续只保留 UUID 而丢失人类可读定位信息。
+
+## 2026-06-13 追加：巡检商品入口支持商品名搜索
+
+- 共享包新增 `adminProductLookupCandidate()`，统一选择 `productId`、`priceId`、`productName` 作为商品管理页搜索关键词。
+- Admin 首页关键巡检项与完整 `可用性巡检` 详情页共用同一选择顺序，避免两处“打开商品”的行为不一致。
+- 当线上巡检证据只有可读商品名、没有商品 ID 或价格 ID 时，管理员仍可直接从巡检行跳到商品管理列表。
+- Admin 测试覆盖商品定位优先级，确保后续调整不会丢失商品名兜底。

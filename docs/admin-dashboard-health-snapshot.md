@@ -178,3 +178,13 @@
 - 当线上 `productCatalog`、`resources`、`resourceCredentials`、`sub2` 或 `localProxySmoke` 问题携带商品上下文时，管理员在详情行中可以直接看到商品名、商品 ID 和价格 ID。
 
 该能力不改变首页关键巡检排序、跳转目标、资源 ready 判定或 Sub2/OpenAI 调用，只让巡检详情中的商品定位更适合人工排障。
+
+## 2026-06-13 扩展：完整巡检商品跳转支持商品名兜底
+
+完整 `可用性巡检` 页和首页关键巡检项现在统一使用共享的 `adminProductLookupCandidate()` 选择商品跳转关键词：
+
+- 优先使用 `productId`。
+- 其次使用 `priceId`。
+- 如果线上巡检证据只保留了 `productName`，仍然可以通过商品名打开商品管理列表。
+
+这样在 `productCatalog`、`resources`、`resourceCredentials`、`sub2` 或 `localProxySmoke` 问题只携带商品名时，管理员不需要复制可读名称再手动搜索，行内“打开商品”仍然能落到对应商品筛选入口。

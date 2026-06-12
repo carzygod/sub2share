@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  adminProductLookupCandidate,
   adminNavigationItems,
   adminSystemHealthIssueRefFields,
   adminSystemHealthSampleSummaryFields,
@@ -68,6 +69,24 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthSampleSummaryFields.includes("apiKeyId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("usageId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("walletTransactionId"));
+});
+
+test("system health product lookup falls back to product names", () => {
+  assert.equal(adminProductLookupCandidate({
+    productId: "prod-codex",
+    priceId: "price-monthly",
+    productName: "Codex Pro"
+  }), "prod-codex");
+  assert.equal(adminProductLookupCandidate({
+    priceId: "price-monthly",
+    productName: "Codex Pro"
+  }), "price-monthly");
+  assert.equal(adminProductLookupCandidate({
+    productName: "Codex Pro"
+  }), "Codex Pro");
+  assert.equal(adminProductLookupCandidate({
+    productName: ""
+  }), undefined);
 });
 
 test("sub2 repair context summarizes operator drilldown targets", () => {

@@ -284,6 +284,10 @@ export function inspectAdminSurfaceCoverage() {
   };
 }
 
+export function adminProductLookupCandidate(source: { productId?: unknown; priceId?: unknown; productName?: unknown } | null | undefined) {
+  return textField(source?.productId) ?? textField(source?.priceId) ?? textField(source?.productName);
+}
+
 function duplicateValues(values: string[]) {
   const seen = new Set<string>();
   const duplicates = new Set<string>();
@@ -292,4 +296,10 @@ function duplicateValues(values: string[]) {
     seen.add(value);
   }
   return [...duplicates];
+}
+
+function textField(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return undefined;
 }

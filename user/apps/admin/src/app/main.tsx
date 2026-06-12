@@ -1,6 +1,7 @@
 import { FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  adminProductLookupCandidate,
   adminNavigationItems,
   adminSystemHealthIssueRefFields,
   adminSystemHealthSampleSummaryFields,
@@ -6143,7 +6144,7 @@ function dashboardHealthHasWalletLookup(record: DashboardHealthDetailPreview | u
 
 function dashboardHealthProductLookup(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
-  return textValue(record?.productId) ?? textValue(record?.priceId) ?? textValue(record?.productName);
+  return adminProductLookupCandidate(record);
 }
 
 function dashboardHealthCanOpenResourceRepair(check: DashboardHealthCheckPreview) {
@@ -6258,7 +6259,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId) ?? refTypeLookup(refType, refId, "usage"),
-      productLookup: textValue(record.productId) ?? textValue(record.priceId),
+      productLookup: adminProductLookupCandidate(record),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId) ?? refTypeLookup(refType, refId, "settlement"),
       withdrawalLookup: textValue(record.withdrawalId) ?? refTypeLookup(refType, refId, "withdrawal"),
       sub2AccountId: textValue(record.sub2AccountId),
@@ -6321,7 +6322,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       sub2Status: sub2StatusFlag,
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId) ?? refTypeLookup(refType, refId, "usage"),
-      productLookup: textValue(record.productId) ?? textValue(record.priceId),
+      productLookup: adminProductLookupCandidate(record),
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId) ?? refTypeLookup(refType, refId, "settlement"),
       withdrawalLookup: textValue(record.withdrawalId) ?? refTypeLookup(refType, refId, "withdrawal"),
       auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
