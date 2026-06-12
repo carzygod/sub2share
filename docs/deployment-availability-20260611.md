@@ -4619,3 +4619,62 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 系统健康页现在能在负余额发生时保留具体钱包 issue，并让管理员从统一可用性巡检页直达异常余额账户或用户详情。当前线上余额账户巡检为 ok，没有负余额样本；账务对账也为 ok。真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断，需要补齐上游账号凭据后才能完成最终端到端可用性验收。
+
+## 2026-06-12 15:58 系统巡检维修动作摘要发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`2006512`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=2006512`
+  - `deployed_at=20260612T075833Z`
+- 本次能力：Admin 可用性巡检的问题样本与候选样本摘要会显式展示 `repairAction`，当前 Sub2/OpenAI 账号修复链路会显示 `apply_openai_refresh_token_to_sub2_account`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/shared run build`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，4/4。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：79/79 通过。
+  - Admin tests：4/4 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/tmp/sub2share-user-2006512.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=2006512`
+  - `resourceCredentials.detail.issues[0].repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `sub2.detail.issues[0].repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `resources.detail.issues[0].repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `localProxySmoke.detail.issues[0].repairAction=apply_openai_refresh_token_to_sub2_account`
+  - `localProxySmoke.detail.issues[0].requestId=c3c3450f-5b06-4c72-aad4-449af98b6beb`
+
+### 结论
+
+管理员现在能在统一巡检页的问题摘要中直接看到推荐维修动作，不必只从 actionHint 文案推断。当前线上四个与 OpenAI/Codex 可用性相关的问题样本已经统一指向 `apply_openai_refresh_token_to_sub2_account`，下一步仍需要提供有效 OpenAI refresh token 或 active Sub2 OpenAI 账号，才能让真实 `/v1/responses` smoke 通过。
