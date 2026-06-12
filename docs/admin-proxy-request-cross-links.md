@@ -25,6 +25,21 @@
 - 系统健康页、订单详情、租赁详情和全局反代请求列表之间的排障路径更短。
 - 复用既有列表筛选、详情加载和权限边界，不新增绕过后台入口的隐藏操作。
 
+## 2026-06-13 扩展：上游失败日志直达反代状态修复
+
+- `反代请求` 列表行新增条件动作：`反代状态`。
+- 该动作只在日志指向上游或代理可用性问题时显示：
+  - 上游 HTTP 状态码 `>=400`。
+  - 客户端最终状态码 `>=500`。
+  - `errorCode` 以 `upstream_` 开头。
+  - `errorCode` 为 `upstream_timeout`、`upstream_unavailable`。
+  - `errorCode` 为 `upstream_stream_error`、`upstream_stream_closed`、`upstream_stream_idle_timeout`。
+- 点击后会打开 `反代状态` 页，并带入 request id、日志 id、上游 request id、路径、状态码、错误码和模型。
+- `/v1/responses` 失败会在修复上下文中标记 `responsesOk=false`，便于管理员应用 OpenAI refresh token 后直接运行端到端 smoke。
+- 本地准入拒绝，例如 `missing_api_key`，不会展示该动作，避免把用户侧或本地 Key 问题误判为 Sub2/OpenAI 上游凭据问题。
+
+这样管理员从首页阻断卡片进入失败日志后，可以在同一行继续进入 Sub2/OpenAI 凭据修复，不需要再回到完整巡检页面复制失败证据。
+
 ## 验证
 
 - `pnpm.cmd --filter @zyz/api run typecheck`

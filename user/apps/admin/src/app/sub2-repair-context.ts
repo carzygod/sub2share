@@ -86,6 +86,17 @@ export interface ProxyRequestFilterTarget {
   value: string;
 }
 
+export interface ProxyRequestRepairCandidate {
+  id?: unknown;
+  requestId?: unknown;
+  upstreamRequestId?: unknown;
+  path?: unknown;
+  model?: unknown;
+  statusCode?: unknown;
+  upstreamStatusCode?: unknown;
+  errorCode?: unknown;
+}
+
 export interface Sub2RepairContextItem {
   label: string;
   value: string;
@@ -191,6 +202,43 @@ export function proxyRequestFilterTarget(candidate: ProxyRequestFilterCandidate)
   return status ? { kind: "status", value: status } : null;
 }
 
+export function proxyRequestShouldOpenSub2Repair(candidate: ProxyRequestRepairCandidate) {
+  const errorCode = repairCandidateText(candidate.errorCode);
+  const statusCode = repairCandidateNumber(candidate.statusCode);
+  const upstreamStatusCode = repairCandidateNumber(candidate.upstreamStatusCode);
+
+  return Boolean(
+    (upstreamStatusCode !== null && upstreamStatusCode >= 400)
+    || (statusCode !== null && statusCode >= 500)
+    || errorCode.startsWith("upstream_")
+    || ["upstream_timeout", "upstream_unavailable", "upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"].includes(errorCode)
+  );
+}
+
+export function proxyRequestRepairContext(candidate: ProxyRequestRepairCandidate): Sub2RepairContext | null {
+  if (!proxyRequestShouldOpenSub2Repair(candidate)) return null;
+
+  const statusCode = repairCandidateScalarText(candidate.statusCode);
+  const upstreamStatusCode = repairCandidateScalarText(candidate.upstreamStatusCode);
+  const proxyRequestStatusCode = upstreamStatusCode || statusCode;
+  const proxyRequestPath = repairCandidateText(candidate.path);
+  return {
+    checkId: "proxyRequests",
+    checkLabel: "反代请求日志",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    requestId: repairCandidateText(candidate.requestId) || undefined,
+    proxyRequestLogId: repairCandidateText(candidate.id) || undefined,
+    upstreamRequestId: repairCandidateText(candidate.upstreamRequestId) || undefined,
+    proxyRequestPath: proxyRequestPath || undefined,
+    proxyRequestStatusCode: proxyRequestStatusCode || undefined,
+    proxyRequestErrorCode: repairCandidateText(candidate.errorCode) || undefined,
+    model: repairCandidateText(candidate.model) || undefined,
+    responsesOk: proxyRequestPath.includes("/v1/responses") ? "false" : undefined,
+    localProxyOk: "false"
+  };
+}
+
 export function resourceCreateDefaultsProductText(defaults: ResourceCreateDefaults) {
   return [
     defaults.productName,
@@ -258,8 +306,22 @@ function repairCandidateText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
+function repairCandidateScalarText(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return repairCandidateText(value);
+}
+
 function boolish(value: unknown) {
   if (typeof value === "boolean") return value;
   if (typeof value === "string") return value.trim().toLowerCase() === "true";
   return false;
+}
+
+function repairCandidateNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+  return null;
 }

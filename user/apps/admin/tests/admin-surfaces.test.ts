@@ -16,6 +16,8 @@ import {
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
   proxyRequestFilterTarget,
+  proxyRequestRepairContext,
+  proxyRequestShouldOpenSub2Repair,
   resourceRepairActionShouldOpenResources,
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
@@ -241,6 +243,49 @@ test("dashboard proxy request targets prefer exact lookup before failure buckets
     proxyRequestFilterStatus: "local_rejection"
   }), { kind: "status", value: "local_rejection" });
   assert.equal(proxyRequestFilterTarget({}), null);
+});
+
+test("proxy request rows expose Sub2 repair context for upstream failures", () => {
+  const upstreamFailure = {
+    id: "log-1",
+    requestId: "req-local",
+    upstreamRequestId: "req-upstream",
+    path: "/v1/responses",
+    model: "gpt-5.3-codex",
+    statusCode: 503,
+    upstreamStatusCode: 503,
+    errorCode: "upstream_http_503"
+  };
+
+  assert.equal(proxyRequestShouldOpenSub2Repair(upstreamFailure), true);
+  assert.deepEqual(proxyRequestRepairContext(upstreamFailure), {
+    checkId: "proxyRequests",
+    checkLabel: "反代请求日志",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    requestId: "req-local",
+    proxyRequestLogId: "log-1",
+    upstreamRequestId: "req-upstream",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: "503",
+    proxyRequestErrorCode: "upstream_http_503",
+    model: "gpt-5.3-codex",
+    responsesOk: "false",
+    localProxyOk: "false"
+  });
+
+  assert.equal(proxyRequestShouldOpenSub2Repair({
+    requestId: "req-missing-key",
+    path: "/v1/models",
+    statusCode: 401,
+    errorCode: "missing_api_key"
+  }), false);
+  assert.equal(proxyRequestRepairContext({
+    requestId: "req-missing-key",
+    path: "/v1/models",
+    statusCode: 401,
+    errorCode: "missing_api_key"
+  }), null);
 });
 
 test("resource create defaults expose repair context for operators", () => {

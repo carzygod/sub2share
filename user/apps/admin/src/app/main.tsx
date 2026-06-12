@@ -42,6 +42,7 @@ import {
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
   proxyRequestFilterTarget,
+  proxyRequestRepairContext,
   resourceRepairActionShouldOpenResources,
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
@@ -2857,6 +2858,7 @@ function App() {
             onOpenApiKey={openApiKeyCandidate}
             onOpenProduct={openProductCandidate}
             onOpenUsage={openUsageCandidate}
+            onOpenSub2Status={openSub2StatusCandidate}
           />
         )}
         {view === "suppliers" && (
@@ -5401,7 +5403,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
   );
 }
 
-function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId, onOpenUser, onOpenOrder, onOpenRental, onOpenApiKey, onOpenProduct, onOpenUsage }: {
+function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId, onOpenUser, onOpenOrder, onOpenRental, onOpenApiKey, onOpenProduct, onOpenUsage, onOpenSub2Status }: {
   logs: ProxyRequestLogRow[];
   onCopyRequestId: (requestId: string) => void;
   onOpenUser: (userId: string) => void;
@@ -5410,6 +5412,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
   onOpenApiKey: (lookup: string) => void;
   onOpenProduct: (lookup: string) => void;
   onOpenUsage: (lookup: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -5431,6 +5434,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
           const productId = log.rental?.productId;
           const apiKeyLookup = log.apiKeyId ?? log.apiKey?.id ?? log.apiKeyPrefix ?? log.apiKey?.keyPrefix;
           const usageLookup = log.upstreamRequestId ?? log.requestId;
+          const sub2RepairContext = proxyRequestRepairContext(log);
           return (
             <tr key={log.id}>
               <td>
@@ -5461,6 +5465,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
                   {apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(apiKeyLookup)}>API Key</button>}
                   {productId && <button className="secondary mini" onClick={() => onOpenProduct(productId)}>商品</button>}
                   <button className="secondary mini" onClick={() => onOpenUsage(usageLookup)}>用量</button>
+                  {sub2RepairContext && <button className="secondary mini" onClick={() => onOpenSub2Status(sub2RepairContext)}>反代状态</button>}
                 </div>
               </td>
             </tr>
