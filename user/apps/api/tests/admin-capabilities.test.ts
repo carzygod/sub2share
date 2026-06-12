@@ -90,6 +90,21 @@ test("dashboard health previews prioritize blocking checks and retain critical o
       detail: { samples: [{ id: "sync-state", sampleType: "scheduler_state", repairAction: "enable_billing_sync" }] }
     },
     {
+      id: "payments",
+      label: "支付充值",
+      status: "warning",
+      summary: "生产环境仍启用 mock 充值",
+      detail: {
+        issues: [{
+          id: "production_mock_recharge",
+          walletTransactionList: true,
+          walletTransactionType: "recharge",
+          walletList: true,
+          salesList: true
+        }]
+      }
+    },
+    {
       id: "customError",
       label: "自定义异常",
       status: "error",
@@ -104,11 +119,14 @@ test("dashboard health previews prioritize blocking checks and retain critical o
     }
   ]);
 
-  assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "billingSync", "adminCapabilities"]);
+  assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "payments", "billingSync", "adminCapabilities"]);
   assert.equal(previews[0].issueCount, 2);
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(previews[0].primaryIssue?.sub2AccountId, 2);
-  assert.equal(previews[2].sampleCount, 1);
-  assert.equal(previews[2].primarySample?.sampleType, "scheduler_state");
-  assert.equal(previews[2].primarySample?.repairAction, "enable_billing_sync");
+  assert.equal(previews[2].primaryIssue?.walletTransactionList, true);
+  assert.equal(previews[2].primaryIssue?.walletTransactionType, "recharge");
+  assert.equal(previews[2].primaryIssue?.salesList, true);
+  assert.equal(previews[3].sampleCount, 1);
+  assert.equal(previews[3].primarySample?.sampleType, "scheduler_state");
+  assert.equal(previews[3].primarySample?.repairAction, "enable_billing_sync");
 });

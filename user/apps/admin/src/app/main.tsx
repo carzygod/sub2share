@@ -1870,6 +1870,26 @@ function App() {
       return;
     }
 
+    if (check.id === "payments") {
+      const transactionLookup = dashboardHealthWalletTransactionLookup(record);
+      if (transactionLookup) {
+        await openWalletTransactionCandidate(transactionLookup);
+        return;
+      }
+      if (dashboardHealthHasWalletTransactionFilter(record)) {
+        await openWalletTransactionsCandidate({ type: textValue(record?.walletTransactionType) });
+        return;
+      }
+      if (dashboardHealthHasWalletLookup(record)) {
+        await openWalletCandidate(textValue(record?.walletLookup) ?? textValue(record?.walletId)!);
+        return;
+      }
+      if (textValue(record?.salesList)?.toLowerCase() === "true") {
+        await openSalesCandidate();
+        return;
+      }
+    }
+
     const target = dashboardHealthCheckTarget(check);
     if (target) await refresh(target.view);
   }
@@ -5673,6 +5693,9 @@ function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view:
     return { view: "resources", label: "打开共享资源" };
   }
   if (checkId === "proxy") return { view: "proxyRequests", label: "打开反代请求" };
+  if (checkId === "payments" && dashboardHealthHasWalletTransactionFilter(dashboardHealthDetailRecord(check))) {
+    return { view: "walletTransactions", label: "打开充值流水" };
+  }
   if (["salesDelivery", "payments"].includes(checkId)) return { view: "sales", label: "打开售出情况" };
   if (checkId === "apiKeys") return { view: "apiKeys", label: "打开 API Key" };
   if (["billingSync", "pendingUsageBilling"].includes(checkId)) return { view: "usages", label: "打开用量记录" };
@@ -5744,6 +5767,18 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
   };
 }
 
+function dashboardHealthWalletTransactionLookup(record: DashboardHealthDetailPreview | undefined) {
+  return textValue(record?.walletTransactionId);
+}
+
+function dashboardHealthHasWalletTransactionFilter(record: DashboardHealthDetailPreview | undefined) {
+  return textValue(record?.walletTransactionList)?.toLowerCase() === "true" || Boolean(textValue(record?.walletTransactionType));
+}
+
+function dashboardHealthHasWalletLookup(record: DashboardHealthDetailPreview | undefined) {
+  return Boolean(textValue(record?.walletLookup) ?? textValue(record?.walletId));
+}
+
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
   if (!record) return "";
@@ -5758,7 +5793,11 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "resourceScope",
     "supplierEmail",
     "requestId",
-    "proxyRequestLogId"
+    "proxyRequestLogId",
+    "walletTransactionType",
+    "walletTransactionId",
+    "walletLookup",
+    "walletId"
   ];
   return fields
     .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)

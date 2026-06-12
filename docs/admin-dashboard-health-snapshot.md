@@ -73,6 +73,17 @@
 - 当资源或资源凭据问题携带 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 或 `sub2AccountId` 时，按钮打开 `共享资源`，并带入筛选与创建默认值。
 - 首页上下文摘要新增展示 `resourceStatus`，便于管理员在首页确认资源状态与跳转筛选口径。
 
+## 2026-06-12 扩展：支付巡检充值流水直达
+
+首页关键巡检项继续细化 `payments` 的跳转口径：
+
+- `GET /api/admin/dashboard` 的关键巡检详情预览保留 `walletTransactionList`、`walletTransactionType`、`walletTransactionId`、`walletLookup`、`walletList` 和 `salesList`。
+- `payments` 被纳入关键巡检优先级，生产环境 mock 充值或充值关闭 warning/error 会稳定进入首页列表。
+- 当 `payments` 问题携带 `walletTransactionId` 时，行内按钮直接打开对应余额流水搜索结果。
+- 当问题携带 `walletTransactionList=true` 或 `walletTransactionType=recharge` 时，行内按钮打开 `余额流水` 并筛选充值流水。
+- 当只携带钱包定位字段时，行内按钮打开 `余额管理`；当只携带 `salesList=true` 时，仍打开 `售出情况` 作为收入复核后备入口。
+- 首页摘要会展示 `walletTransactionType`、`walletTransactionId`、`walletLookup` 和 `walletId`，便于管理员确认本次跳转是充值流水复核而不是售出交付复核。
+
 ## 管理价值
 
 - 管理员进入后台首页即可看到真实巡检状态，而不是静态提示。
@@ -82,6 +93,7 @@
 - 管理员可以从首页问题预览直接进入对应管理入口，减少从总览页到维修页的跳转成本。
 - 管理员可以从经营指标直接进入用户、共享、余额、售出和供给收益管理页面。
 - 管理员从指标进入列表时默认看到与指标口径一致的数据集，减少二次筛选。
+- 管理员从首页支付巡检 warning 可以优先进入充值流水，快速确认余额入账影响，再按需进入售出情况复核收入口径。
 
 ## 验收方式
 

@@ -198,8 +198,14 @@ const dashboardHealthDetailPreviewFields = [
   "proxyRequestLogId",
   "upstreamRequestId",
   "auditLogId",
+  "walletTransactionList",
+  "walletTransactionType",
+  "walletTransactionId",
+  "walletLookup",
+  "walletList",
   "walletId",
   "userId",
+  "salesList",
   "message"
 ] as const;
 
@@ -5048,6 +5054,7 @@ const dashboardHealthCheckPriority = [
   "localProxySmoke",
   "resourceCredentials",
   "resources",
+  "payments",
   "openAiProxyContract",
   "openAiProxyRuntime",
   "proxy",
