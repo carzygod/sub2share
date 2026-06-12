@@ -141,7 +141,11 @@ interface DashboardHealthCheckPreview {
   summary: string;
   issueCount: number;
   sampleCount: number;
+  primaryIssue?: DashboardHealthDetailPreview;
+  primarySample?: DashboardHealthDetailPreview;
 }
+
+type DashboardHealthDetailPreview = Record<string, string | number | boolean | null>;
 
 interface Dashboard {
   users: number;
@@ -2659,6 +2663,7 @@ function DashboardView({
                 <div className="dashboard-health-list">
                   {criticalChecks.map((check) => {
                     const target = dashboardHealthCheckTarget(check.id);
+                    const context = dashboardHealthPreviewContext(check);
                     return (
                       <div className="dashboard-health-item" key={check.id}>
                         <div className={healthRowClass(check.status)}>
@@ -2666,6 +2671,7 @@ function DashboardView({
                           <strong>{check.label}</strong>
                         </div>
                         <p>{check.summary}</p>
+                        {context && <small>{context}</small>}
                         <div className="health-preview-actions">
                           {(check.issueCount > 0 || check.sampleCount > 0) && (
                             <small>{check.issueCount} issue / {check.sampleCount} sample</small>
@@ -5605,6 +5611,27 @@ function dashboardHealthCheckTarget(checkId: string): { view: View; label: strin
     return { view: "systemHealth", label: "打开巡检详情" };
   }
   return null;
+}
+
+function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
+  const record = check.primaryIssue ?? check.primarySample;
+  if (!record) return "";
+  const fields = [
+    "repairAction",
+    "sub2AccountId",
+    "sub2AccountName",
+    "accountStatus",
+    "credentialsStatus",
+    "resourceType",
+    "resourceScope",
+    "supplierEmail",
+    "requestId",
+    "proxyRequestLogId"
+  ];
+  return fields
+    .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
+    .filter(Boolean)
+    .join(" / ");
 }
 
 function deliveryStatusText(status: DeliverySummary["status"]) {

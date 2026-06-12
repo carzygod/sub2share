@@ -25,6 +25,7 @@
 - 关键项优先覆盖 Sub2/OpenAI 上游、本地反代 smoke、资源凭据、共享资源、OpenAI 反代契约、反代运行态、售出交付、API Key、用量同步、pending usage、账务对账、管理员 API 覆盖、Admin 前端入口覆盖和部署运行态。
 - 非 `ok` 检查项会优先排序；系统正常时仍保留关键 `ok` 项，作为首页入口的覆盖证据。
 - 每个预览项包含 `id`、`label`、`status`、`summary`、`issueCount` 和 `sampleCount`。
+- 每个预览项会带出首个问题或候选样本的轻量摘要，包含 `repairAction`、`sub2AccountId`、`resourceType`、`resourceScope`、`supplierEmail`、`requestId` 或 `proxyRequestLogId` 等字段，首页可直接显示推荐维修动作和定位对象。
 - Admin 首页在 `系统状态` 面板展示这些预览项，并提供直接进入 `可用性巡检` 的按钮。
 
 ## 2026-06-12 扩展：关键巡检项直达入口

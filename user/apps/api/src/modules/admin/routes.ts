@@ -172,7 +172,35 @@ interface DashboardHealthCheckPreview {
   summary: string;
   issueCount: number;
   sampleCount: number;
+  primaryIssue?: DashboardHealthDetailPreview;
+  primarySample?: DashboardHealthDetailPreview;
 }
+
+type DashboardHealthDetailPreview = Record<string, string | number | boolean | null>;
+
+const dashboardHealthDetailPreviewFields = [
+  "id",
+  "type",
+  "sampleType",
+  "severity",
+  "repairAction",
+  "sub2AccountId",
+  "sub2AccountName",
+  "accountStatus",
+  "credentialsStatus",
+  "schedulable",
+  "resourceId",
+  "resourceType",
+  "resourceScope",
+  "supplierEmail",
+  "requestId",
+  "proxyRequestLogId",
+  "upstreamRequestId",
+  "auditLogId",
+  "walletId",
+  "userId",
+  "message"
+] as const;
 
 interface AdminSurfaceCoverageIssue {
   id: string;
@@ -5064,17 +5092,41 @@ function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPrevie
   if (!id || !label || !status || !summary) return null;
 
   const detail = jsonObject(record.detail);
-  const issues = Array.isArray(detail?.issues) ? detail.issues.length : 0;
-  const samples = Array.isArray(detail?.samples) ? detail.samples.length : 0;
+  const issueRows = Array.isArray(detail?.issues) ? detail.issues : [];
+  const sampleRows = Array.isArray(detail?.samples) ? detail.samples : [];
+  const primaryIssue = dashboardHealthDetailPreview(issueRows[0]);
+  const primarySample = dashboardHealthDetailPreview(sampleRows[0]);
 
   return {
     id,
     label,
     status,
     summary,
-    issueCount: issues,
-    sampleCount: samples
+    issueCount: issueRows.length,
+    sampleCount: sampleRows.length,
+    ...(primaryIssue ? { primaryIssue } : {}),
+    ...(primarySample ? { primarySample } : {})
   };
+}
+
+function dashboardHealthDetailPreview(value: unknown): DashboardHealthDetailPreview | null {
+  const record = jsonObject(value);
+  if (!record) return null;
+
+  const preview: DashboardHealthDetailPreview = {};
+  for (const field of dashboardHealthDetailPreviewFields) {
+    const value = dashboardHealthScalarValue(record[field]);
+    if (value !== undefined) preview[field] = value;
+  }
+
+  return Object.keys(preview).length > 0 ? preview : null;
+}
+
+function dashboardHealthScalarValue(value: unknown) {
+  if (typeof value === "string") return value.trim() ? value : undefined;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (value === null) return null;
+  return undefined;
 }
 
 function dashboardHealthCheckRank(id: string) {

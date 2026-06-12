@@ -87,7 +87,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
       label: "用量同步",
       status: "warning",
       summary: "用量同步超过 60 分钟未成功",
-      detail: { samples: [{ id: "sync-state" }] }
+      detail: { samples: [{ id: "sync-state", sampleType: "scheduler_state", repairAction: "enable_billing_sync" }] }
     },
     {
       id: "customError",
@@ -100,11 +100,15 @@ test("dashboard health previews prioritize blocking checks and retain critical o
       label: "Sub2/OpenAI 上游",
       status: "error",
       summary: "阻断：openai_group_has_no_active_accounts",
-      detail: { issues: [{ id: "account-2" }, { id: "account-3" }] }
+      detail: { issues: [{ id: "account-2", repairAction: "apply_openai_refresh_token_to_sub2_account", sub2AccountId: 2 }, { id: "account-3" }] }
     }
   ]);
 
   assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "billingSync", "adminCapabilities"]);
   assert.equal(previews[0].issueCount, 2);
+  assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(previews[0].primaryIssue?.sub2AccountId, 2);
   assert.equal(previews[2].sampleCount, 1);
+  assert.equal(previews[2].primarySample?.sampleType, "scheduler_state");
+  assert.equal(previews[2].primarySample?.repairAction, "enable_billing_sync");
 });
