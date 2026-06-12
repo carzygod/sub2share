@@ -28,7 +28,7 @@
 - 售出交付：扫描近期 `paid`、`provisioning`、`active` 订单，检查租赁、endpoint、Sub2 Key 和 active 本地 API Key 是否完整。
 - 租赁可用性：检查 active 租赁是否已过期，以及 low_balance、limited、suspended 等受限租赁。
 - API Key 可用性：检查 OpenAI/Codex 本地反代 active Key 是否能通过用户、钱包、租赁、到期时间和 Key hash 准入条件。
-- 余额账户：检查钱包可用余额或冻结余额是否出现负数。
+- 余额账户：检查钱包可用余额或冻结余额是否出现负数；出现负数时返回最近钱包问题样本，包含 `walletId`、`walletAccountId`、`userId`、`userEmail`、`availableBalance`、`frozenBalance` 和 `updatedAt`，便于管理员直接打开余额账户或用户详情。
 - OAuth State：检查 OAuth state 存储是否适合当前环境；生产环境内存存储或 Redis 不可达会标记 error。
 - Auth Tokens：检查 access/refresh token 有效期配置，以及生产环境是否使用独立的 `JWT_REFRESH_SECRET`。
 - 部署运行态：检查 API 当前进程 cwd、release root 和 `.release-marker`；当进程仍运行在 `user-replaced-*` 旧 release 或 `user.new-*` staging 目录时标记 error。

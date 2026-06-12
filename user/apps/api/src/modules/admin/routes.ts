@@ -3352,12 +3352,20 @@ async function buildSystemHealthReport() {
       { rental: nonSmokeRentalWhere() }
     ]
   };
+  const negativeWalletWhere: Prisma.WalletAccountWhereInput = {
+    ...nonSmokeWalletWhere(),
+    OR: [
+      { availableBalance: { lt: 0 } },
+      { frozenBalance: { lt: 0 } }
+    ]
+  };
   const [
     userCounts,
     activeRentals,
     overdueActiveRentals,
     constrainedRentals,
     negativeWallets,
+    negativeWalletSamples,
     orderCounts,
     orderStatusReadiness,
     resourceCounts,
@@ -3386,14 +3394,19 @@ async function buildSystemHealthReport() {
     prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
     prisma.rental.count({ where: { status: "active", endsAt: { lte: checkedAt }, ...nonSmokeRentalWhere() } }),
     prisma.rental.count({ where: { status: { in: ["low_balance", "limited", "suspended"] }, ...nonSmokeRentalWhere() } }),
-    prisma.walletAccount.count({
-      where: {
-        ...nonSmokeWalletWhere(),
-        OR: [
-          { availableBalance: { lt: 0 } },
-          { frozenBalance: { lt: 0 } }
-        ]
-      }
+    prisma.walletAccount.count({ where: negativeWalletWhere }),
+    prisma.walletAccount.findMany({
+      where: negativeWalletWhere,
+      select: {
+        id: true,
+        userId: true,
+        availableBalance: true,
+        frozenBalance: true,
+        updatedAt: true,
+        user: { select: { email: true, displayName: true, status: true } }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 20
     }),
     prisma.order.groupBy({ by: ["status"], where: nonSmokeOrderWhere(), _count: true }),
     inspectOrderStatusReadiness(),
@@ -3535,13 +3548,7 @@ async function buildSystemHealthReport() {
       apiKeyReadiness.summary,
       { issues: apiKeyReadiness.issues }
     ),
-    systemHealthCheck(
-      "wallets",
-      "余额账户",
-      negativeWallets > 0 ? "error" : "ok",
-      negativeWallets > 0 ? `${negativeWallets} 个钱包出现负余额` : "余额账户未发现负数",
-      { negativeWallets }
-    ),
+    walletHealthCheck(negativeWallets, negativeWalletSamples),
     systemHealthCheck(
       "oauthStateStore",
       "OAuth State",
@@ -4913,6 +4920,68 @@ function systemHealthCheck(
   detail?: unknown
 ): SystemHealthCheck {
   return { id, label, status, summary, metrics, detail };
+}
+
+type WalletHealthSample = {
+  id: string;
+  userId: string;
+  availableBalance: Prisma.Decimal;
+  frozenBalance: Prisma.Decimal;
+  updatedAt?: Date | null;
+  user?: {
+    email?: string | null;
+    displayName?: string | null;
+    status?: string | null;
+  } | null;
+};
+
+export function walletHealthCheck(negativeWallets: number, samples: WalletHealthSample[]) {
+  const issues = samples.flatMap((wallet) => {
+    const base = {
+      walletId: wallet.id,
+      walletAccountId: wallet.id,
+      userId: wallet.userId,
+      userEmail: wallet.user?.email ?? null,
+      userStatus: wallet.user?.status ?? null,
+      availableBalance: decimalText(wallet.availableBalance),
+      frozenBalance: decimalText(wallet.frozenBalance),
+      updatedAt: wallet.updatedAt?.toISOString() ?? null
+    };
+    const walletIssues: Array<Record<string, string | number | boolean | null>> = [];
+
+    if (wallet.availableBalance.lt(0)) {
+      walletIssues.push({
+        id: `negative_available_balance:${wallet.id}`,
+        type: "negative_available_balance",
+        severity: "error",
+        amount: decimalText(wallet.availableBalance),
+        message: `Wallet ${wallet.id} available balance is negative.`,
+        ...base
+      });
+    }
+
+    if (wallet.frozenBalance.lt(0)) {
+      walletIssues.push({
+        id: `negative_frozen_balance:${wallet.id}`,
+        type: "negative_frozen_balance",
+        severity: "error",
+        amount: decimalText(wallet.frozenBalance),
+        message: `Wallet ${wallet.id} frozen balance is negative.`,
+        ...base
+      });
+    }
+
+    return walletIssues;
+  });
+
+  return systemHealthCheck(
+    "wallets",
+    "余额账户",
+    negativeWallets > 0 ? "error" : "ok",
+    negativeWallets > 0 ? `${negativeWallets} 个钱包出现负余额` : "余额账户未发现负数",
+    { negativeWallets, issueSamples: issues.length },
+    issues.length > 0 ? { issues } : undefined
+  );
 }
 
 export function sub2BindingHealthCheck(sub2Bindings: {

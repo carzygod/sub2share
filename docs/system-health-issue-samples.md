@@ -35,6 +35,7 @@
 - Pending 用量账务巡检发现待恢复扣费 usage 时，管理员可以直接看到 usage、租赁、用户、待扣金额、待结算金额和积压时长。
 - 支付充值配置巡检发现生产 mock 充值或禁用充值时，管理员可以一键打开余额列表、余额流水和售出情况；如果 issue 带 `walletTransactionType=recharge`，余额流水会直接筛选充值类型。
 - 账务对账巡检发现用量扣费、钱包流水、供给方结算或提现分配不一致时，会把 `reconciliation.detail.issues` 暴露到统一问题样本；`refType=usage` 可打开用量，`refType=wallet_transaction` 可打开具体余额流水，`refType=settlement` 可打开结算，`refType=withdrawal` 可打开提现。
+- 余额账户巡检发现可用余额或冻结余额为负数时，会把 `wallets.detail.issues` 暴露到统一问题样本；样本包含 `walletId`、`walletAccountId`、`userId`、`userEmail`、`userStatus`、`availableBalance` 和 `frozenBalance`，管理员可直接打开异常钱包或用户详情。
 - 反代请求巡检发现 4xx、5xx、本地错误、客户端断开或上游流异常时，管理员可以从巡检页一键进入对应请求日志，查看状态码、上游状态码、上游 request id、错误码、模型、路径、耗时和关联租赁/Key。
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 资源凭据巡检发现没有 active 可应用 refresh token 时，会从 Sub2/OpenAI 巡检结果中暴露 `sub2_account_repair_candidate`，让管理员直接看到可优先补 token 的 Sub2 账号 ID、名称、状态、凭据状态和调度状态。
