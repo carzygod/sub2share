@@ -54,5 +54,5 @@ OPENAI_PROXY_PUBLIC_ENDPOINT=https://api.example.com/v1
 3. 确认订单返回的 `endpointUrl` 指向 API 服务的 `/v1`。
 4. 使用售出的 Key 请求 `${endpointUrl}/models`，预期进入本系统反代并返回 `x-proxy-request-id`；如果 Sub2API/OpenAI 返回上游 request id，后台 `反代请求` 日志会记录为 `upstreamRequestId`。
 5. 使用售出的 Key 请求 `${endpointUrl}` 或 `${endpointUrl}/`，预期不会被本地 API 404 提前截断，而是进入本系统反代并返回 `x-proxy-request-id`。
-6. 浏览器端调用时确认响应包含 `Access-Control-Expose-Headers`，且前端代码可读取 `x-proxy-request-id` 和常见上游 request id 响应头。
+6. 浏览器端调用时确认响应包含 `Access-Control-Expose-Headers`，且前端代码可读取 `x-proxy-request-id`、常见上游 request id、`retry-after` 和 `x-ratelimit-*` 响应头。
 7. 在后台运行 `反代状态 -> 端到端自检`，确认 `localProxy.endpoint` 与生产 API `/v1` 一致。

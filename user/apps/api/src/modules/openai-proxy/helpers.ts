@@ -1,6 +1,16 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
 export const upstreamRequestIdHeaderNames = ["x-request-id", "openai-request-id", "x-openai-request-id", "request-id"] as const;
-export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames];
+export const openAiProxyRateLimitHeaderNames = [
+  "retry-after",
+  "retry-after-ms",
+  "x-ratelimit-limit-requests",
+  "x-ratelimit-limit-tokens",
+  "x-ratelimit-remaining-requests",
+  "x-ratelimit-remaining-tokens",
+  "x-ratelimit-reset-requests",
+  "x-ratelimit-reset-tokens"
+] as const;
+export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames, ...openAiProxyRateLimitHeaderNames];
 export const proxyRequestLookupHeaderNames = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames] as const;
 export const openAiProxyRouteBasePath = "/v1";
 export const openAiProxyRoutePath = "/v1/*";
@@ -165,6 +175,7 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
 
   const corsExposesRequestId = openAiProxyCorsExposedHeaders.includes(proxyRequestIdHeaderName);
   const corsExposesUpstreamRequestIds = upstreamRequestIdHeaderNames.every((headerName) => openAiProxyCorsExposedHeaders.includes(headerName));
+  const corsExposesRateLimitHeaders = openAiProxyRateLimitHeaderNames.every((headerName) => openAiProxyCorsExposedHeaders.includes(headerName));
   if (!corsExposesRequestId) {
     issues.push({
       type: "request_id_header_not_exposed",
@@ -177,6 +188,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       type: "upstream_request_id_headers_not_exposed",
       severity: "error",
       message: "CORS must expose upstream request id headers for browser-side OpenAI proxy diagnostics"
+    });
+  }
+  if (!corsExposesRateLimitHeaders) {
+    issues.push({
+      type: "rate_limit_headers_not_exposed",
+      severity: "error",
+      message: "CORS must expose retry-after and OpenAI rate limit headers for browser-side OpenAI proxy clients"
     });
   }
   if (!supportsAllV1ChildPaths) {
@@ -279,9 +297,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesModelMetadata,
       requestIdHeader: proxyRequestIdHeaderName,
       upstreamRequestIdHeaders: upstreamRequestIdHeaderNames.join(","),
+      rateLimitHeaders: openAiProxyRateLimitHeaderNames.join(","),
       proxyRequestLookupHeaders: proxyRequestLookupHeaderNames.join(","),
       corsExposesRequestId,
       corsExposesUpstreamRequestIds,
+      corsExposesRateLimitHeaders,
       normalizesProxyRequestLookupHeaders,
       requestBodyMode: openAiProxyForwardingContract.requestBodyMode,
       parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,

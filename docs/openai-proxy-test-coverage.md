@@ -135,3 +135,23 @@ pnpm.cmd --filter @zyz/api run build
 - 单元测试覆盖每个响应头名称都能被规范化为纯 request id。
 
 这项补齐让 CORS 暴露给浏览器和 SDK 的本地/上游 request id，都能进入同一套后台排障搜索口径。
+
+## 2026-06-13 追补：浏览器端限流响应头契约
+
+- 新增 `openAiProxyRateLimitHeaderNames`，覆盖：
+  - `retry-after`
+  - `retry-after-ms`
+  - `x-ratelimit-limit-requests`
+  - `x-ratelimit-limit-tokens`
+  - `x-ratelimit-remaining-requests`
+  - `x-ratelimit-remaining-tokens`
+  - `x-ratelimit-reset-requests`
+  - `x-ratelimit-reset-tokens`
+- `openAiProxyCorsExposedHeaders` 会同时暴露本地 request id、上游 request id 和上述限流/重试头。
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `rateLimitHeaders`
+  - `corsExposesRateLimitHeaders`
+- 当 CORS 没有暴露限流/重试头时，`openAiProxyContract` 返回 `rate_limit_headers_not_exposed`。
+- API CORS 测试确认真实 `Access-Control-Expose-Headers` 包含 `retry-after` 和 `x-ratelimit-*`。
+
+这项补齐让浏览器端 OpenAI/Codex 客户端在遇到本地或上游 429 时，可以读取重试间隔和余量信息，减少只能依赖后台日志排查限流的情况。

@@ -24,7 +24,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com,https://a
 
 - 生产环境显式拒绝 `*`，避免恢复任意 Origin。
 - `Access-Control-Allow-Methods` 显式复用本地 OpenAI/Codex 反代方法集合：`GET,HEAD,POST,PUT,PATCH,DELETE`。
-- API 仍通过 `Access-Control-Expose-Headers` 暴露本地 `x-proxy-request-id` 和常见上游 request id 响应头，方便浏览器端排障 OpenAI/Codex 反代请求。
+- API 仍通过 `Access-Control-Expose-Headers` 暴露本地 `x-proxy-request-id`、常见上游 request id、`retry-after` 和 `x-ratelimit-*` 响应头，方便浏览器端排障 OpenAI/Codex 反代请求与限流状态。
 - `GET /api/admin/system-health` 新增 `corsPolicy` 检查项：
   - 生产环境没有可解析白名单时标记 error。
   - 生产环境配置 `*` 时标记 error。
@@ -36,7 +36,7 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com,https://a
 - 管理员可以在可用性巡检里确认生产 API 不再接受任意 Origin。
 - 当后台或用户端域名新增时，可通过 `CORS_ALLOWED_ORIGINS` 明确扩展，不需要改代码。
 - 浏览器端 OpenAI/Codex 客户端可以对 `/v1/*` 使用和本地反代路由一致的方法集合，不会因为 CORS preflight 与代理路由漂移而失败。
-- 浏览器端仍能读取 `x-proxy-request-id`；如果上游返回 request id，也能一并读取，不会牺牲反代排障体验。
+- 浏览器端仍能读取 `x-proxy-request-id`；如果上游返回 request id、重试间隔或 rate limit 余量，也能一并读取，不会牺牲反代排障体验。
 
 ## 验证方式
 

@@ -3,9 +3,9 @@ import test from "node:test";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { apiCorsOptions, buildApiCorsOptions, inspectApiCorsPolicy } from "../src/common/cors.js";
-import { openAiProxyCorsExposedHeaders, openAiProxyRouteMethods, proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
+import { openAiProxyCorsExposedHeaders, openAiProxyRateLimitHeaderNames, openAiProxyRouteMethods, proxyRequestIdHeaderName } from "../src/modules/openai-proxy/helpers.js";
 
-test("api cors exposes local and upstream proxy request id headers on browser requests", async () => {
+test("api cors exposes proxy diagnostics and rate limit headers on browser requests", async () => {
   const app = Fastify({ logger: false });
   try {
     await app.register(cors, apiCorsOptions);
@@ -25,6 +25,8 @@ test("api cors exposes local and upstream proxy request id headers on browser re
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers["access-control-allow-origin"], "https://app.example.test");
     assert.equal(response.headers["access-control-expose-headers"], openAiProxyCorsExposedHeaders.join(", "));
+    assert.ok(csvHeaderValues(response.headers["access-control-expose-headers"]).includes("retry-after"));
+    assert.ok(openAiProxyRateLimitHeaderNames.every((headerName) => csvHeaderValues(response.headers["access-control-expose-headers"]).includes(headerName)));
     assert.equal(response.headers[proxyRequestIdHeaderName], "req-browser");
   } finally {
     await app.close();
@@ -103,6 +105,8 @@ test("api cors policy reports production wildcard and missing origins", () => {
   assert.equal(nonProduction.ok, true);
   assert.equal(nonProduction.summary.enforced, false);
   assert.equal(nonProduction.summary.allowedMethods, openAiProxyRouteMethods.join(","));
+  assert.ok(nonProduction.summary.exposesHeaders.includes("retry-after"));
+  assert.ok(nonProduction.summary.exposesHeaders.includes("x-ratelimit-remaining-requests"));
 });
 
 function csvHeaderValues(value: string | string[] | number | undefined) {

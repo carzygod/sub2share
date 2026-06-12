@@ -14,6 +14,7 @@ import {
   openAiProxyErrorPayload,
   openAiProxyErrorType,
   openAiProxyCorsExposedHeaders,
+  openAiProxyRateLimitHeaderNames,
   openAiProxyRouteMethods,
   openAiProxyRoutePath,
   openAiProxyRoutePaths,
@@ -204,8 +205,10 @@ test("normalizes copied proxy request id headers for admin search", () => {
   assert.equal(normalizeProxyRequestLookup("   "), "");
 });
 
-test("exposes local and upstream request id headers to browser clients", () => {
-  assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames]);
+test("exposes local diagnostics and rate limit headers to browser clients", () => {
+  assert.deepEqual(openAiProxyCorsExposedHeaders, [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames, ...openAiProxyRateLimitHeaderNames]);
+  assert.ok(openAiProxyCorsExposedHeaders.includes("retry-after"));
+  assert.ok(openAiProxyCorsExposedHeaders.includes("x-ratelimit-remaining-requests"));
 });
 
 test("extracts upstream request ids from common OpenAI and gateway headers", () => {
@@ -272,9 +275,11 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
   assert.equal(result.summary.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
+  assert.equal(result.summary.rateLimitHeaders, "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens");
   assert.equal(result.summary.proxyRequestLookupHeaders, "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(result.summary.corsExposesRequestId, true);
   assert.equal(result.summary.corsExposesUpstreamRequestIds, true);
+  assert.equal(result.summary.corsExposesRateLimitHeaders, true);
   assert.equal(result.summary.normalizesProxyRequestLookupHeaders, true);
   assert.equal(result.summary.requestBodyMode, "raw-buffer");
   assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
