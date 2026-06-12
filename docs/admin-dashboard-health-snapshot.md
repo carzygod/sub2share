@@ -447,3 +447,18 @@
 - API 单元测试锁定每个类别对应的 Prisma 查询条件。
 
 这样管理员可以直接筛出所有 OpenAI/Codex 反代失败、上游失败、本地准入拒绝、本地可用性问题或 stream 异常，用同一个反代请求列表完成问题定位。
+
+## 2026-06-13 扩展：阻断卡片直达反代失败日志
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.upstreamBlocker` 与 `deliveryBlocker` 新增失败日志跳转字段：
+  - `proxyRequestFilterStatus`
+  - `proxyRequestFilterLookup`
+- Dashboard 预览白名单补齐 `proxyRequestLookup` 与 `upstreamStatusCode`，避免完整巡检里已有的反代定位信息在首页被过滤。
+- 后端会优先返回精确 lookup；缺少 lookup 时按错误码、状态码和检查项类型映射到 `upstream_error`、`local_rejection`、`local_availability`、`stream_error`、`client_error` 或 `server_error`。
+- Admin 首页 `upstreamBlocker` 与 `deliveryBlocker` 卡片新增“打开失败日志”按钮。
+- 前端打开规则：
+  - 有 `proxyRequestFilterLookup` 时，用反代请求搜索框精确定位。
+  - 否则使用 `proxyRequestFilterStatus` 打开对应失败类别筛选。
+- API 单元测试覆盖 Dashboard 失败类别推导；Admin 单元测试覆盖 lookup 优先级。
+
+这样管理员在首页看到 Sub2/OpenAI 上游阻断或 Codex 交付阻断时，可以直接进入相关反代失败日志集合，再继续跳转到用户、租赁、售出订单、API Key 或用量记录。

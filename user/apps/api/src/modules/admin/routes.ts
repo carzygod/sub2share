@@ -316,6 +316,8 @@ interface DashboardUpstreamBlockerPreview {
   evidenceStaleThresholdMinutes?: number | null;
   evidenceFreshMinutesRemaining?: number | null;
   evidenceStaleAt?: string | null;
+  proxyRequestFilterStatus?: string | null;
+  proxyRequestFilterLookup?: string | null;
   credentialReadiness?: DashboardUpstreamCredentialReadinessPreview;
   check: DashboardHealthCheckPreview;
 }
@@ -353,6 +355,8 @@ interface DashboardDeliveryBlockerPreview {
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
   accountMessage?: string | null;
+  proxyRequestFilterStatus?: string | null;
+  proxyRequestFilterLookup?: string | null;
   check: DashboardHealthCheckPreview;
 }
 
@@ -397,10 +401,12 @@ const dashboardHealthDetailPreviewFields = [
   "productName",
   "priceId",
   "requestId",
+  "proxyRequestLookup",
   "proxyRequestLogId",
   "upstreamRequestId",
   "proxyRequestPath",
   "proxyRequestStatusCode",
+  "upstreamStatusCode",
   "proxyRequestErrorCode",
   "model",
   "modelsOk",
@@ -5915,6 +5921,7 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
 
   const detail = dashboardUpstreamBlockerDetail(check);
   const credentialReadiness = dashboardUpstreamCredentialReadinessPreview(previews);
+  const proxyRequestFilter = dashboardProxyRequestFilter(check, detail, "upstream");
   return {
     blocked: check.status === "error",
     status: check.status,
@@ -5948,6 +5955,8 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     evidenceStaleThresholdMinutes: dashboardDetailNumber(detail, "staleThresholdMinutes"),
     evidenceFreshMinutesRemaining: dashboardDetailNumber(detail, "freshMinutesRemaining"),
     evidenceStaleAt: textJsonValue(detail.staleAt) ?? null,
+    proxyRequestFilterStatus: proxyRequestFilter.status,
+    proxyRequestFilterLookup: proxyRequestFilter.lookup,
     ...(credentialReadiness ? { credentialReadiness } : {}),
     check
   };
@@ -5983,6 +5992,7 @@ function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBloc
   if (!check) return null;
 
   const detail = dashboardDeliveryBlockerDetail(check);
+  const proxyRequestFilter = dashboardProxyRequestFilter(check, detail, "delivery");
   return {
     blocked: true,
     status: check.status,
@@ -6008,6 +6018,8 @@ function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBloc
     credentialsStatus: textJsonValue(detail.credentialsStatus) ?? null,
     schedulable: dashboardDetailBoolean(detail, "schedulable"),
     accountMessage: textJsonValue(detail.accountMessage) ?? null,
+    proxyRequestFilterStatus: proxyRequestFilter.status,
+    proxyRequestFilterLookup: proxyRequestFilter.lookup,
     check
   };
 }
@@ -6039,6 +6051,50 @@ function dashboardDeliveryCheckRank(id: string) {
   if (id === "productCatalog") return 1;
   if (id === "resources") return 2;
   return 3;
+}
+
+export function dashboardProxyRequestStatusFilter(input: {
+  checkId?: string | null;
+  statusCode?: unknown;
+  upstreamStatusCode?: unknown;
+  errorCode?: unknown;
+}): string | null {
+  const errorCode = textJsonValue(input.errorCode);
+  const statusCode = dashboardNumericValue(input.statusCode);
+  const upstreamStatusCode = dashboardNumericValue(input.upstreamStatusCode);
+
+  if (errorCode && proxyStreamErrorCodeSet.has(errorCode)) return "stream_error";
+  if (errorCode && proxyLocalAvailabilityErrorCodeSet.has(errorCode)) return "local_availability";
+  if (errorCode && proxyClientRejectionErrorCodeSet.has(errorCode)) return "local_rejection";
+  if ((upstreamStatusCode ?? 0) >= 400 || errorCode?.startsWith("upstream_")) return "upstream_error";
+  if ((statusCode ?? 0) >= 500) return "server_error";
+  if ((statusCode ?? 0) >= 400) return "client_error";
+  if (errorCode) return "failed";
+  if (input.checkId === "sub2") return "upstream_error";
+  if (input.checkId === "localProxySmoke") return "failed";
+  if (input.checkId === "openAiProxyRuntime") return "local_availability";
+  return null;
+}
+
+function dashboardProxyRequestFilter(
+  check: DashboardHealthCheckPreview,
+  detail: DashboardHealthDetailPreview,
+  fallback: "upstream" | "delivery"
+) {
+  const lookup = [
+    detail.proxyRequestLookup,
+    detail.requestId,
+    detail.proxyRequestLogId,
+    detail.upstreamRequestId
+  ].map(textJsonValue).find(Boolean) ?? null;
+  const status = dashboardProxyRequestStatusFilter({
+    checkId: check.id,
+    statusCode: detail.proxyRequestStatusCode,
+    upstreamStatusCode: detail.upstreamStatusCode,
+    errorCode: detail.proxyRequestErrorCode
+  }) ?? (fallback === "upstream" && check.status === "error" ? "failed" : null);
+
+  return { lookup, status };
 }
 
 function dashboardUpstreamBlockerDetailIsActionable(detail: DashboardHealthDetailPreview | undefined) {
@@ -6138,6 +6194,15 @@ function dashboardMoneyLikeValue(value: string | number | Prisma.Decimal | null 
 function dashboardDetailNumber(detail: DashboardHealthDetailPreview, field: string) {
   const value = detail[field];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dashboardNumericValue(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 function dashboardDetailBoolean(detail: DashboardHealthDetailPreview, field: string) {

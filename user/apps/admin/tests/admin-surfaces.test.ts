@@ -15,6 +15,7 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  proxyRequestFilterTarget,
   resourceRepairActionShouldOpenResources,
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
@@ -228,6 +229,18 @@ test("product catalog repair action exposes shared resource drilldown", () => {
   assert.equal(resourceRepairActionShouldOpenResources({
     checkId: "productCatalog"
   }), false);
+});
+
+test("dashboard proxy request targets prefer exact lookup before failure buckets", () => {
+  assert.deepEqual(proxyRequestFilterTarget({
+    proxyRequestFilterLookup: "req_123",
+    proxyRequestFilterStatus: "upstream_error"
+  }), { kind: "lookup", value: "req_123" });
+  assert.deepEqual(proxyRequestFilterTarget({
+    proxyRequestFilterLookup: "",
+    proxyRequestFilterStatus: "local_rejection"
+  }), { kind: "status", value: "local_rejection" });
+  assert.equal(proxyRequestFilterTarget({}), null);
 });
 
 test("resource create defaults expose repair context for operators", () => {

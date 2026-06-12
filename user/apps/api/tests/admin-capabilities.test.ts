@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
@@ -92,6 +92,20 @@ test("proxy request status filters expose operational failure buckets", () => {
   });
   assert.deepEqual(proxyRequestStatusWhere(""), {});
   assert.deepEqual(proxyRequestStatusWhere("not-a-filter"), {});
+});
+
+test("dashboard proxy request status filters derive operational drilldown buckets", () => {
+  assert.equal(dashboardProxyRequestStatusFilter({ statusCode: "503" }), "server_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ statusCode: 401 }), "client_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ upstreamStatusCode: 503 }), "upstream_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ errorCode: "upstream_http_503" }), "upstream_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ errorCode: "missing_api_key" }), "local_rejection");
+  assert.equal(dashboardProxyRequestStatusFilter({ errorCode: "upstream_unavailable" }), "local_availability");
+  assert.equal(dashboardProxyRequestStatusFilter({ errorCode: "upstream_stream_idle_timeout" }), "stream_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ errorCode: "custom_proxy_error" }), "failed");
+  assert.equal(dashboardProxyRequestStatusFilter({ checkId: "sub2" }), "upstream_error");
+  assert.equal(dashboardProxyRequestStatusFilter({ checkId: "openAiProxyRuntime" }), "local_availability");
+  assert.equal(dashboardProxyRequestStatusFilter({}), null);
 });
 
 test("admin capability coverage reports missing declared routes", () => {
@@ -510,6 +524,8 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.evidenceStaleThresholdMinutes, 1_440);
   assert.equal(preview.upstreamBlocker?.evidenceFreshMinutesRemaining, 0);
   assert.equal(preview.upstreamBlocker?.evidenceStaleAt, "2026-06-12T20:13:33.340Z");
+  assert.equal(preview.upstreamBlocker?.proxyRequestFilterStatus, "upstream_error");
+  assert.equal(preview.upstreamBlocker?.proxyRequestFilterLookup, null);
   assert.equal(preview.upstreamBlocker?.credentialReadiness?.status, "error");
   assert.equal(preview.upstreamBlocker?.credentialReadiness?.summary, "Sub2 上游无 active 账号，且没有可应用的资源凭据");
   assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.encryptionSecretConfigured, true);
@@ -603,6 +619,8 @@ test("dashboard latest system health preview exposes actionable delivery blocker
   assert.equal(preview.deliveryBlocker?.credentialsStatus, "configured(3)");
   assert.equal(preview.deliveryBlocker?.schedulable, false);
   assert.equal(preview.deliveryBlocker?.accountMessage, "token_invalidated");
+  assert.equal(preview.deliveryBlocker?.proxyRequestFilterStatus, null);
+  assert.equal(preview.deliveryBlocker?.proxyRequestFilterLookup, null);
   assert.equal(preview.deliveryBlocker?.check.primaryIssue?.productName, "Codex 标准租赁");
 });
 

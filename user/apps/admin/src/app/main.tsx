@@ -41,6 +41,7 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  proxyRequestFilterTarget,
   resourceRepairActionShouldOpenResources,
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
@@ -210,6 +211,8 @@ interface DashboardUpstreamBlocker {
   evidenceStaleThresholdMinutes?: number | null;
   evidenceFreshMinutesRemaining?: number | null;
   evidenceStaleAt?: string | null;
+  proxyRequestFilterStatus?: string | null;
+  proxyRequestFilterLookup?: string | null;
   credentialReadiness?: DashboardUpstreamCredentialReadiness;
   check: DashboardHealthCheckPreview;
 }
@@ -247,6 +250,8 @@ interface DashboardDeliveryBlocker {
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
   accountMessage?: string | null;
+  proxyRequestFilterStatus?: string | null;
+  proxyRequestFilterLookup?: string | null;
   check: DashboardHealthCheckPreview;
 }
 
@@ -2545,6 +2550,8 @@ function App() {
             onOpenView={(nextView) => { void refresh(nextView); }}
             onOpenHealthCheck={(check) => { void openDashboardHealthCheck(check); }}
             onOpenHealthResources={(check) => { void openResourcesCandidate(dashboardHealthResourceFilter(dashboardHealthDetailRecord(check), check.id)); }}
+            onOpenProxyRequestLookup={(lookup) => { void openProxyRequestCandidate(lookup); }}
+            onOpenProxyRequestsByStatus={(status) => { void openStatusListCandidate("proxyRequests", status, `已打开 ${status} 反代失败日志`); }}
             onOpenActiveRentals={() => { void openStatusListCandidate("rentals", "active", "已打开 active 租赁通道"); }}
             onOpenOnlineResources={() => { void openResourcesCandidate({ status: "online" }); }}
             onOpenRechargeTransactions={() => { void openWalletTransactionsCandidate({ type: "recharge" }); }}
@@ -2980,6 +2987,8 @@ function DashboardView({
   onOpenView,
   onOpenHealthCheck,
   onOpenHealthResources,
+  onOpenProxyRequestLookup,
+  onOpenProxyRequestsByStatus,
   onOpenActiveRentals,
   onOpenOnlineResources,
   onOpenRechargeTransactions,
@@ -2996,6 +3005,8 @@ function DashboardView({
   onOpenView: (view: View) => void;
   onOpenHealthCheck: (check: DashboardHealthCheckPreview) => void;
   onOpenHealthResources: (check: DashboardHealthCheckPreview) => void;
+  onOpenProxyRequestLookup: (lookup: string) => void;
+  onOpenProxyRequestsByStatus: (status: string) => void;
   onOpenActiveRentals: () => void;
   onOpenOnlineResources: () => void;
   onOpenRechargeTransactions: () => void;
@@ -3013,10 +3024,12 @@ function DashboardView({
   const upstreamBlockerEvidence = upstreamBlocker ? dashboardUpstreamBlockerEvidenceText(upstreamBlocker) : "";
   const upstreamAccountDiagnosis = upstreamBlocker ? dashboardUpstreamAccountDiagnosisText(upstreamBlocker) : "";
   const upstreamCredentialReadiness = upstreamBlocker ? dashboardUpstreamCredentialReadinessText(upstreamBlocker.credentialReadiness) : "";
+  const upstreamProxyRequestTarget = upstreamBlocker ? proxyRequestFilterTarget(upstreamBlocker) : null;
   const deliveryBlocker = latestHealth?.deliveryBlocker ?? null;
   const deliveryBlockerContext = deliveryBlocker ? dashboardDeliveryBlockerContextText(deliveryBlocker) : "";
   const deliveryAccountDiagnosis = deliveryBlocker ? dashboardUpstreamAccountDiagnosisText(deliveryBlocker) : "";
   const deliveryResourceRepairTarget = deliveryBlocker ? dashboardHealthCanOpenResourceRepair(deliveryBlocker.check) : false;
+  const deliveryProxyRequestTarget = deliveryBlocker ? proxyRequestFilterTarget(deliveryBlocker) : null;
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -3116,6 +3129,16 @@ function DashboardView({
                     <button className="secondary mini" onClick={() => onOpenHealthCheck(upstreamBlocker.check)}>
                       <ChevronRight size={14} />{dashboardUpstreamBlockerActionLabel(upstreamBlocker)}
                     </button>
+                    {upstreamProxyRequestTarget && (
+                      <button
+                        className="secondary mini"
+                        onClick={() => upstreamProxyRequestTarget.kind === "lookup"
+                          ? onOpenProxyRequestLookup(upstreamProxyRequestTarget.value)
+                          : onOpenProxyRequestsByStatus(upstreamProxyRequestTarget.value)}
+                      >
+                        <ChevronRight size={14} />打开失败日志
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -3139,6 +3162,16 @@ function DashboardView({
                     {deliveryResourceRepairTarget && (
                       <button className="secondary mini" onClick={() => onOpenHealthResources(deliveryBlocker.check)}>
                         <ChevronRight size={14} />打开共享资源
+                      </button>
+                    )}
+                    {deliveryProxyRequestTarget && (
+                      <button
+                        className="secondary mini"
+                        onClick={() => deliveryProxyRequestTarget.kind === "lookup"
+                          ? onOpenProxyRequestLookup(deliveryProxyRequestTarget.value)
+                          : onOpenProxyRequestsByStatus(deliveryProxyRequestTarget.value)}
+                      >
+                        <ChevronRight size={14} />打开失败日志
                       </button>
                     )}
                   </div>

@@ -76,6 +76,16 @@ export interface ResourceRepairActionCandidate {
   sub2AccountId?: unknown;
 }
 
+export interface ProxyRequestFilterCandidate {
+  proxyRequestFilterLookup?: unknown;
+  proxyRequestFilterStatus?: unknown;
+}
+
+export interface ProxyRequestFilterTarget {
+  kind: "lookup" | "status";
+  value: string;
+}
+
 export interface Sub2RepairContextItem {
   label: string;
   value: string;
@@ -171,6 +181,14 @@ export function resourceRepairCandidateHasResourceFilter(candidate: ResourceRepa
 
 export function resourceRepairActionShouldOpenResources(candidate: ResourceRepairActionCandidate) {
   return repairCandidateText(candidate.checkId) === "productCatalog" && resourceRepairCandidateHasResourceFilter(candidate);
+}
+
+export function proxyRequestFilterTarget(candidate: ProxyRequestFilterCandidate): ProxyRequestFilterTarget | null {
+  const lookup = repairCandidateText(candidate.proxyRequestFilterLookup);
+  if (lookup) return { kind: "lookup", value: lookup };
+
+  const status = repairCandidateText(candidate.proxyRequestFilterStatus);
+  return status ? { kind: "status", value: status } : null;
 }
 
 export function resourceCreateDefaultsProductText(defaults: ResourceCreateDefaults) {
