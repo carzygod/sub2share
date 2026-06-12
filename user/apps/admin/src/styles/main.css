@@ -489,6 +489,37 @@ select option { color: #111; }
   grid-row: 1 / span 2;
   height: 100%;
 }
+.resource-link-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  max-width: 520px;
+}
+.resource-link-form.wide {
+  margin: 0 0 10px;
+  max-width: none;
+}
+.resource-link-form input[type="text"],
+.resource-link-form input:not([type]) {
+  flex: 1 1 180px;
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.resource-link-form label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.resource-link-form input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+}
 .resource-config-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

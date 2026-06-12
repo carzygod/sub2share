@@ -41,3 +41,10 @@
 - `admin navigation exposes the objective-critical entry points` 覆盖 `capabilities` 入口。
 
 这些测试确保能力矩阵覆盖核心管理范围，实际注册的后台路由与矩阵保持一致，并且每个能力操作都能从矩阵进入对应管理页面。
+
+## 2026-06-13 扩展：租赁共享资源归因操作
+
+- 能力矩阵新增 `rentals.assignSupplierResource`。
+- 后端操作为 `PATCH /api/admin/rentals/:id/supplier-resource`，仅 `admin` 可调用。
+- 前端入口目标为 `rentals`，管理员从租赁列表或详情完成共享资源归因绑定、ready 校验和清空归因。
+- 能力覆盖口径更新为 66 个声明操作、66 个已注册路由、66 个可达入口。

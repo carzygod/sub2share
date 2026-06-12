@@ -33,12 +33,13 @@ test("admin capability operations include frontend management targets", () => {
   const missingTargets = operations.filter((operation) => !operation.target);
   const targetById = new Map(operations.map((operation) => [operation.id, operation.target]));
 
-  assert.equal(operations.length, 65);
+  assert.equal(operations.length, 66);
   assert.deepEqual(missingTargets, []);
   assert.equal(targetById.get("users.updateRoles")?.view, "users");
   assert.equal(targetById.get("resources.applyCredential")?.view, "resources");
   assert.equal(targetById.get("wallets.adjust")?.view, "wallets");
   assert.equal(targetById.get("orders.retryProvision")?.view, "orders");
+  assert.equal(targetById.get("rentals.assignSupplierResource")?.view, "rentals");
   assert.equal(targetById.get("sales.list")?.view, "sales");
   assert.equal(targetById.get("usages.syncSub2")?.view, "usages");
   assert.equal(targetById.get("proxyRequests.list")?.view, "proxyRequests");
@@ -670,9 +671,9 @@ test("dashboard latest system health preview always exposes admin entry coverage
         metrics: {
           requiredAreas: 5,
           coveredRequiredAreas: 5,
-          totalOperations: 65,
-          registeredOperations: 65,
-          operationsWithTargets: 65,
+          totalOperations: 66,
+          registeredOperations: 66,
+          operationsWithTargets: 66,
           missingRoutes: 0,
           missingTargets: 0
         }
@@ -701,7 +702,7 @@ test("dashboard latest system health preview always exposes admin entry coverage
   assert.equal(preview.criticalChecks.some((check) => check.id === "adminCapabilities"), false);
   assert.equal(preview.criticalChecks.some((check) => check.id === "adminSurfaceCoverage"), false);
   assert.equal(preview.adminEntryCoverage?.ok, true);
-  assert.equal(preview.adminEntryCoverage?.summary, "API 5/5 核心范围，65/65 路由，65/65 入口 / 前端 5/5 核心范围，18 个列表入口，5 个关键入口");
+  assert.equal(preview.adminEntryCoverage?.summary, "API 5/5 核心范围，66/66 路由，66/66 入口 / 前端 5/5 核心范围，18 个列表入口，5 个关键入口");
   assert.equal(preview.adminEntryCoverage?.api?.metrics.missingRoutes, 0);
   assert.equal(preview.adminEntryCoverage?.api?.metrics.missingTargets, 0);
   assert.equal(preview.adminEntryCoverage?.frontend?.metrics.managedListViews, 18);

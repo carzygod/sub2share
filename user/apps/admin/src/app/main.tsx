@@ -239,6 +239,10 @@ interface DashboardDeliveryBlocker {
   productId?: string | null;
   productName?: string | null;
   priceId?: string | null;
+  orderId?: string | null;
+  rentalId?: string | null;
+  userId?: string | null;
+  userEmail?: string | null;
   supplierEmail?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
@@ -1798,6 +1802,42 @@ function App() {
     if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
   }
 
+  async function assignRentalSupplierResource(event: FormEvent<HTMLFormElement>, rentalId: string) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const supplierResourceId = optionalFormString(form, "supplierResourceId");
+    const requireReady = form.get("requireReady") === "on";
+    if (!supplierResourceId) {
+      setMessage("Shared resource ID is required");
+      return;
+    }
+    if (!confirmAdminAction("确认更新租赁共享资源归因？", `租赁 ID：${rentalId}\n共享资源 ID：${supplierResourceId}\n要求 ready：${requireReady ? "是" : "否"}`)) return;
+    const rental = await api<RentalRow>(`/api/admin/rentals/${rentalId}/supplier-resource`, {
+      method: "PATCH",
+      body: JSON.stringify({ supplierResourceId, requireReady })
+    });
+    setMessage(`Rental shared resource updated: ${rental.supplierResourceId ?? "-"}`);
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((item) => item.id === rentalId)) {
+      await openOrderDetail(selectedOrder.id);
+    }
+    if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
+  }
+
+  async function clearRentalSupplierResource(rentalId: string) {
+    if (!confirmAdminAction("确认清空租赁共享资源归因？", `租赁 ID：${rentalId}\n清空后 salesDelivery 巡检会把 Codex 租赁标记为缺少共享资源归因。`)) return;
+    const rental = await api<RentalRow>(`/api/admin/rentals/${rentalId}/supplier-resource`, {
+      method: "PATCH",
+      body: JSON.stringify({ supplierResourceId: null, requireReady: false })
+    });
+    setMessage(`Rental shared resource cleared: ${rental.id}`);
+    await refresh("rentals");
+    if (selectedOrder?.rentals.some((item) => item.id === rentalId)) {
+      await openOrderDetail(selectedOrder.id);
+    }
+    if (selectedRental?.id === rentalId) await openRentalDetail(rentalId);
+  }
+
   async function setApiKeyStatus(apiKeyId: string, status: string) {
     if (status !== "active" && !confirmAdminAction("确认停用 API Key？", `API Key ID：${apiKeyId}`)) return;
     await api(`/api/admin/api-keys/${apiKeyId}/status`, {
@@ -2808,6 +2848,8 @@ function App() {
             onCloseDetail={() => setSelectedRental(null)}
             onRentalStatus={setRentalStatus}
             onUpdateLimits={updateRentalLimits}
+            onAssignSupplierResource={assignRentalSupplierResource}
+            onClearSupplierResource={clearRentalSupplierResource}
             onApiKeyStatus={setApiKeyStatus}
             onRotateKey={rotateRentalKey}
             onExpireOverdue={expireOverdueRentals}
@@ -4892,13 +4934,15 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
   );
 }
 
-function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onAssignSupplierResource, onClearSupplierResource, onApiKeyStatus, onRotateKey, onExpireOverdue, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   selectedRental: RentalDetailRow | null;
   onDetail: (rentalId: string) => void;
   onCloseDetail: () => void;
   onRentalStatus: (rentalId: string, status: string) => void;
   onUpdateLimits: (event: FormEvent<HTMLFormElement>, rentalId: string) => void;
+  onAssignSupplierResource: (event: FormEvent<HTMLFormElement>, rentalId: string) => void;
+  onClearSupplierResource: (rentalId: string) => void;
   onApiKeyStatus: (apiKeyId: string, status: string) => void;
   onRotateKey: (rentalId: string) => void;
   onExpireOverdue: () => void;
@@ -4939,6 +4983,14 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
               {(rental.supplierResource?.id ?? rental.supplierResourceId) && (
                 <button type="button" className="secondary mini inline-action" onClick={() => onOpenResource((rental.supplierResource?.id ?? rental.supplierResourceId)!)}>资源</button>
               )}
+              <form className="resource-link-form" onSubmit={(event) => onAssignSupplierResource(event, rental.id)}>
+                <input name="supplierResourceId" defaultValue={rental.supplierResource?.id ?? rental.supplierResourceId ?? ""} placeholder="resource id" aria-label="Supplier resource ID" />
+                <label><input name="requireReady" type="checkbox" defaultChecked /> ready</label>
+                <button type="submit" className="secondary mini">保存</button>
+                {(rental.supplierResource?.id ?? rental.supplierResourceId) && (
+                  <button type="button" className="danger mini" onClick={() => onClearSupplierResource(rental.id)}>清空</button>
+                )}
+              </form>
             </td>
             <td><StatusPill status={rental.status} /></td>
             <td>
@@ -4997,6 +5049,8 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
           onOpenSettlement={onOpenSettlement}
           onOpenProxyRequest={onOpenProxyRequest}
           onOpenResource={onOpenResource}
+          onAssignSupplierResource={onAssignSupplierResource}
+          onClearSupplierResource={onClearSupplierResource}
         />
       )}
     </>
@@ -5088,7 +5142,7 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onOpenUser,
   );
 }
 
-function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource }: {
+function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource, onAssignSupplierResource, onClearSupplierResource }: {
   rental: RentalDetailRow;
   onClose: () => void;
   onOpenUser: (userId: string) => void;
@@ -5099,6 +5153,8 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
   onOpenSettlement: (lookup: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenResource: (resourceId: string) => void;
+  onAssignSupplierResource: (event: FormEvent<HTMLFormElement>, rentalId: string) => void;
+  onClearSupplierResource: (rentalId: string) => void;
 }) {
   const apiKeys = rental.apiKeys ?? [];
   const usages = rental.usages ?? [];
@@ -5146,6 +5202,14 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
 
       <section className="detail-grid">
         <DetailBlock title="Delivery">
+          <form className="resource-link-form wide" onSubmit={(event) => onAssignSupplierResource(event, rental.id)}>
+            <input name="supplierResourceId" defaultValue={rental.supplierResource?.id ?? rental.supplierResourceId ?? ""} placeholder="supplier resource id" aria-label="Supplier resource ID" />
+            <label><input name="requireReady" type="checkbox" defaultChecked /> require ready Codex resource</label>
+            <button type="submit" className="secondary mini">保存资源归因</button>
+            {(rental.supplierResource?.id ?? rental.supplierResourceId) && (
+              <button type="button" className="danger mini" onClick={() => onClearSupplierResource(rental.id)}>清空资源归因</button>
+            )}
+          </form>
           <MiniTable headers={["Field", "Value"]}>
             <tr><td>Rental ID</td><td><small>{rental.id}</small></td></tr>
             <tr><td>Status</td><td><StatusPill status={rental.status} /></td></tr>

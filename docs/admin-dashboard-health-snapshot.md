@@ -472,3 +472,12 @@
 - 首页摘要会展示订单、租赁、用户和资源上下文，管理员可以先修复生产 Codex 共享资源，再回到售出交付链路复查。
 
 这样租赁资源归因缺口不会只停留在完整巡检详情里，管理员从首页的交付阻断卡片即可进入正确的共享资源修复入口。
+
+## 2026-06-13 扩展：交付阻断可落到租赁归因修复
+
+- 当首页 `deliveryBlocker` 来自 `salesDelivery` 的 `rental_missing_supplier_resource` 或 `rental_supplier_resource_not_ready` 时，卡片继续保留订单、租赁、用户和共享资源上下文。
+- 管理员可以先从卡片进入共享资源页确认生产资源是否 ready，再进入租赁管理页用共享资源归因表单绑定 `supplierResourceId`。
+- 租赁侧修复调用 `PATCH /api/admin/rentals/:id/supplier-resource`，默认要求 Codex 资源 ready；清空或历史强制归因会留下审计日志。
+- 能力矩阵新增 `rentals.assignSupplierResource` 后，Dashboard、系统巡检和能力覆盖检查都能看到这条修复链路已具备后端路由和前端入口。
+
+这样首页交付阻断不只是“提示哪里坏了”，还可以沿着共享资源和租赁两个入口完成闭环维修。

@@ -47,3 +47,10 @@
 - `pnpm.cmd --filter @zyz/admin run typecheck`
 - `pnpm.cmd --filter @zyz/admin test`
 - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`
+
+## 2026-06-13 扩展：租赁共享资源归因入口
+
+- 能力矩阵新增售出范围操作 `rentals.assignSupplierResource`。
+- 该操作对应 `PATCH /api/admin/rentals/:id/supplier-resource`，用于管理员为租赁绑定或清空共享资源归因。
+- 页面中的入口按钮打开 `租赁通道`，管理员在租赁列表或详情中执行归因修复。
+- 覆盖摘要中的声明操作、已注册操作和可达入口均从 65 更新为 66。

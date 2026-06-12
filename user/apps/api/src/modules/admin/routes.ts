@@ -747,6 +747,12 @@ const rentalLimitsSchema = z.object({
   message: "At least one limit field must be provided"
 });
 
+const rentalSupplierResourceSchema = z.object({
+  supplierResourceId: z.union([z.string().trim().min(1).max(120), z.null()]),
+  requireReady: z.boolean().default(true),
+  note: z.string().trim().max(500).optional()
+});
+
 const apiKeyStatusSchema = z.object({
   status: z.enum(apiKeyStatuses)
 });
@@ -2192,6 +2198,98 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       });
     });
     await writeAuditLog(request, actor.id, "admin.rental.limits", "rental", id, before.limits, rental.limits);
+    return adminOk(reply, rental);
+  });
+
+  app.patch("/api/admin/rentals/:id/supplier-resource", async (request, reply) => {
+    const actor = await requireRole(request, ["admin"]);
+    const { id } = request.params as { id: string };
+    const input = rentalSupplierResourceSchema.parse(request.body ?? {});
+    const before = await prisma.rental.findUnique({
+      where: { id },
+      include: {
+        supplierResource: {
+          include: {
+            supplier: { include: { user: true } },
+            credential: { select: resourceCredentialSummarySelect }
+          }
+        }
+      }
+    });
+    if (!before) throw new AppError("rental_not_found", "Rental not found", 404);
+
+    let targetResource: Prisma.SupplierResourceGetPayload<{
+      include: {
+        supplier: { include: { user: true } };
+        credential: { select: typeof resourceCredentialSummarySelect };
+      };
+    }> | null = null;
+
+    if (input.supplierResourceId) {
+      targetResource = await prisma.supplierResource.findUnique({
+        where: { id: input.supplierResourceId },
+        include: {
+          supplier: { include: { user: true } },
+          credential: { select: resourceCredentialSummarySelect }
+        }
+      });
+      if (!targetResource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+      if (targetResource.resourceType !== before.resourceType) {
+        throw new AppError("rental_supplier_resource_type_mismatch", "Supplier resource type does not match the rental resource type", 400, {
+          rentalId: id,
+          rentalResourceType: before.resourceType,
+          supplierResourceId: targetResource.id,
+          supplierResourceType: targetResource.resourceType
+        });
+      }
+
+      if (input.requireReady && before.resourceType === "codex") {
+        const readyResource = await prisma.supplierResource.findFirst({
+          where: { id: targetResource.id, ...readyCodexSupplierResourceDeliveryWhere() },
+          select: { id: true }
+        });
+        if (!readyResource) {
+          throw new AppError("rental_supplier_resource_not_ready", "Codex rentals require an online production Codex shared resource with a Sub2 account and active OpenAI refresh token credential", 400, {
+            rentalId: id,
+            supplierResourceId: targetResource.id,
+            resourceType: targetResource.resourceType,
+            resourceStatus: targetResource.status,
+            sub2AccountId: targetResource.sub2AccountId,
+            credentialType: targetResource.credential?.credentialType ?? null,
+            credentialStatus: targetResource.credential?.status ?? null,
+            requireReady: input.requireReady
+          });
+        }
+      }
+    }
+
+    const rental = await prisma.rental.update({
+      where: { id },
+      data: { supplierResourceId: input.supplierResourceId },
+      include: {
+        user: true,
+        product: true,
+        limits: true,
+        order: true,
+        supplierResource: { include: { supplier: { include: { user: true } } } },
+        apiKeys: { orderBy: { createdAt: "desc" }, take: 5 }
+      }
+    });
+    await writeAuditLog(request, actor.id, "admin.rental.supplier_resource", "rental", id, {
+      supplierResourceId: before.supplierResourceId,
+      resourceType: before.supplierResource?.resourceType ?? null,
+      resourceStatus: before.supplierResource?.status ?? null,
+      sub2AccountId: before.supplierResource?.sub2AccountId ?? null,
+      supplierEmail: before.supplierResource?.supplier?.user?.email ?? null
+    }, {
+      supplierResourceId: rental.supplierResourceId,
+      resourceType: rental.supplierResource?.resourceType ?? null,
+      resourceStatus: rental.supplierResource?.status ?? null,
+      sub2AccountId: rental.supplierResource?.sub2AccountId ?? null,
+      supplierEmail: rental.supplierResource?.supplier?.user?.email ?? null,
+      requireReady: input.requireReady,
+      note: input.note
+    });
     return adminOk(reply, rental);
   });
 
