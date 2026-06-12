@@ -4033,8 +4033,14 @@ export function enrichSub2RepairContextChecks(
       if (!Array.isArray(rows)) continue;
       const nextRows = rows.map((row) => {
         const record = jsonObject(row);
-        if (!record || record.repairAction !== "apply_openai_refresh_token_to_sub2_account") return row;
+        if (!record) return row;
+        const sub2AccountRepairSample = isSub2AccountRepairSample(check.id, key, record);
+        if (record.repairAction !== "apply_openai_refresh_token_to_sub2_account" && !sub2AccountRepairSample) return row;
         const additions: Record<string, unknown> = {};
+        if (sub2AccountRepairSample) {
+          if (!record.repairAction) additions.repairAction = "apply_openai_refresh_token_to_sub2_account";
+          if (record.sub2Status !== true) additions.sub2Status = true;
+        }
         if (supplierEmail && !record.supplierEmail) additions.supplierEmail = supplierEmail;
         if (!record.resourceType) additions.resourceType = "codex";
         if (productContext && (!record.resourceType || record.resourceType === "codex")) {
@@ -4066,6 +4072,14 @@ export function enrichSub2RepairContextChecks(
 
     return changed ? { ...check, detail: nextDetail } : check;
   });
+}
+
+function isSub2AccountRepairSample(checkId: string, detailKey: "issues" | "samples", record: Record<string, unknown>) {
+  return checkId === "sub2"
+    && detailKey === "samples"
+    && record.sub2AccountId !== undefined
+    && record.sub2AccountId !== null
+    && (record.accountStatus !== undefined || record.credentialsStatus !== undefined || record.schedulable !== undefined);
 }
 
 function localProxySmokeRepairContextFields(checks: SystemHealthCheck[]) {

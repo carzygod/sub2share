@@ -69,6 +69,13 @@
 - `keyDisabled` 与 `proxyRequestLogCount` 用于保留临时 Key 清理和代理日志数量证据，帮助判断 smoke 是否完整跑完本地清理阶段。
 - 该扩展只透传脱敏审计定位，不暴露明文 API Key、Sub2 Key 或 OpenAI refresh token。
 
+## 2026-06-13 扩展：覆盖 Sub2 账号候选样本
+
+- `sub2.detail.samples[]` 的账号候选样本也会继承最新 `localProxySmoke` 失败证据。
+- 继承后样本行可携带 `repairAction`、`sub2Status`、`resourceType=codex`、失败路径、代理请求日志、新鲜度、`staleAt` 和 `auditLogId`。
+- 管理员从 Sub2 候选账号样本打开维修入口时，可以保留与主问题一致的 smoke 证据链。
+- 该扩展不触发 live smoke，只复用最近审计证据。
+
 ## 验证方式
 
 - `npm.cmd --prefix user/apps/api run typecheck`

@@ -102,3 +102,10 @@
 - 完整 `可用性巡检` 行内操作可以从这些继承后的问题直接 `打开审计`，不再只有 `localProxySmoke` 行具备审计跳转。
 - 同步保留 `keyDisabled` 和 `proxyRequestLogCount`，方便管理员确认临时 Key 清理和代理日志数量证据。
 - 该能力不改变 issue/sample 抽取数量，不读取或展示明文凭据。
+
+## 2026-06-13 扩展：Sub2 账号候选样本继承修复证据
+
+- `sub2.detail.samples[]` 中带 `sub2AccountId` 和账号诊断字段的候选样本会被识别为 `apply_openai_refresh_token_to_sub2_account` 修复候选。
+- 候选样本会补齐 `sub2Status=true`、`resourceType=codex`、smoke 失败路径、代理请求日志、审计记录、新鲜度和过期时间。
+- 完整 `可用性巡检` 的候选样本行进入 `反代状态` 时，不再丢失 `/v1/responses` 失败证据。
+- 该能力只增强样本上下文，不改变 Sub2 账号状态或真实 smoke 执行条件。

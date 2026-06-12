@@ -230,3 +230,10 @@
 - 首页 `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 主问题在携带 smoke 失败上下文时，也能保留产生证据的审计记录 ID。
 - 管理员从首页进入完整巡检后，可以沿同一条证据继续打开审计记录，确认 smoke 的脱敏执行结果。
 - 该能力只补齐审计定位字段，不改变首页关键巡检排序或健康状态判定。
+
+## 2026-06-13 扩展：首页 Sub2 候选样本保留修复上下文
+
+- `GET /api/admin/dashboard` 的 `sub2.primarySample` 来自账号候选样本时，也会继承 `repairAction`、`sub2Status`、`resourceType` 和 smoke/audit 证据。
+- 首页 Sub2 关键巡检既可以从主问题保留失败证据，也可以从候选样本保留同一证据。
+- 这样管理员打开完整巡检或反代状态时，不会因为点击样本行而丢失 `/v1/responses` 失败路径和审计记录。
+- 该能力只补齐 dashboard 预览数据，不改变关键巡检排序、状态聚合或 Sub2API 调用。

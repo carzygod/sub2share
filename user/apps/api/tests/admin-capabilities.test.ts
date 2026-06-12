@@ -413,6 +413,14 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
           type: "openai_group_has_no_active_accounts",
           repairAction: "apply_openai_refresh_token_to_sub2_account",
           actionHint: "Apply a valid token."
+        }],
+        samples: [{
+          id: "sub2_account:2",
+          sub2AccountId: 2,
+          sub2AccountName: "revoked",
+          accountStatus: "error",
+          credentialsStatus: "configured(3)",
+          schedulable: false
         }]
       }
     },
@@ -455,10 +463,13 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
   const resourceIssue = (checks[0].detail as { issues: Array<Record<string, unknown>> }).issues[0];
   const credentialIssue = (checks[1].detail as { issues: Array<Record<string, unknown>> }).issues[0];
   const sub2Issue = (checks[2].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  const sub2Sample = (checks[2].detail as { samples: Array<Record<string, unknown>> }).samples[0];
 
-  for (const issue of [resourceIssue, credentialIssue, sub2Issue]) {
+  for (const issue of [resourceIssue, credentialIssue, sub2Issue, sub2Sample]) {
     assert.equal(issue.auditLogId, "audit-smoke-1");
     assert.equal(issue.auditAction, "admin.sub2.proxy_smoke_test");
+    assert.equal(issue.repairAction, "apply_openai_refresh_token_to_sub2_account");
+    assert.equal(issue.resourceType, "codex");
     assert.equal(issue.model, "gpt-5.3-codex");
     assert.equal(issue.responsesOk, false);
     assert.equal(issue.localProxyOk, false);
@@ -476,4 +487,7 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
     assert.equal(issue.staleAt, "2026-06-12T20:13:33.340Z");
   }
   assert.equal(sub2Issue.actionHint, "Apply a valid token.");
+  assert.equal(sub2Sample.sub2Status, true);
+  assert.equal(sub2Sample.sub2AccountName, "revoked");
+  assert.equal(sub2Sample.accountStatus, "error");
 });
