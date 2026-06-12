@@ -1,6 +1,7 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
 export const upstreamRequestIdHeaderNames = ["x-request-id", "openai-request-id", "x-openai-request-id", "request-id"] as const;
 export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames];
+export const proxyRequestLookupHeaderNames = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames] as const;
 export const openAiProxyRouteBasePath = "/v1";
 export const openAiProxyRoutePath = "/v1/*";
 export const openAiProxyRoutePaths = [openAiProxyRouteBasePath, openAiProxyRoutePath] as const;
@@ -80,7 +81,7 @@ export function normalizeProxyRequestLookup(value: string) {
   const text = value.trim();
   if (!text) return "";
 
-  const headerMatch = text.match(/\b(?:x-proxy-request-id|x-request-id)\b\s*[:=]\s*([^\s,;]+)/i);
+  const headerMatch = text.match(proxyRequestLookupHeaderPattern);
   return headerMatch?.[1] ?? text;
 }
 
@@ -216,6 +217,9 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
     rateLimit: openAiProxyErrorPayload(429, "rpm_limit_exceeded", "RPM limit has been reached").error.type,
     apiError: openAiProxyErrorPayload(502, "upstream_unavailable", "Sub2API upstream is unavailable").error.type
   };
+  const normalizesProxyRequestLookupHeaders = proxyRequestLookupHeaderNames.every((headerName) => (
+    normalizeProxyRequestLookup(`${headerName}: proxy-request-lookup-sample`) === "proxy-request-lookup-sample"
+  ));
   if (errorTypes.insufficientQuota !== "insufficient_quota") {
     issues.push({
       type: "insufficient_quota_error_type_mismatch",
@@ -247,6 +251,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "Local OpenAI proxy errors must include error.param for OpenAI-compatible clients"
     });
   }
+  if (!normalizesProxyRequestLookupHeaders) {
+    issues.push({
+      type: "proxy_request_lookup_header_normalization_incomplete",
+      severity: "error",
+      message: "Admin proxy request search must normalize every exposed local and upstream request id header"
+    });
+  }
 
   return {
     ok: issues.length === 0,
@@ -268,8 +279,10 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesModelMetadata,
       requestIdHeader: proxyRequestIdHeaderName,
       upstreamRequestIdHeaders: upstreamRequestIdHeaderNames.join(","),
+      proxyRequestLookupHeaders: proxyRequestLookupHeaderNames.join(","),
       corsExposesRequestId,
       corsExposesUpstreamRequestIds,
+      normalizesProxyRequestLookupHeaders,
       requestBodyMode: openAiProxyForwardingContract.requestBodyMode,
       parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,
       forwardsOriginalBodyBytes: openAiProxyForwardingContract.forwardsOriginalBodyBytes,
@@ -305,6 +318,15 @@ function normalizeHeaderValue(value: string | null | undefined) {
   const normalized = value?.replace(/[\r\n]/g, " ").trim() ?? "";
   return normalized ? normalized.slice(0, 240) : null;
 }
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const proxyRequestLookupHeaderPattern = new RegExp(
+  `\\b(?:${proxyRequestLookupHeaderNames.map(escapeRegExp).join("|")})\\b\\s*[:=]\\s*([^\\s,;]+)`,
+  "i"
+);
 
 function validatePositiveIntegerRuntimeOption(
   issues: OpenAiProxyContractIssue[],

@@ -18,6 +18,7 @@ import {
   openAiProxyRoutePath,
   openAiProxyRoutePaths,
   proxyBodyByteLength,
+  proxyRequestLookupHeaderNames,
   proxyRequestIdHeaderName,
   proxyBodyText,
   proxyRequestModel,
@@ -193,6 +194,12 @@ test("attaches a stable proxy request id header for local and upstream responses
 test("normalizes copied proxy request id headers for admin search", () => {
   assert.equal(normalizeProxyRequestLookup("x-proxy-request-id: req-123"), "req-123");
   assert.equal(normalizeProxyRequestLookup("X-Request-Id=req-456;"), "req-456");
+  assert.equal(normalizeProxyRequestLookup("openai-request-id: req_openai"), "req_openai");
+  assert.equal(normalizeProxyRequestLookup("x-openai-request-id = req_x_openai, next"), "req_x_openai");
+  assert.equal(normalizeProxyRequestLookup("request-id=req_generic"), "req_generic");
+  for (const headerName of proxyRequestLookupHeaderNames) {
+    assert.equal(normalizeProxyRequestLookup(`${headerName}: req_all_headers`), "req_all_headers");
+  }
   assert.equal(normalizeProxyRequestLookup("  user@example.com  "), "user@example.com");
   assert.equal(normalizeProxyRequestLookup("   "), "");
 });
@@ -265,8 +272,10 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
   assert.equal(result.summary.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
+  assert.equal(result.summary.proxyRequestLookupHeaders, "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(result.summary.corsExposesRequestId, true);
   assert.equal(result.summary.corsExposesUpstreamRequestIds, true);
+  assert.equal(result.summary.normalizesProxyRequestLookupHeaders, true);
   assert.equal(result.summary.requestBodyMode, "raw-buffer");
   assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
   assert.equal(result.summary.forwardsOriginalBodyBytes, true);

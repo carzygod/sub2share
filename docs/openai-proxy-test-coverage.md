@@ -119,3 +119,19 @@ pnpm.cmd --filter @zyz/api run build
 - 单元测试覆盖 429 限流错误 payload 中的 `param: null`，并锁定系统健康契约会检查该字段。
 
 该契约减少通用 OpenAI SDK 或调用方在解析本地拦截错误时遇到字段缺失的风险。
+
+## 2026-06-13 追补：request id 响应头搜索契约
+
+- 反代请求搜索规范化现在复用统一 `proxyRequestLookupHeaderNames`：
+  - `x-proxy-request-id`
+  - `x-request-id`
+  - `openai-request-id`
+  - `x-openai-request-id`
+  - `request-id`
+- 管理员可以直接粘贴上述完整响应头行到 `反代请求` 搜索框。
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `proxyRequestLookupHeaders`
+  - `normalizesProxyRequestLookupHeaders`
+- 单元测试覆盖每个响应头名称都能被规范化为纯 request id。
+
+这项补齐让 CORS 暴露给浏览器和 SDK 的本地/上游 request id，都能进入同一套后台排障搜索口径。
