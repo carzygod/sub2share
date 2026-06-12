@@ -250,19 +250,33 @@ test("proxy request rows expose Sub2 repair context for upstream failures", () =
     id: "log-1",
     requestId: "req-local",
     upstreamRequestId: "req-upstream",
+    rentalId: "rental-1",
     path: "/v1/responses",
     model: "gpt-5.3-codex",
     statusCode: 503,
     upstreamStatusCode: 503,
-    errorCode: "upstream_http_503"
+    errorCode: "upstream_http_503",
+    rental: {
+      id: "rental-1",
+      resourceType: "codex",
+      sub2UserId: "sub2-user-1",
+      sub2KeyId: "sub2-key-1",
+      endpointUrl: "https://proxy.example.com/v1"
+    }
   };
 
   assert.equal(proxyRequestShouldOpenSub2Repair(upstreamFailure), true);
-  assert.deepEqual(proxyRequestRepairContext(upstreamFailure), {
+  const repairContext = proxyRequestRepairContext(upstreamFailure);
+  assert.deepEqual(repairContext, {
     checkId: "proxyRequests",
     checkLabel: "反代请求日志",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    rentalId: "rental-1",
+    resourceType: "codex",
+    sub2UserId: "sub2-user-1",
+    sub2KeyId: "sub2-key-1",
+    endpointUrl: "https://proxy.example.com/v1",
     requestId: "req-local",
     proxyRequestLogId: "log-1",
     upstreamRequestId: "req-upstream",
@@ -273,6 +287,8 @@ test("proxy request rows expose Sub2 repair context for upstream failures", () =
     responsesOk: "false",
     localProxyOk: "false"
   });
+  assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "租赁通道")?.value, "rental-1 / codex / https://proxy.example.com/v1");
+  assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "Sub2 Key")?.value, "user sub2-user-1 / key sub2-key-1");
 
   assert.equal(proxyRequestShouldOpenSub2Repair({
     requestId: "req-missing-key",

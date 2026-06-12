@@ -945,6 +945,9 @@ interface ProxyRequestLogRow {
     productId?: string | null;
     resourceType: string;
     status: string;
+    sub2UserId?: string | null;
+    sub2KeyId?: string | null;
+    endpointUrl?: string | null;
     product?: { name: string } | null;
   } | null;
   apiKey?: {
@@ -5446,6 +5449,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
               <td>
                 <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
                 <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
+                <small>{log.rental?.sub2KeyId ?? log.rental?.endpointUrl ?? "-"}</small>
               </td>
               <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
               <td>
@@ -7503,12 +7507,15 @@ function exportAuditLogsCsv(rows: AuditLogRow[], scope = "current-page") {
 }
 
 function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-page") {
-  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "upstreamRequestId", "email", "rentalId", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "upstreamRequestId", "email", "rentalId", "sub2UserId", "sub2KeyId", "endpointUrl", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.requestId,
     log.upstreamRequestId,
     log.user?.email,
     log.rentalId,
+    log.rental?.sub2UserId,
+    log.rental?.sub2KeyId,
+    log.rental?.endpointUrl,
     log.apiKey?.keyPrefix ?? log.apiKeyPrefix,
     log.method,
     log.path,

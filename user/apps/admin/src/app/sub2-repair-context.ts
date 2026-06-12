@@ -16,6 +16,10 @@ export interface Sub2RepairContext {
   resourceStatus?: string;
   resourceScope?: string;
   supplierEmail?: string;
+  rentalId?: string | null;
+  sub2UserId?: string | null;
+  sub2KeyId?: string | null;
+  endpointUrl?: string | null;
   requestId?: string;
   proxyRequestLogId?: string;
   upstreamRequestId?: string;
@@ -95,6 +99,18 @@ export interface ProxyRequestRepairCandidate {
   statusCode?: unknown;
   upstreamStatusCode?: unknown;
   errorCode?: unknown;
+  rentalId?: unknown;
+  resourceType?: unknown;
+  sub2UserId?: unknown;
+  sub2KeyId?: unknown;
+  endpointUrl?: unknown;
+  rental?: {
+    id?: unknown;
+    resourceType?: unknown;
+    sub2UserId?: unknown;
+    sub2KeyId?: unknown;
+    endpointUrl?: unknown;
+  } | null;
 }
 
 export interface Sub2RepairContextItem {
@@ -109,6 +125,14 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
   const resource = [context.resourceId, context.resourceType, context.resourceStatus, context.resourceScope]
     .filter(Boolean)
     .join(" / ");
+  const hasRentalDelivery = Boolean(context.rentalId || context.endpointUrl);
+  const rentalDelivery = hasRentalDelivery
+    ? [context.rentalId, context.resourceType, context.endpointUrl].filter(Boolean).join(" / ")
+    : "";
+  const sub2Delivery = [
+    context.sub2UserId ? `user ${context.sub2UserId}` : undefined,
+    context.sub2KeyId ? `key ${context.sub2KeyId}` : undefined
+  ].filter(Boolean).join(" / ");
   const request = [context.requestId, context.proxyRequestLogId, context.upstreamRequestId]
     .filter(Boolean)
     .join(" / ");
@@ -143,6 +167,8 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     { label: "账号状态", value: [context.accountStatus, context.credentialsStatus].filter(Boolean).join(" / ") },
     { label: "账号诊断", value: accountDiagnostics },
     { label: "资源", value: resource },
+    { label: "租赁通道", value: rentalDelivery },
+    { label: "Sub2 Key", value: sub2Delivery },
     { label: "供给方", value: context.supplierEmail },
     { label: "请求定位", value: request },
     { label: "Smoke", value: smoke },
@@ -222,11 +248,17 @@ export function proxyRequestRepairContext(candidate: ProxyRequestRepairCandidate
   const upstreamStatusCode = repairCandidateScalarText(candidate.upstreamStatusCode);
   const proxyRequestStatusCode = upstreamStatusCode || statusCode;
   const proxyRequestPath = repairCandidateText(candidate.path);
+  const rental = candidate.rental ?? {};
   return {
     checkId: "proxyRequests",
     checkLabel: "反代请求日志",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    rentalId: repairCandidateText(candidate.rentalId) || repairCandidateText(rental.id) || undefined,
+    resourceType: repairCandidateText(candidate.resourceType) || repairCandidateText(rental.resourceType) || undefined,
+    sub2UserId: repairCandidateText(candidate.sub2UserId) || repairCandidateText(rental.sub2UserId) || undefined,
+    sub2KeyId: repairCandidateText(candidate.sub2KeyId) || repairCandidateText(rental.sub2KeyId) || undefined,
+    endpointUrl: repairCandidateText(candidate.endpointUrl) || repairCandidateText(rental.endpointUrl) || undefined,
     requestId: repairCandidateText(candidate.requestId) || undefined,
     proxyRequestLogId: repairCandidateText(candidate.id) || undefined,
     upstreamRequestId: repairCandidateText(candidate.upstreamRequestId) || undefined,

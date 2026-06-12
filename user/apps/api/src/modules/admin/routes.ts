@@ -3540,6 +3540,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { user: { displayName: containsText(proxyRequestLookup) } },
           { rental: { orderId: containsText(proxyRequestLookup) } },
           { rental: { productId: containsText(proxyRequestLookup) } },
+          { rental: { sub2UserId: containsText(proxyRequestLookup) } },
+          { rental: { sub2KeyId: containsText(proxyRequestLookup) } },
+          { rental: { endpointUrl: containsText(proxyRequestLookup) } },
           { rental: { product: { id: containsText(proxyRequestLookup) } } },
           { rental: { product: { name: containsText(proxyRequestLookup) } } },
           { rental: { order: { items: { some: { priceId: containsText(proxyRequestLookup) } } } } },
@@ -3554,7 +3557,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         where,
         include: {
           user: { select: { id: true, email: true, displayName: true } },
-          rental: { select: { id: true, orderId: true, productId: true, resourceType: true, status: true, product: { select: { name: true } } } },
+          rental: {
+            select: {
+              id: true,
+              orderId: true,
+              productId: true,
+              resourceType: true,
+              status: true,
+              sub2UserId: true,
+              sub2KeyId: true,
+              endpointUrl: true,
+              product: { select: { name: true } }
+            }
+          },
           apiKey: { select: { id: true, name: true, keyPrefix: true, status: true } }
         },
         orderBy: { createdAt: "desc" },
