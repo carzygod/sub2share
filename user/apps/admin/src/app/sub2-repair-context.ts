@@ -24,6 +24,7 @@ export interface Sub2RepairContext {
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
+  stale?: string;
 }
 
 export interface ResourceCreateDefaults {
@@ -68,7 +69,8 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     context.proxyRequestStatusCode ? `HTTP ${context.proxyRequestStatusCode}` : undefined,
     context.proxyRequestErrorCode,
     context.smokeTestSkippedReason ? `skip ${context.smokeTestSkippedReason}` : undefined,
-    context.ageMinutes ? `${context.ageMinutes} 分钟前` : undefined
+    context.ageMinutes ? `${context.ageMinutes} 分钟前` : undefined,
+    context.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   return [
     { label: "来源", value: [context.checkLabel, context.checkId].filter(Boolean).join(" / ") },

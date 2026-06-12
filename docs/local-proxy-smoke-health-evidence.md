@@ -14,9 +14,11 @@
 - 默认把 24 小时内的成功端到端自检视为新鲜证据。
 - 最近自检失败时标记 `error`。
 - 最近自检超过 24 小时时标记 `warning`。
+- 最近自检失败且证据超过 24 小时时仍标记 `error`，但问题样本会额外携带 `stale=true`，并提示管理员修复后重新运行端到端自检以刷新当前 `/v1/responses` 证据。
 - 没有找到自检证据时标记 `warning`。
 - 如果资源凭据应用请求了端到端自检但因凭据应用失败或 Sub2 账号测试失败而跳过，自检证据会标记为 `error`，并携带 `smokeTestSkippedReason`。
 - 问题样本包含 `auditLogId`、`auditAction`、`resourceId`、`sub2AccountId`、模型、`smokeTestSkippedReason`、`modelsOk`、`responsesOk`、`localProxyOk`、`keyDisabled`、代理日志数量、主代理请求日志、上游 request id、发生时间、证据年龄和维修建议。
+- Dashboard 关键巡检预览会保留 `stale` 字段，Admin `反代状态 -> 修复定位` 会显示“证据已过期”。
 - 当 Sub2/OpenAI 上游巡检已经发现非 active 或不可调度的 OpenAI 账号时，本地反代自检问题会继承首个修复候选账号字段：`sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable` 和 `repairAction`。
 - Admin `可用性巡检` 问题样本支持从 smoke 问题一键打开对应审计记录。
 - Admin `可用性巡检` 问题样本支持从 smoke 问题一键打开反代状态页；如果问题携带 `sub2AccountId`，凭据应用表单会预选该账号。

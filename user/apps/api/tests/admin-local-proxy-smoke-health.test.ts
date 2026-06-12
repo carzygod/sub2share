@@ -5,6 +5,8 @@ import {
   latestLocalProxySmokeEvidence,
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
+  localProxySmokeFailureIssueActionHint,
+  localProxySmokeFailureIssueMessage,
   localProxySmokeFailureSummary,
   normalizeLocalProxySmokeAuditLog
 } from "../src/modules/admin/local-proxy-smoke-health.js";
@@ -370,4 +372,45 @@ test("local proxy smoke issues inherit Sub2 repair account candidates", () => {
   assert.equal(enriched.issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(enriched.issues[0].requestId, "req-responses");
   assert.equal(enriched.issues[0].proxyRequestLogId, "proxy-responses");
+});
+
+test("stale failed smoke evidence asks operators to refresh live proof", () => {
+  const direct = normalizeLocalProxySmokeAuditLog({
+    id: "direct-stale-failed",
+    action: "admin.sub2.proxy_smoke_test",
+    objectId: "sub2-key-1",
+    createdAt: new Date("2026-06-11T04:00:00.000Z"),
+    after: {
+      ok: false,
+      model: "gpt-5.3-codex",
+      keyDisabled: true,
+      models: { ok: true },
+      responses: { ok: false },
+      localProxy: {
+        ok: false,
+        proxyRequestLogCount: 1,
+        proxyRequestLogs: [
+          { id: "proxy-responses", requestId: "req-responses", path: "/v1/responses", statusCode: 503, errorCode: "upstream_http_503" }
+        ]
+      }
+    }
+  });
+  assert.ok(direct);
+
+  const message = localProxySmokeFailureIssueMessage(direct, 1_500, true);
+  const actionHint = localProxySmokeFailureIssueActionHint(true);
+  const issue = localProxySmokeEvidenceIssue(
+    direct,
+    "local_proxy_smoke_failed",
+    "error",
+    1_500,
+    message,
+    actionHint,
+    true
+  );
+
+  assert.equal(issue.stale, true);
+  assert.match(issue.message, /Evidence is 1500 minutes old/);
+  assert.match(issue.message, /current \/v1\/responses availability/);
+  assert.match(issue.actionHint, /refresh stale \/v1\/responses evidence/);
 });

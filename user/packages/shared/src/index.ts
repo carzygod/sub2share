@@ -167,6 +167,8 @@ export const adminSystemHealthIssueRefFields = [
   "apiKeyPrefix",
   "model",
   "smokeTestSkippedReason",
+  "ageMinutes",
+  "stale",
   "usageId",
   "userId",
   "userEmail",

@@ -73,6 +73,7 @@ export interface LocalProxySmokeEvidenceIssue {
   proxyRequestErrorCode?: string | null;
   createdAt?: string;
   ageMinutes?: number | null;
+  stale?: boolean;
   message: string;
   actionHint: string;
 }
@@ -163,7 +164,8 @@ export function localProxySmokeEvidenceIssue(
   severity: "warning" | "error",
   ageMinutes: number,
   message: string,
-  actionHint: string
+  actionHint: string,
+  stale = false
 ): LocalProxySmokeEvidenceIssue {
   return {
     id: `local_proxy_smoke:${smoke.auditLogId}:${type}`,
@@ -189,9 +191,23 @@ export function localProxySmokeEvidenceIssue(
     proxyRequestErrorCode: smoke.proxyRequestErrorCode ?? null,
     createdAt: smoke.createdAt.toISOString(),
     ageMinutes,
+    stale,
     message,
     actionHint
   };
+}
+
+export function localProxySmokeFailureIssueMessage(smoke: LocalProxySmokeEvidence, ageMinutes: number, stale: boolean) {
+  const summary = localProxySmokeFailureSummary(smoke);
+  return stale
+    ? `${summary} Evidence is ${ageMinutes} minutes old and may no longer describe current /v1/responses availability.`
+    : summary;
+}
+
+export function localProxySmokeFailureIssueActionHint(stale: boolean) {
+  return stale
+    ? "Repair the failing stage, then rerun the local end-to-end proxy smoke test to refresh stale /v1/responses evidence."
+    : "Repair the failing stage, then rerun the local end-to-end proxy smoke test.";
 }
 
 export function attachLocalProxySmokeIssueRepairCandidate<T extends { issues: LocalProxySmokeEvidenceIssue[] }>(

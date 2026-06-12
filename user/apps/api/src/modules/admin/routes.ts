@@ -57,8 +57,9 @@ import {
   attachLocalProxySmokeIssueRepairCandidate,
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
+  localProxySmokeFailureIssueActionHint,
+  localProxySmokeFailureIssueMessage,
   localProxySmokeEvidenceSummary,
-  localProxySmokeFailureSummary,
   type LocalProxySmokeEvidenceIssue
 } from "./local-proxy-smoke-health.js";
 import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } from "./payment-provider-health.js";
@@ -207,6 +208,7 @@ const dashboardHealthDetailPreviewFields = [
   "localProxyOk",
   "smokeTestSkippedReason",
   "ageMinutes",
+  "stale",
   "auditLogId",
   "walletTransactionList",
   "walletTransactionType",
@@ -5987,9 +5989,17 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
   const ageMinutes = Math.floor(ageMs / 60_000);
   const stale = ageMs > systemHealthLocalSmokeFreshMs;
   if (!latest.ok) {
-    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_failed", "error", ageMinutes, localProxySmokeFailureSummary(latest), "Repair the failing stage, then rerun the local end-to-end proxy smoke test."));
+    issues.push(localProxySmokeEvidenceIssue(
+      latest,
+      "local_proxy_smoke_failed",
+      "error",
+      ageMinutes,
+      localProxySmokeFailureIssueMessage(latest, ageMinutes, stale),
+      localProxySmokeFailureIssueActionHint(stale),
+      stale
+    ));
   } else if (stale) {
-    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_stale", "warning", ageMinutes, `Latest local OpenAI/Codex smoke test passed but is ${ageMinutes} minutes old.`, "Rerun the smoke test to refresh live /v1/responses evidence."));
+    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_stale", "warning", ageMinutes, `Latest local OpenAI/Codex smoke test passed but is ${ageMinutes} minutes old.`, "Rerun the smoke test to refresh live /v1/responses evidence.", true));
   }
 
   return {

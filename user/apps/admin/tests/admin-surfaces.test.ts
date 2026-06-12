@@ -55,6 +55,7 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("repairAction"));
   assert.ok(adminSystemHealthIssueRefFields.includes("sub2AccountId"));
   assert.ok(adminSystemHealthIssueRefFields.includes("resourceScope"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("stale"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
 });
@@ -84,7 +85,8 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     modelsOk: "true",
     responsesOk: "false",
     localProxyOk: "false",
-    ageMinutes: "12"
+    ageMinutes: "12",
+    stale: "true"
   });
 
   assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "维修建议", "目标账号", "账号状态", "资源", "供给方", "请求定位", "Smoke", "失败请求"]);
@@ -95,7 +97,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
-  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前");
+  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前 / 证据已过期");
   assert.ok(items.every((item) => item.value.trim().length > 0));
 });
 

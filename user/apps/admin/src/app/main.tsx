@@ -224,6 +224,7 @@ interface SystemHealthIssueRow {
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
+  stale?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -5013,7 +5014,8 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     responsesOk: issue.responsesOk,
     localProxyOk: issue.localProxyOk,
     smokeTestSkippedReason: issue.smokeTestSkippedReason,
-    ageMinutes: issue.ageMinutes
+    ageMinutes: issue.ageMinutes,
+    stale: issue.stale
   };
 }
 
@@ -5810,7 +5812,8 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     responsesOk: textValue(record?.responsesOk),
     localProxyOk: textValue(record?.localProxyOk),
     smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
-    ageMinutes: textValue(record?.ageMinutes)
+    ageMinutes: textValue(record?.ageMinutes),
+    stale: textValue(record?.stale)
   };
 }
 
@@ -5885,6 +5888,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "localProxyOk",
     "smokeTestSkippedReason",
     "ageMinutes",
+    "stale",
     "walletTransactionType",
     "walletTransactionId",
     "walletLookup",
@@ -5947,6 +5951,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       localProxyOk: textValue(record.localProxyOk),
       smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
       ageMinutes: textValue(record.ageMinutes),
+      stale: textValue(record.stale),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
