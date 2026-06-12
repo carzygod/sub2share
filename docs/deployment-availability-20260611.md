@@ -3829,3 +3829,79 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从共享收益尾端的结算和提现记录继续进入供给方用户、共享资源、用量和对应结算/提现上下文，`共享资源 -> 用量 -> 结算 -> 提现` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 08:52 管理员审计日志横向钻取发布与线上复查
+
+### 发布版本
+
+- `db03314 feat: add admin audit log cross links`
+
+### 本轮修复
+
+- 管理后台 `操作审计` 列表新增 `操作` 列。
+- 审计日志可按操作者打开用户详情。
+- 按 `objectType/objectId` 直达用户、余额、订单、租赁、API Key、商品、共享资源、结算、提现和 Sub2/OpenAI 反代状态。
+- 从审计 `before/after` 载荷派生常见关联入口，覆盖用户、余额、订单、租赁、Key、商品、资源、用量、结算、提现、Sub2 账号和反代请求。
+- 对 `product_price` 日志使用 `productId` 打开商品配置。
+- 对 Sub2 本地反代自检日志解析 `localProxy.proxyRequestLogs[]`，优先打开失败的反代请求记录。
+- 新增文档：`docs/admin-audit-log-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.152 管理员审计日志支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- 首次使用普通 `git archive HEAD:user` 打包时，远端 shell 脚本出现 CRLF 行尾导致 `set: pipefail` 失败；已清理失败临时包，并改用 `git -c core.autocrlf=false archive HEAD:user` 重新打包部署。
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=db03314`
+  - `deployed_at=20260612T005212Z`
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- 生产 Admin 静态产物已更新：
+  - `/assets/index-CJj4MnIb.js`
+  - `/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-db03314.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/audit-logs?page=1&pageSize=5`：200。
+  - itemCount：`5`。
+  - 最新样本 action：`auth.login.success`。
+  - 最新样本 objectType：`auth`。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=db03314`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从审计日志直接串联操作者、用户、余额、售出订单、租赁、API Key、共享资源、Sub2 状态、反代请求、用量、结算和提现上下文，`系统健康/审计 -> 具体对象 -> 修复入口` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
