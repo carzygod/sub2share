@@ -16,8 +16,10 @@
 - 成功条件：
   - HTTP 状态码为 `2xx` 或 `3xx`。
   - `Content-Type` 包含 `text/html`。
+  - HTML 中引用的构建后 JavaScript 与 stylesheet 资产也能返回 `2xx/3xx`。
+  - JavaScript 资产返回 JavaScript / ECMAScript MIME，stylesheet 资产返回 `text/css`。
 - 缺少 URL 配置会标记为 `warning`。
-- 端点不可达、返回错误状态码、返回非 HTML 会标记为 `error`。
+- 端点不可达、返回错误状态码、返回非 HTML、未引用构建资产、构建资产不可达或 MIME 异常会标记为 `error`。
 
 ## 返回字段
 
@@ -28,11 +30,29 @@
 - `missingEndpoints`
 - `failedEndpoints`
 - `nonHtmlEndpoints`
+- `totalAssets`
+- `okAssets`
+- `failedAssets`
+- `endpointsWithoutAssets`
 
 `frontendRuntime.detail.probes[]`：
 
 - `endpoint`
 - `url`
+- `ok`
+- `statusCode`
+- `contentType`
+- `durationMs`
+- `error`
+- `assetProbes`
+- `assetScanError`
+
+`frontendRuntime.detail.probes[].assetProbes[]`：
+
+- `endpoint`
+- `endpointUrl`
+- `assetType`
+- `assetUrl`
 - `ok`
 - `statusCode`
 - `contentType`
@@ -49,6 +69,8 @@
 - `contentType`
 - `durationMs`
 - `error`
+- `assetType`
+- `assetUrl`
 - `message`
 - `actionHint`
 
@@ -58,9 +80,11 @@
 
 - API 正常但 Web/Admin 不可访问时，健康页可以直接报出前端入口异常。
 - 如果 Web/Admin 被错误路由到 JSON/API、空白服务或反向代理错误页，非 HTML 或错误状态码会被明确标记。
+- 如果部署只保留了 `index.html` 但丢失 `assets/index-*.js` 或 `assets/index-*.css`，健康页会报出具体缺失资产。
 - 与部署运行态巡检配合后，管理员能同时确认：
   - API release marker 正确。
   - Web/Admin 入口真实返回前端 HTML。
+  - Web/Admin 构建资产真实可加载。
   - 管理员入口能力矩阵仍完整覆盖用户、共享、余额和售出管理。
 
 ## 验证方式
@@ -80,6 +104,16 @@
 3. 确认 `frontendRuntime.status=ok`。
 4. 确认 `frontendRuntime.metrics.okEndpoints=2`。
 5. 确认 `detail.probes` 中 Web/Admin 均为 `ok=true` 且 `contentType` 包含 `text/html`。
+6. 确认 `frontendRuntime.metrics.totalAssets > 0` 且 `failedAssets=0`。
+
+## 2026-06-13 扩展：构建资产探测
+
+- `frontendRuntime` 会读取 Web/Admin 的 HTML，解析 `<script src>` 与 `rel=stylesheet` 的 `<link href>`。
+- 每个解析出的 JavaScript / CSS 资产都会被独立请求。
+- 任一资产 404、不可达或 MIME 不符合预期时，`frontendRuntime.status=error`。
+- HTML 没有引用任何构建资产时，返回 `frontend_assets_missing`。
+
+这样系统健康不再只证明入口 HTML 可达，也能证明真实 React/Vite 应用所需的 JS/CSS 构建产物仍在当前 release 中。
 
 ## 线上复查记录
 

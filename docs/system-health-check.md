@@ -286,3 +286,12 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 显式传入 `allowUnavailableDelivery=true` 才能覆盖。
 
 这让系统健康的 `productCatalog` warning 更像兜底巡检：正常路径下，不可交付的 Codex 商品不应被重新上架。
+
+## 2026-06-13 扩展：前端入口巡检覆盖构建资产
+
+- `frontendRuntime` 不再只检查 Web/Admin 入口 HTML。
+- 巡检会解析 HTML 中的 JavaScript 与 stylesheet 资产，并逐个检查状态码和 MIME。
+- 指标新增 `totalAssets`、`okAssets`、`failedAssets` 和 `endpointsWithoutAssets`。
+- 如果 HTML 可达但 JS/CSS 缺失、404、不可达或 MIME 不符合预期，系统健康会返回 `frontendRuntime.status=error`。
+
+这让管理员入口可用性检查更接近真实浏览器体验，避免“入口 HTML 返回 200，但 Admin 应用空白”的情况被误判为健康。

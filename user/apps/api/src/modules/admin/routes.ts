@@ -57,7 +57,9 @@ import {
 } from "./resource-credential-health.js";
 import { nonSmokeSub2Bindings } from "./sub2-binding-health.js";
 import {
+  extractFrontendAssetReferences,
   inspectFrontendRuntime,
+  type FrontendAssetProbe,
   type FrontendEndpointName,
   type FrontendEndpointProbe,
   type FrontendRuntimeHealth
@@ -6633,10 +6635,73 @@ async function probeFrontendEndpoint(endpoint: FrontendEndpointName, url?: strin
       headers: { accept: "text/html,application/xhtml+xml" },
       signal: controller.signal
     });
-    await response.body?.cancel();
+    const html = await response.text();
+    const assetProbeResult = response.status >= 200 && response.status < 400 && response.headers.get("content-type")?.toLowerCase().includes("text/html")
+      ? await probeFrontendAssets(endpoint, url, html)
+      : { assetProbes: null, assetScanError: null };
     return {
       endpoint,
       url,
+      ok: response.status >= 200 && response.status < 400,
+      statusCode: response.status,
+      contentType: response.headers.get("content-type"),
+      durationMs: Date.now() - startedAt,
+      error: null,
+      assetProbes: assetProbeResult.assetProbes,
+      assetScanError: assetProbeResult.assetScanError
+    };
+  } catch (error) {
+    return {
+      endpoint,
+      url,
+      ok: false,
+      statusCode: null,
+      contentType: null,
+      durationMs: Date.now() - startedAt,
+      error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probeFrontendAssets(endpoint: FrontendEndpointName, endpointUrl: string, html: string): Promise<{
+  assetProbes: FrontendAssetProbe[] | null;
+  assetScanError: string | null;
+}> {
+  try {
+    const assets = extractFrontendAssetReferences(html, endpointUrl);
+    const assetProbes = await Promise.all(assets.map((asset) => probeFrontendAsset(endpoint, endpointUrl, asset.assetType, asset.assetUrl)));
+    return { assetProbes, assetScanError: null };
+  } catch (error) {
+    return {
+      assetProbes: null,
+      assetScanError: redactSensitiveText(error instanceof Error ? error.message : String(error))
+    };
+  }
+}
+
+async function probeFrontendAsset(
+  endpoint: FrontendEndpointName,
+  endpointUrl: string,
+  assetType: FrontendAssetProbe["assetType"],
+  assetUrl: string
+): Promise<FrontendAssetProbe> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), systemHealthFrontendProbeTimeoutMs);
+  try {
+    const response = await fetch(assetUrl, {
+      method: "GET",
+      headers: { accept: assetType === "stylesheet" ? "text/css,*/*;q=0.8" : "text/javascript,application/javascript,*/*;q=0.8" },
+      signal: controller.signal
+    });
+    await response.body?.cancel();
+    return {
+      endpoint,
+      endpointUrl,
+      assetType,
+      assetUrl,
       ok: response.status >= 200 && response.status < 400,
       statusCode: response.status,
       contentType: response.headers.get("content-type"),
@@ -6646,7 +6711,9 @@ async function probeFrontendEndpoint(endpoint: FrontendEndpointName, url?: strin
   } catch (error) {
     return {
       endpoint,
-      url,
+      endpointUrl,
+      assetType,
+      assetUrl,
       ok: false,
       statusCode: null,
       contentType: null,
@@ -6671,7 +6738,11 @@ function frontendRuntimeHealthCheck(result: FrontendRuntimeHealth) {
       okEndpoints: result.summary.okEndpoints,
       missingEndpoints: result.summary.missingEndpoints,
       failedEndpoints: result.summary.failedEndpoints,
-      nonHtmlEndpoints: result.summary.nonHtmlEndpoints
+      nonHtmlEndpoints: result.summary.nonHtmlEndpoints,
+      totalAssets: result.summary.totalAssets,
+      okAssets: result.summary.okAssets,
+      failedAssets: result.summary.failedAssets,
+      endpointsWithoutAssets: result.summary.endpointsWithoutAssets
     },
     {
       probes: result.probes,
