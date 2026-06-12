@@ -35,6 +35,7 @@ import { recordOrderStatusHistory } from "../orders/status-history.js";
 import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
 import {
   codexCatalogDeliveryReadinessIssueFields,
+  publicProductDeliveryReadinessFields,
   readyCodexSupplierResourceDeliveryWhere,
   requireReadySupplierResourceForDelivery
 } from "../suppliers/resource-delivery-readiness.js";
@@ -2186,7 +2187,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ]
       } : {})
     };
-    const [products, total] = await Promise.all([
+    const [products, total, readyCodexDeliveryResources] = await Promise.all([
       prisma.product.findMany({
         where,
         include: {
@@ -2196,9 +2197,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         orderBy: { createdAt: "desc" },
         ...pageArgs(query)
       }),
-      prisma.product.count({ where })
+      prisma.product.count({ where }),
+      readyCodexDeliveryResourceCount()
     ]);
-    return adminOk(reply, paged(products, total, query));
+    return adminOk(reply, paged(products.map((product) => productWithDeliveryReadiness(product, readyCodexDeliveryResources)), total, query));
   });
 
   app.post("/api/admin/products", async (request, reply) => {
@@ -2223,7 +2225,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       billingMode: product.billingMode,
       status: product.status
     });
-    return adminOk(reply, product);
+    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
   });
 
   app.get("/api/admin/products/:id", async (request, reply) => {
@@ -2237,7 +2239,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
     });
     if (!product) throw new AppError("product_not_found", "Product not found", 404);
-    return adminOk(reply, product);
+    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
   });
 
   app.patch("/api/admin/products/:id", async (request, reply) => {
@@ -2270,7 +2272,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       status: product.status,
       description: product.description
     });
-    return adminOk(reply, product);
+    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
   });
 
   app.post("/api/admin/products/:id/prices", async (request, reply) => {
@@ -5962,6 +5964,20 @@ async function inspectProductCatalogReadiness() {
       ...counters
     },
     issues
+  };
+}
+
+async function readyCodexDeliveryResourceCount() {
+  return prisma.supplierResource.count({ where: readyCodexSupplierResourceDeliveryWhere() });
+}
+
+function productWithDeliveryReadiness<T extends { resourceType: string }>(product: T, readyCodexDeliveryResources: number) {
+  return {
+    ...product,
+    ...publicProductDeliveryReadinessFields({
+      resourceType: product.resourceType,
+      readyCodexDeliveryResources
+    })
   };
 }
 

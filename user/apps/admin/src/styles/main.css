@@ -532,7 +532,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 }
 .status-active, .status-online, .status-paid { color: var(--success); }
 .status-pending, .status-testing, .status-provisioning, .status-warning { color: var(--warning); }
-.status-failed, .status-error, .status-disabled, .status-banned { color: var(--danger); }
+.status-failed, .status-error, .status-disabled, .status-banned, .status-blocked { color: var(--danger); }
 
 @media (max-width: 1020px) {
   .admin-shell, .login-shell, .diagnostic-grid, .list-controls, .filter-fields, .export-strip, .detail-grid { grid-template-columns: 1fr; }

@@ -541,6 +541,10 @@ interface ProductRow {
   description?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  deliveryRequired?: boolean;
+  deliveryReady?: boolean;
+  readyDeliveryResources?: number | null;
+  deliveryBlockedReason?: string | null;
   prices?: ProductPriceRow[];
   _count?: {
     prices: number;
@@ -4023,7 +4027,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
         onExport={onExport}
       />
 
-      <TablePanel title="商品与价格" count={meta.total} headers={["商品", "资源", "状态", "价格", "订单/租赁", "操作"]}>
+      <TablePanel title="商品与价格" count={meta.total} headers={["商品", "资源", "状态", "交付", "价格", "订单/租赁", "操作"]}>
         {products.map((product) => (
           <tr key={product.id}>
             <td>
@@ -4045,6 +4049,11 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
             </td>
             <td>{product.resourceType} / {product.billingMode}</td>
             <td><StatusPill status={product.status} /></td>
+            <td>
+              <StatusPill status={product.deliveryReady === false ? "blocked" : "active"} />
+              <small>{product.deliveryRequired ? `ready ${product.readyDeliveryResources ?? 0}` : "not required"}</small>
+              {product.deliveryBlockedReason && <small>{product.deliveryBlockedReason}</small>}
+            </td>
             <td>
               {(product.prices ?? []).map((price) => (
                 <div className="price-line" key={price.id}>
@@ -6613,12 +6622,15 @@ function exportUsagesCsv(rows: UsageRecordRow[], scope = "current-page") {
 }
 
 function exportProductsCsv(rows: ProductRow[], scope = "current-page") {
-  downloadCsv(`products-${scope}`, ["id", "name", "resourceType", "billingMode", "status", "priceCount", "priceLimits", "orders", "rentals", "updatedAt"], rows.map((product) => [
+  downloadCsv(`products-${scope}`, ["id", "name", "resourceType", "billingMode", "status", "deliveryReady", "readyDeliveryResources", "deliveryBlockedReason", "priceCount", "priceLimits", "orders", "rentals", "updatedAt"], rows.map((product) => [
     product.id,
     product.name,
     product.resourceType,
     product.billingMode,
     product.status,
+    product.deliveryReady === undefined ? undefined : String(product.deliveryReady),
+    product.readyDeliveryResources,
+    product.deliveryBlockedReason,
     product._count?.prices ?? product.prices?.length ?? 0,
     productPriceLimitSummary(product.prices),
     product._count?.orders,

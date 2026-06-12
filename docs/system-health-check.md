@@ -267,3 +267,13 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 非 Codex 商品不受该闸门影响。
 
 这让用户界面、商品目录巡检和下单交付闸门保持一致：管理员能在系统健康中看到风险，买家也不会在资源不可交付时继续点击开通。
+
+## 2026-06-12 Update: Admin Product Delivery Readiness
+
+管理员商品管理也开始消费同一套 ready Codex 资源口径：
+
+- `GET /api/admin/products`、`GET /api/admin/products/:id`、`POST /api/admin/products`、`PATCH /api/admin/products/:id` 为商品返回 `deliveryRequired`、`deliveryReady`、`readyDeliveryResources` 和 `deliveryBlockedReason`。
+- 管理员商品表新增“交付”列，Codex 商品没有 ready production Codex shared resource 时显示 `blocked`、ready 数量和 `codex_resource_not_ready_for_delivery`。
+- 商品 CSV 导出新增 `deliveryReady`、`readyDeliveryResources`、`deliveryBlockedReason` 字段。
+
+这让 `productCatalog` 健康告警可以直接映射到商品管理页：管理员在系统健康中看到 `active_codex_product_without_ready_delivery_resource` 后，可在商品列表和导出表中确认具体商品是否可交付。
