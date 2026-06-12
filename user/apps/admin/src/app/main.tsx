@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import {
+  resourceCreateDefaultsContextItems,
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -5067,10 +5068,18 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
   const createApplyCredentialToSub2 = resourceCreateDefaultsShouldApplyCredential(createDefaults);
   const createRunSmokeTest = resourceCreateDefaultsShouldRunSmokeTest(createDefaults);
   const createSmokeModel = resourceCreateDefaultsSmokeModel(createDefaults);
+  const createContextItems = resourceCreateDefaultsContextItems(createDefaults);
   return (
     <>
       <form key={`${createSupplierEmail}:${createResourceType}:${createSub2AccountId}:${createApplyCredentialToSub2 ? "apply" : "manual"}:${createRunSmokeTest ? "smoke" : "no-smoke"}:${createSmokeModel}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
         <span className="eyebrow">Create resource</span>
+        {createContextItems.length > 0 && (
+          <div className="diagnostic-grid resource-create-context wide">
+            {createContextItems.map((item) => (
+              <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>
+            ))}
+          </div>
+        )}
         <input name="supplierEmail" type="email" defaultValue={createSupplierEmail} placeholder="供给方邮箱" required />
         <input name="displayName" placeholder="供给方显示名，可选" />
         <select name="resourceType" defaultValue={createResourceType} required>

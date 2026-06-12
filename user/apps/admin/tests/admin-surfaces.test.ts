@@ -9,6 +9,7 @@ import {
   requiredAdminSurfaceAreas
 } from "@zyz/shared";
 import {
+  resourceCreateDefaultsContextItems,
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -136,4 +137,39 @@ test("resource create defaults continue the OpenAI credential repair flow", () =
   assert.equal(resourceCreateDefaultsSmokeModel(repairDefaults), "gpt-5.3-codex");
   assert.equal(resourceCreateDefaultsShouldApplyCredential({ resourceType: "codex", sub2AccountId: "2" }), false);
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
+});
+
+test("resource create defaults expose repair context for operators", () => {
+  const items = resourceCreateDefaultsContextItems({
+    checkId: "resources",
+    supplierEmail: "admin@zhisuan.local",
+    resourceType: "codex",
+    resourceScope: "production",
+    sub2AccountId: "2",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    model: "gpt-5.3-codex",
+    responsesOk: "false",
+    localProxyOk: "false",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: "503",
+    proxyRequestErrorCode: "upstream_http_503"
+  });
+
+  assert.deepEqual(items.map((item) => item.label), [
+    "Source",
+    "Repair action",
+    "Supplier",
+    "Resource",
+    "Sub2 account",
+    "Credential apply",
+    "Smoke",
+    "Failure"
+  ]);
+  assert.equal(items.find((item) => item.label === "Source")?.value, "resources / production");
+  assert.equal(items.find((item) => item.label === "Supplier")?.value, "admin@zhisuan.local");
+  assert.equal(items.find((item) => item.label === "Resource")?.value, "codex / production");
+  assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2");
+  assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
+  assert.match(items.find((item) => item.label === "Smoke")?.value ?? "", /model gpt-5.3-codex/);
+  assert.equal(items.find((item) => item.label === "Failure")?.value, "/v1/responses / HTTP 503 / upstream_http_503");
 });

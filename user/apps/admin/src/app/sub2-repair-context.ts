@@ -115,6 +115,35 @@ export function resourceCreateDefaultsSmokeModel(defaults: ResourceCreateDefault
   return defaults.model?.trim() || "";
 }
 
+export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefaults): Sub2RepairContextItem[] {
+  const resource = [
+    defaults.resourceType,
+    defaults.resourceStatus,
+    defaults.resourceScope
+  ].filter(Boolean).join(" / ");
+  const smoke = [
+    resourceCreateDefaultsSmokeModel(defaults) ? `model ${resourceCreateDefaultsSmokeModel(defaults)}` : undefined,
+    healthFlag("responses", defaults.responsesOk),
+    healthFlag("local", defaults.localProxyOk)
+  ].filter(Boolean).join(" / ");
+  const failure = [
+    defaults.proxyRequestPath,
+    defaults.proxyRequestStatusCode ? `HTTP ${defaults.proxyRequestStatusCode}` : undefined,
+    defaults.proxyRequestErrorCode
+  ].filter(Boolean).join(" / ");
+
+  return [
+    { label: "Source", value: [defaults.checkId, defaults.resourceScope].filter(Boolean).join(" / ") },
+    { label: "Repair action", value: defaults.repairAction },
+    { label: "Supplier", value: defaults.supplierEmail },
+    { label: "Resource", value: resource },
+    { label: "Sub2 account", value: defaults.sub2AccountId ? `#${defaults.sub2AccountId}` : undefined },
+    { label: "Credential apply", value: resourceCreateDefaultsShouldApplyCredential(defaults) ? "enabled after create" : undefined },
+    { label: "Smoke", value: resourceCreateDefaultsShouldRunSmokeTest(defaults) ? smoke || "enabled after apply" : undefined },
+    { label: "Failure", value: failure }
+  ].filter((item): item is Sub2RepairContextItem => Boolean(item.value));
+}
+
 function healthFlag(label: string, value?: string) {
   if (!value) return undefined;
   if (value === "true") return `${label} 通过`;
