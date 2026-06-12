@@ -4076,3 +4076,87 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 浏览器端 OpenAI/Codex 兼容客户端现在可以用与本地 `/v1/*` 反代一致的方法集合完成 CORS 预检，`PATCH /v1/responses/:id` 等非 POST 场景不会在进入本地鉴权、余额、租赁、限流和 Sub2API 转发链路前被 CORS 默认值阻断。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 09:37 Sub2 用量同步恢复计数持久化发布与线上复查
+
+### 发布版本
+
+- `7455ce3 feat: persist billing sync recovery counts`
+
+### 本轮修复
+
+- 新增 Prisma migration：`0016_billing_sync_recovered_counts`。
+- `BillingSyncRun` 新增 `recovered` 字段。
+- `BillingSyncState` 新增 `lastRecovered` 字段。
+- `syncSub2UsageOnce(cursor, { persistCursor: true })` 成功后持久化本批次恢复数量和最近恢复数量。
+- `GET /api/admin/usages/sync-state` 返回 `recovered` / `lastRecovered`。
+- `GET /api/admin/system-health` 的 `billingSync.metrics` 新增 `lastRecovered`。
+- Admin `用量记录` 页面同步状态面板展示 `导入 / 恢复 / 跳过 / 未匹配`。
+- 新增文档：`docs/billing-sync-recovered-counts.md`。
+- 更新 `docs/billing-sync-state.md`、`docs/pending-usage-recovery.md`、`docs/system-health-check.md` 和 `docs/需求文档.md`。
+
+### 本地验证
+
+- `pnpm.cmd db:generate`：通过。
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，75/75。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=7455ce3`
+  - `deployed_at=20260612T013728Z`
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 成功应用 `0016_billing_sync_recovered_counts`。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：75/75 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/tmp/sub2share-user-7455ce3.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/usages/sync-state`：200。
+  - `state.id=sub2_usage`
+  - `state.lastStatus=success`
+  - `state.lastImported=0`
+  - `state.lastRecovered=0`
+  - `state.lastSkipped=0`
+  - `state.lastUnmatched=0`
+  - `runs[0].recovered=0`
+  - `runCount=10`
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=7455ce3`
+  - `billingSync.status=ok`
+  - `billingSync.metrics.lastRecovered=0`
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批次和最近状态中。管理员后续排查余额恢复、售出收入和供应商共享结算时，可以区分新导入 usage 与历史 pending usage 恢复，不再只能依赖当次同步 toast。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
