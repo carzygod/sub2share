@@ -62,6 +62,13 @@
 - 原问题已有字段不会被覆盖，因此各巡检项仍保留自己的商品、资源、账号、消息和修复建议。
 - 该扩展只复用最近一次审计证据，不主动运行 live smoke，也不写入 Sub2API 或业务数据。
 
+## 2026-06-13 扩展：共享修复证据保留审计追溯
+
+- `localProxySmoke` 作为共享修复证据源时，会继续把 `auditLogId`、`auditAction`、`keyDisabled` 和 `proxyRequestLogCount` 补入相关修复问题。
+- 完整 `可用性巡检` issue/sample 行已有 `打开审计` 能力；继承 `auditLogId` 后，管理员从商品、共享资源、资源凭据或 Sub2 问题也能跳到同一条 smoke 审计记录。
+- `keyDisabled` 与 `proxyRequestLogCount` 用于保留临时 Key 清理和代理日志数量证据，帮助判断 smoke 是否完整跑完本地清理阶段。
+- 该扩展只透传脱敏审计定位，不暴露明文 API Key、Sub2 Key 或 OpenAI refresh token。
+
 ## 验证方式
 
 - `npm.cmd --prefix user/apps/api run typecheck`

@@ -427,11 +427,15 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
           type: "local_proxy_smoke_failed",
           sub2Status: true,
           repairAction: "apply_openai_refresh_token_to_sub2_account",
+          auditLogId: "audit-smoke-1",
+          auditAction: "admin.sub2.proxy_smoke_test",
           model: "gpt-5.3-codex",
           modelsOk: true,
           responsesOk: false,
           localProxyOk: false,
           smokeTestSkippedReason: null,
+          keyDisabled: true,
+          proxyRequestLogCount: 2,
           proxyRequestLogId: "proxy-log-1",
           requestId: "req-local",
           upstreamRequestId: "req-upstream",
@@ -453,9 +457,13 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
   const sub2Issue = (checks[2].detail as { issues: Array<Record<string, unknown>> }).issues[0];
 
   for (const issue of [resourceIssue, credentialIssue, sub2Issue]) {
+    assert.equal(issue.auditLogId, "audit-smoke-1");
+    assert.equal(issue.auditAction, "admin.sub2.proxy_smoke_test");
     assert.equal(issue.model, "gpt-5.3-codex");
     assert.equal(issue.responsesOk, false);
     assert.equal(issue.localProxyOk, false);
+    assert.equal(issue.keyDisabled, true);
+    assert.equal(issue.proxyRequestLogCount, 2);
     assert.equal(issue.proxyRequestPath, "/v1/responses");
     assert.equal(issue.proxyRequestStatusCode, 503);
     assert.equal(issue.proxyRequestErrorCode, "upstream_http_503");

@@ -223,3 +223,10 @@
 - 首页关键巡检中的 `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 主问题在缺少字段时会保留 `/v1/responses` 失败路径、状态码、代理错误码、请求 ID、证据年龄、剩余新鲜时间和 `staleAt`。
 - 首页从任一相关风险进入 `反代状态` 或 `共享资源` 时，都能携带同一份 smoke 失败上下文。
 - 该继承只补齐缺失字段，不覆盖原巡检项的消息、修复建议或商品/账号定位。
+
+## 2026-06-13 扩展：首页关键巡检保留 smoke 审计定位
+
+- 共享 smoke 失败证据继承会继续补入 `auditLogId`，dashboard 关键巡检预览已有该字段白名单。
+- 首页 `productCatalog`、`resources`、`resourceCredentials` 和 `sub2` 主问题在携带 smoke 失败上下文时，也能保留产生证据的审计记录 ID。
+- 管理员从首页进入完整巡检后，可以沿同一条证据继续打开审计记录，确认 smoke 的脱敏执行结果。
+- 该能力只补齐审计定位字段，不改变首页关键巡检排序或健康状态判定。

@@ -95,3 +95,10 @@
 - 问题样本对象可展示 `model`、`modelsOk`、`responsesOk`、`localProxyOk`、`proxyRequestLogId`、`requestId`、`upstreamRequestId`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`ageMinutes`、`stale`、`staleThresholdMinutes`、`freshMinutesRemaining` 和 `staleAt`。
 - 行内 `打开反代状态` 或 `打开共享资源` 会继续携带这些字段，方便管理员从任意相关问题进入同一条 `/v1/responses` 失败证据。
 - 该能力不改变样本抽取数量、不触发新的系统巡检，也不覆盖原 issue 的 `message` 或 `actionHint`。
+
+## 2026-06-13 扩展：共享 smoke 证据补齐审计入口
+
+- 共享修复 issue 继承 smoke 失败证据时，会同时保留 `auditLogId` 和 `auditAction`。
+- 完整 `可用性巡检` 行内操作可以从这些继承后的问题直接 `打开审计`，不再只有 `localProxySmoke` 行具备审计跳转。
+- 同步保留 `keyDisabled` 和 `proxyRequestLogCount`，方便管理员确认临时 Key 清理和代理日志数量证据。
+- 该能力不改变 issue/sample 抽取数量，不读取或展示明文凭据。

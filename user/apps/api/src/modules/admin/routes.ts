@@ -4070,11 +4070,15 @@ export function enrichSub2RepairContextChecks(
 
 function localProxySmokeRepairContextFields(checks: SystemHealthCheck[]) {
   const repairFields = [
+    "auditLogId",
+    "auditAction",
     "model",
     "modelsOk",
     "responsesOk",
     "localProxyOk",
     "smokeTestSkippedReason",
+    "keyDisabled",
+    "proxyRequestLogCount",
     "proxyRequestLogId",
     "requestId",
     "upstreamRequestId",
