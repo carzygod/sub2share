@@ -65,6 +65,7 @@ import {
 import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } from "./payment-provider-health.js";
 import {
   internalHealthCheckSupplierResourceWhere,
+  inspectSupplierResourceManualOnlineReadiness,
   nonSmokeSupplierResourceWhere,
   supplierResourceAvailabilityMetrics,
   supplierResourceMissingCodexIssueFields
@@ -2749,9 +2750,26 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const input = resourceStatusSchema.parse(request.body);
     const before = await prisma.supplierResource.findUnique({
       where: { id },
-      select: { id: true, status: true, level: true, sub2AccountId: true }
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        level: true,
+        sub2AccountId: true,
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
+    const nextSub2AccountId = input.sub2AccountId !== undefined ? input.sub2AccountId : before.sub2AccountId;
+    const onlineReadiness = inspectSupplierResourceManualOnlineReadiness({
+      resourceType: before.resourceType,
+      targetStatus: input.status,
+      sub2AccountId: nextSub2AccountId,
+      credential: before.credential
+    });
+    if (!onlineReadiness.ok) {
+      throw new AppError(onlineReadiness.code, onlineReadiness.message, 400, { issues: onlineReadiness.issues });
+    }
     const data: Prisma.SupplierResourceUpdateInput = {
       status: input.status,
       lastCheckedAt: new Date()
@@ -2769,7 +2787,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await writeAuditLog(request, actor.id, "admin.resource.status", "supplier_resource", id, before, {
       status: resource.status,
       level: resource.level,
-      sub2AccountId: resource.sub2AccountId
+      sub2AccountId: resource.sub2AccountId,
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null
     });
     return adminOk(reply, resource);
   });

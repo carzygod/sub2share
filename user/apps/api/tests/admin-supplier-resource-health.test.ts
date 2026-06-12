@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   internalHealthCheckSupplierResourceWhere,
+  inspectSupplierResourceManualOnlineReadiness,
   isInternalHealthCheckSupplierResource,
   nonSmokeSupplierResourceWhere,
   supplierResourceAvailabilityMetrics,
@@ -117,4 +118,40 @@ test("keeps an existing resource Sub2 binding over repair candidates", () => {
     resourceType: "codex",
     sub2AccountId: "17"
   });
+});
+
+test("blocks manual online status for Codex resources without Sub2 binding and active OpenAI credential", () => {
+  const result = inspectSupplierResourceManualOnlineReadiness({
+    resourceType: "codex",
+    targetStatus: "online",
+    sub2AccountId: null,
+    credential: null
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "codex_resource_not_ready_for_online");
+  assert.deepEqual(result.issues, ["sub2_account_missing", "active_openai_refresh_token_missing"]);
+});
+
+test("allows manual online status for Codex resources with Sub2 binding and active OpenAI refresh token", () => {
+  const result = inspectSupplierResourceManualOnlineReadiness({
+    resourceType: "codex",
+    targetStatus: "online",
+    sub2AccountId: "2",
+    credential: { credentialType: "openai_refresh_token", status: "active" }
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.issues, []);
+});
+
+test("manual online readiness does not block non-Codex resources or non-online status changes", () => {
+  assert.equal(inspectSupplierResourceManualOnlineReadiness({
+    resourceType: "gemini",
+    targetStatus: "online"
+  }).ok, true);
+  assert.equal(inspectSupplierResourceManualOnlineReadiness({
+    resourceType: "codex",
+    targetStatus: "paused"
+  }).ok, true);
 });

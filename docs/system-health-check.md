@@ -193,3 +193,14 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 如果已有 ready 资源但仍存在不完整 online 资源，返回 `codex_online_resource_incomplete`。
 
 候选样本现在会展示 `credentialType` 与 `credentialStatus`，便于管理员判断资源是缺少 Sub2 绑定、缺少凭据，还是凭据状态不正确。该检查仍然不直接调用 OpenAI；真实 `/v1/responses` 成功仍由 `sub2`、`localProxySmoke` 和反代请求日志共同证明。
+
+## 2026-06-12 Update: Manual Codex Resource Online Gate
+
+`resources` / `共享资源` 的 ready online 口径现在也被前移到管理员写入口。管理员通过 `PATCH /api/admin/resources/:id/status` 手动把 Codex 资源切换为 `online` 时，后端会校验资源是否已经具备可交付前提：
+
+- 已绑定或本次请求提供 `sub2AccountId`。
+- 已拥有 `credentialType=openai_refresh_token` 且 `status=active` 的资源凭据。
+
+如果条件不满足，接口返回 `400 codex_resource_not_ready_for_online`，并在 `issues` 中返回 `sub2_account_missing` 或 `active_openai_refresh_token_missing`。非 Codex 资源和非 `online` 状态变更不受该闸门影响。
+
+这让管理员状态写入口与 `readyOnlineCodexResources` 巡检口径保持一致：不可交付资源不会先被手工标成 `online`，再由系统健康页二次发现。真实 `/v1/responses` 成功仍以 Sub2 账号测试、本地反代 smoke 和代理请求日志为准。
