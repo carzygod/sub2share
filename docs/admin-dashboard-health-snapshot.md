@@ -237,3 +237,14 @@
 - 首页 Sub2 关键巡检既可以从主问题保留失败证据，也可以从候选样本保留同一证据。
 - 这样管理员打开完整巡检或反代状态时，不会因为点击样本行而丢失 `/v1/responses` 失败路径和审计记录。
 - 该能力只补齐 dashboard 预览数据，不改变关键巡检排序、状态聚合或 Sub2API 调用。
+
+## 2026-06-13 扩展：首页保留 smoke 清理证据
+
+- `GET /api/admin/dashboard` 的关键巡检预览继续保留完整 smoke 审计与清理字段：
+  - `sub2Status`
+  - `auditAction`
+  - `keyDisabled`
+  - `proxyRequestLogCount`
+- `primaryIssue` 和 `primarySample` 都会保留这些字段。
+- 首页关键巡检与完整 `可用性巡检` 对同一条 smoke 失败证据的摘要保持一致，管理员无需进入详情页才能确认临时 Key 清理和代理日志数量。
+- 该能力只扩展 dashboard 预览字段，不改变健康状态聚合或排序。

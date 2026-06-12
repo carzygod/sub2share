@@ -144,7 +144,12 @@ test("dashboard health previews prioritize blocking checks and retain critical o
           id: "account-2",
           repairAction: "apply_openai_refresh_token_to_sub2_account",
           actionHint: "Apply a fresh OpenAI refresh token, then rerun smoke.",
+          sub2Status: true,
           sub2AccountId: 2,
+          auditLogId: "audit-smoke-1",
+          auditAction: "admin.sub2.proxy_smoke_test",
+          keyDisabled: true,
+          proxyRequestLogCount: 2,
           proxyRequestPath: "/v1/responses",
           proxyRequestStatusCode: 503,
           proxyRequestErrorCode: "upstream_http_503",
@@ -165,7 +170,12 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[0].issueCount, 2);
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(previews[0].primaryIssue?.actionHint, "Apply a fresh OpenAI refresh token, then rerun smoke.");
+  assert.equal(previews[0].primaryIssue?.sub2Status, true);
   assert.equal(previews[0].primaryIssue?.sub2AccountId, 2);
+  assert.equal(previews[0].primaryIssue?.auditLogId, "audit-smoke-1");
+  assert.equal(previews[0].primaryIssue?.auditAction, "admin.sub2.proxy_smoke_test");
+  assert.equal(previews[0].primaryIssue?.keyDisabled, true);
+  assert.equal(previews[0].primaryIssue?.proxyRequestLogCount, 2);
   assert.equal(previews[0].primaryIssue?.proxyRequestPath, "/v1/responses");
   assert.equal(previews[0].primaryIssue?.proxyRequestStatusCode, 503);
   assert.equal(previews[0].primaryIssue?.proxyRequestErrorCode, "upstream_http_503");

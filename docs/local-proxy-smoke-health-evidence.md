@@ -76,6 +76,12 @@
 - 管理员从 Sub2 候选账号样本打开维修入口时，可以保留与主问题一致的 smoke 证据链。
 - 该扩展不触发 live smoke，只复用最近审计证据。
 
+## 2026-06-13 扩展：Dashboard 保留清理证据字段
+
+- Dashboard 关键巡检预览不再只保留 `auditLogId`，还会保留 `auditAction`、`keyDisabled`、`proxyRequestLogCount` 和 `sub2Status`。
+- 首页可以直接看到 smoke 审计动作、临时 Key 清理状态、代理日志数量和 Sub2 修复标记。
+- 该扩展不改变 smoke 证据来源，也不触发新的 `/v1/models` 或 `/v1/responses` 请求。
+
 ## 验证方式
 
 - `npm.cmd --prefix user/apps/api run typecheck`
