@@ -415,3 +415,19 @@
   - `spent`
 
 这样管理员不需要逐个打开用户、余额、售出和共享资源页面，也能在首屏判断哪些核心管理对象需要处理，并可一键进入对应筛选结果。
+
+## 2026-06-13 扩展：交付阻断卡片直达共享资源修复
+
+- Admin 首页 `deliveryBlocker` 卡片保留原有主操作：根据巡检目标打开商品、售出或资源相关入口。
+- 当 `deliveryBlocker.check` 是 `productCatalog` 且携带共享资源修复上下文时，卡片额外展示“打开共享资源”。
+- 共享资源修复上下文支持：
+  - `resourceList=true`
+  - `supplierEmail`
+  - `resourceType`
+  - `resourceStatus`
+  - `resourceScope`
+  - `sub2AccountId`
+- “打开共享资源”会复用既有 `dashboardHealthResourceFilter()`，把商品、价格、供给方、资源类型、生产范围和 Sub2 账号诊断传入共享资源创建/筛选入口。
+- 前端单元测试覆盖 `productCatalog + resourceList=true` 可以显示共享资源修复动作，非 `productCatalog` 或无资源上下文时不误显示。
+
+这样管理员在首页看到 Codex 商品交付阻断时，可以同时进入商品定位和共享资源修复入口，不再需要先进入完整巡检列表才能拿到“打开共享资源”的按钮。

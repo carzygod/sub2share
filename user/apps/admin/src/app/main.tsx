@@ -41,6 +41,8 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  resourceRepairActionShouldOpenResources,
+  resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
   sub2RepairContextSmokeModel,
@@ -3014,6 +3016,7 @@ function DashboardView({
   const deliveryBlocker = latestHealth?.deliveryBlocker ?? null;
   const deliveryBlockerContext = deliveryBlocker ? dashboardDeliveryBlockerContextText(deliveryBlocker) : "";
   const deliveryAccountDiagnosis = deliveryBlocker ? dashboardUpstreamAccountDiagnosisText(deliveryBlocker) : "";
+  const deliveryResourceRepairTarget = deliveryBlocker ? dashboardHealthCanOpenResourceRepair(deliveryBlocker.check) : false;
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -3133,6 +3136,11 @@ function DashboardView({
                     <button className="secondary mini" onClick={() => onOpenHealthCheck(deliveryBlocker.check)}>
                       <ChevronRight size={14} />{dashboardDeliveryBlockerActionLabel(deliveryBlocker)}
                     </button>
+                    {deliveryResourceRepairTarget && (
+                      <button className="secondary mini" onClick={() => onOpenHealthResources(deliveryBlocker.check)}>
+                        <ChevronRight size={14} />打开共享资源
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
@@ -6661,13 +6669,14 @@ function dashboardHealthProxyLookup(check: DashboardHealthCheckPreview) {
 }
 
 function dashboardHealthHasResourceFilter(record: DashboardHealthDetailPreview | undefined) {
-  return Boolean(
-    textValue(record?.supplierEmail)
-    || textValue(record?.resourceType)
-    || textValue(record?.resourceStatus)
-    || textValue(record?.resourceScope)
-    || textValue(record?.sub2AccountId)
-  );
+  return resourceRepairCandidateHasResourceFilter({
+    resourceList: record?.resourceList,
+    supplierEmail: record?.supplierEmail,
+    resourceType: record?.resourceType,
+    resourceStatus: record?.resourceStatus,
+    resourceScope: record?.resourceScope,
+    sub2AccountId: record?.sub2AccountId
+  });
 }
 
 function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | undefined, checkId = "resources") {
@@ -6722,7 +6731,16 @@ function dashboardHealthProductLookup(check: DashboardHealthCheckPreview) {
 }
 
 function dashboardHealthCanOpenResourceRepair(check: DashboardHealthCheckPreview) {
-  return check.id === "productCatalog" && dashboardHealthHasResourceFilter(dashboardHealthDetailRecord(check));
+  const record = dashboardHealthDetailRecord(check);
+  return resourceRepairActionShouldOpenResources({
+    checkId: check.id,
+    resourceList: record?.resourceList,
+    supplierEmail: record?.supplierEmail,
+    resourceType: record?.resourceType,
+    resourceStatus: record?.resourceStatus,
+    resourceScope: record?.resourceScope,
+    sub2AccountId: record?.sub2AccountId
+  });
 }
 
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {

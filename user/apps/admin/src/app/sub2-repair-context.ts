@@ -66,6 +66,16 @@ export interface ResourceCreateDefaults {
   staleAt?: string;
 }
 
+export interface ResourceRepairActionCandidate {
+  checkId?: unknown;
+  resourceList?: unknown;
+  supplierEmail?: unknown;
+  resourceType?: unknown;
+  resourceStatus?: unknown;
+  resourceScope?: unknown;
+  sub2AccountId?: unknown;
+}
+
 export interface Sub2RepairContextItem {
   label: string;
   value: string;
@@ -148,6 +158,21 @@ export function resourceCreateDefaultsSmokeModel(defaults: ResourceCreateDefault
   return defaults.model?.trim() || "";
 }
 
+export function resourceRepairCandidateHasResourceFilter(candidate: ResourceRepairActionCandidate) {
+  return boolish(candidate.resourceList)
+    || Boolean(
+      repairCandidateText(candidate.supplierEmail)
+      || repairCandidateText(candidate.resourceType)
+      || repairCandidateText(candidate.resourceStatus)
+      || repairCandidateText(candidate.resourceScope)
+      || repairCandidateText(candidate.sub2AccountId)
+    );
+}
+
+export function resourceRepairActionShouldOpenResources(candidate: ResourceRepairActionCandidate) {
+  return repairCandidateText(candidate.checkId) === "productCatalog" && resourceRepairCandidateHasResourceFilter(candidate);
+}
+
 export function resourceCreateDefaultsProductText(defaults: ResourceCreateDefaults) {
   return [
     defaults.productName,
@@ -209,4 +234,14 @@ function healthFlag(label: string, value?: string) {
   if (value === "true") return `${label} 通过`;
   if (value === "false") return `${label} 失败`;
   return `${label} ${value}`;
+}
+
+function repairCandidateText(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function boolish(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.trim().toLowerCase() === "true";
+  return false;
 }

@@ -15,6 +15,8 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  resourceRepairActionShouldOpenResources,
+  resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
   sub2RepairContextSmokeModel
@@ -203,6 +205,29 @@ test("resource create defaults continue the OpenAI credential repair flow", () =
   }), true);
   assert.equal(resourceCreateDefaultsShouldApplyCredential({ resourceType: "codex", sub2AccountId: "2" }), false);
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
+});
+
+test("product catalog repair action exposes shared resource drilldown", () => {
+  assert.equal(resourceRepairCandidateHasResourceFilter({ resourceList: "true" }), true);
+  assert.equal(resourceRepairCandidateHasResourceFilter({ resourceType: "codex" }), true);
+  assert.equal(resourceRepairCandidateHasResourceFilter({ resourceList: "false" }), false);
+  assert.equal(resourceRepairActionShouldOpenResources({
+    checkId: "productCatalog",
+    resourceList: "true"
+  }), true);
+  assert.equal(resourceRepairActionShouldOpenResources({
+    checkId: "productCatalog",
+    resourceType: "codex",
+    resourceScope: "production",
+    sub2AccountId: "2"
+  }), true);
+  assert.equal(resourceRepairActionShouldOpenResources({
+    checkId: "resources",
+    resourceList: "true"
+  }), false);
+  assert.equal(resourceRepairActionShouldOpenResources({
+    checkId: "productCatalog"
+  }), false);
 });
 
 test("resource create defaults expose repair context for operators", () => {
