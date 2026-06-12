@@ -354,3 +354,18 @@
 - 该能力继续只提炼最近系统巡检中的 `primaryIssue` 或 `primarySample`，不读取 refresh token 明文，也不新增外部调用。
 
 这样当前生产环境出现 “Sub2 默认 OpenAI 分组无 active 账号” 时，管理员在首屏即可看到具体账号与 `token_invalidated` 根因，再进入反代状态页应用新的 OpenAI refresh token。
+
+## 2026-06-13 扩展：Dashboard 保留完整 OpenAI/Codex 反代契约指标
+
+- `GET /api/admin/dashboard` 的健康检查 preview 继续扩展 `metrics` 白名单，完整保留 `openAiProxyContract` 的关键反代契约证据。
+- 新增保留的指标包括：
+  - request id、upstream request id、rate limit header 和 proxy request lookup header 契约。
+  - CORS 是否暴露 request id、上游 request id 与 OpenAI rate limit headers。
+  - 原始 body 透传模式、body limit、上游超时、stream idle timeout。
+  - multipart、form-urlencoded、URL model 提取能力。
+  - 上游 header 转发、forwarded host/proto、客户端断开 abort、流式完成与错误日志。
+  - OpenAI 兼容错误类型与 `error.param` 兼容字段。
+  - Redis 限流窗口、token event 和清理周期运行态。
+- API 单元测试锁定这些字段不会在 Dashboard preview 中被过滤掉。
+
+这样管理员在系统巡检或首页关键证据中，不只知道“反代契约 ok”，还可以看到支撑完整 OpenAI/Codex 反代的路径、header、body、stream、CORS、限流和错误兼容性证据。

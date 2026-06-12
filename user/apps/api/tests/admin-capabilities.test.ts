@@ -125,6 +125,32 @@ test("dashboard health previews prioritize blocking checks and retain critical o
         forwardsUpstreamHeaders: true,
         corePathSamples: "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions",
         routesResponsesItems: true,
+        requestIdHeader: "x-proxy-request-id",
+        upstreamRequestIdHeaders: "x-request-id,openai-request-id,x-openai-request-id,request-id",
+        rateLimitHeaders: "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens",
+        proxyRequestLookupHeaders: "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id",
+        corsExposesRequestId: true,
+        corsExposesUpstreamRequestIds: true,
+        corsExposesRateLimitHeaders: true,
+        setsLocalRateLimitHeaders: true,
+        normalizesProxyRequestLookupHeaders: true,
+        requestBodyMode: "raw-buffer",
+        bodyLimitBytes: 52_428_800,
+        upstreamTimeoutMs: 300_000,
+        streamIdleTimeoutMs: 300_000,
+        extractsMultipartModelForLogs: true,
+        extractsFormUrlEncodedModelForLogs: true,
+        extractsUrlModelForLogs: true,
+        forwardsRequestId: true,
+        forwardsForwardedHostAndProto: true,
+        abortsUpstreamOnClientClose: true,
+        logsStreamCompletion: true,
+        logsStreamErrors: true,
+        hasStreamIdleTimeout: true,
+        insufficientQuotaErrorType: "insufficient_quota",
+        rateLimitErrorType: "rate_limit_error",
+        apiErrorType: "api_error",
+        localErrorPayloadIncludesParam: true,
         endpoint: "https://api.example.com/v1",
         ignoredNested: { ok: true }
       }
@@ -214,6 +240,32 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[4].metrics?.forwardsUpstreamHeaders, true);
   assert.equal(previews[4].metrics?.routesResponsesItems, true);
   assert.equal(previews[4].metrics?.corePathSamples, "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions");
+  assert.equal(previews[4].metrics?.requestIdHeader, "x-proxy-request-id");
+  assert.equal(previews[4].metrics?.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
+  assert.equal(previews[4].metrics?.rateLimitHeaders, "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens");
+  assert.equal(previews[4].metrics?.proxyRequestLookupHeaders, "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id");
+  assert.equal(previews[4].metrics?.corsExposesRequestId, true);
+  assert.equal(previews[4].metrics?.corsExposesUpstreamRequestIds, true);
+  assert.equal(previews[4].metrics?.corsExposesRateLimitHeaders, true);
+  assert.equal(previews[4].metrics?.setsLocalRateLimitHeaders, true);
+  assert.equal(previews[4].metrics?.normalizesProxyRequestLookupHeaders, true);
+  assert.equal(previews[4].metrics?.requestBodyMode, "raw-buffer");
+  assert.equal(previews[4].metrics?.bodyLimitBytes, 52_428_800);
+  assert.equal(previews[4].metrics?.upstreamTimeoutMs, 300_000);
+  assert.equal(previews[4].metrics?.streamIdleTimeoutMs, 300_000);
+  assert.equal(previews[4].metrics?.extractsMultipartModelForLogs, true);
+  assert.equal(previews[4].metrics?.extractsFormUrlEncodedModelForLogs, true);
+  assert.equal(previews[4].metrics?.extractsUrlModelForLogs, true);
+  assert.equal(previews[4].metrics?.forwardsRequestId, true);
+  assert.equal(previews[4].metrics?.forwardsForwardedHostAndProto, true);
+  assert.equal(previews[4].metrics?.abortsUpstreamOnClientClose, true);
+  assert.equal(previews[4].metrics?.logsStreamCompletion, true);
+  assert.equal(previews[4].metrics?.logsStreamErrors, true);
+  assert.equal(previews[4].metrics?.hasStreamIdleTimeout, true);
+  assert.equal(previews[4].metrics?.insufficientQuotaErrorType, "insufficient_quota");
+  assert.equal(previews[4].metrics?.rateLimitErrorType, "rate_limit_error");
+  assert.equal(previews[4].metrics?.apiErrorType, "api_error");
+  assert.equal(previews[4].metrics?.localErrorPayloadIncludesParam, true);
   assert.equal(previews[4].metrics?.endpoint, "https://api.example.com/v1");
   assert.equal(Object.hasOwn(previews[4].metrics ?? {}, "ignoredNested"), false);
 });
@@ -244,6 +296,46 @@ test("dashboard latest system health preview exposes snapshot freshness", () => 
   const stale = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T11:00:00.000Z"));
   assert.equal(stale.ageMinutes, 60);
   assert.equal(stale.stale, true);
+});
+
+test("dashboard health previews retain OpenAI proxy runtime limiter metrics", () => {
+  const previews = dashboardHealthCheckPreviews([{
+    id: "openAiProxyRuntime",
+    label: "OpenAI 反代运行态",
+    status: "ok",
+    summary: "Redis limiter is ready",
+    metrics: {
+      storeMode: "redis",
+      limiterScope: "redis",
+      shared: true,
+      redisReachable: true,
+      rateWindowMs: 60_000,
+      rateWindowCleanupIntervalMs: 60_000,
+      activeConcurrencyRentals: 1,
+      activeConcurrencyLeases: 2,
+      activeRateWindowRentals: 3,
+      activeRateWindowRequests: 4,
+      activeRateWindowTokenEvents: 5,
+      activeRateWindowEstimatedTokens: 6,
+      lastRateWindowCleanupAt: "2026-06-13T04:48:48.000Z",
+      ignoredNested: { ok: true }
+    }
+  }]);
+
+  assert.equal(previews[0].metrics?.storeMode, "redis");
+  assert.equal(previews[0].metrics?.limiterScope, "redis");
+  assert.equal(previews[0].metrics?.shared, true);
+  assert.equal(previews[0].metrics?.redisReachable, true);
+  assert.equal(previews[0].metrics?.rateWindowMs, 60_000);
+  assert.equal(previews[0].metrics?.rateWindowCleanupIntervalMs, 60_000);
+  assert.equal(previews[0].metrics?.activeConcurrencyRentals, 1);
+  assert.equal(previews[0].metrics?.activeConcurrencyLeases, 2);
+  assert.equal(previews[0].metrics?.activeRateWindowRentals, 3);
+  assert.equal(previews[0].metrics?.activeRateWindowRequests, 4);
+  assert.equal(previews[0].metrics?.activeRateWindowTokenEvents, 5);
+  assert.equal(previews[0].metrics?.activeRateWindowEstimatedTokens, 6);
+  assert.equal(previews[0].metrics?.lastRateWindowCleanupAt, "2026-06-13T04:48:48.000Z");
+  assert.equal(Object.hasOwn(previews[0].metrics ?? {}, "ignoredNested"), false);
 });
 
 test("dashboard latest system health preview exposes actionable upstream blocker", () => {
