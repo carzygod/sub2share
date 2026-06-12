@@ -252,12 +252,31 @@ interface SystemHealthSampleRow {
   summary: string;
   sampleType?: string;
   repairAction?: string;
+  actionHint?: string;
+  proxyRequestLookup?: string;
+  requestId?: string;
+  proxyRequestLogId?: string;
+  upstreamRequestId?: string;
+  proxyRequestPath?: string;
+  proxyRequestStatusCode?: string;
+  proxyRequestErrorCode?: string;
+  model?: string;
+  modelsOk?: string;
+  responsesOk?: string;
+  localProxyOk?: string;
+  smokeTestSkippedReason?: string;
+  ageMinutes?: string;
+  stale?: string;
   userId?: string;
+  orderId?: string;
+  rentalId?: string;
   walletLookup?: string;
   walletList?: boolean;
   walletTransactionList?: boolean;
   walletTransactionType?: string;
+  walletTransactionLookup?: string;
   salesList?: boolean;
+  resourceList?: boolean;
   resourceId?: string;
   resourceType?: string;
   resourceStatus?: string;
@@ -265,6 +284,12 @@ interface SystemHealthSampleRow {
   supplierEmail?: string;
   sub2AccountId?: string;
   sub2Status?: boolean;
+  apiKeyLookup?: string;
+  usageLookup?: string;
+  productLookup?: string;
+  settlementLookup?: string;
+  withdrawalLookup?: string;
+  auditLogLookup?: string;
 }
 
 interface DeliverySummary {
@@ -2909,13 +2934,24 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td><small>{sample.summary}</small></td>
               <td>
                 <div className="row-actions">
+                  {sample.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(sample.proxyRequestLookup!)}>打开反代请求</button>}
+                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId })}>打开共享资源</button>}
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
                   {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
+                  {sample.orderId && <button className="secondary mini" onClick={() => onOpenOrder(sample.orderId!)}>打开订单</button>}
+                  {sample.rentalId && <button className="secondary mini" onClick={() => onOpenRental(sample.rentalId!)}>打开租赁</button>}
                   {sample.userId && <button className="secondary mini" onClick={() => onOpenUser(sample.userId!)}>打开用户</button>}
                   {sample.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
                   {sample.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: sample.walletTransactionType })}>打开余额流水</button>}
+                  {sample.walletTransactionLookup && <button className="secondary mini" onClick={() => onOpenWalletTransaction(sample.walletTransactionLookup!)}>打开流水</button>}
                   {sample.salesList && <button className="secondary mini" onClick={onOpenSales}>打开售出情况</button>}
                   {sample.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(sample.walletLookup!)}>打开余额</button>}
+                  {sample.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(sample.apiKeyLookup!)}>打开 Key</button>}
+                  {sample.usageLookup && <button className="secondary mini" onClick={() => onOpenUsage(sample.usageLookup!)}>打开用量</button>}
+                  {sample.productLookup && <button className="secondary mini" onClick={() => onOpenProduct(sample.productLookup!)}>打开商品</button>}
+                  {sample.settlementLookup && <button className="secondary mini" onClick={() => onOpenSettlement(sample.settlementLookup!)}>打开结算</button>}
+                  {sample.withdrawalLookup && <button className="secondary mini" onClick={() => onOpenWithdrawal(sample.withdrawalLookup!)}>打开提现</button>}
+                  {sample.auditLogLookup && <button className="secondary mini" onClick={() => onOpenAuditLog(sample.auditLogLookup!)}>打开审计</button>}
                   {!systemHealthSampleHasAction(sample) && <small>-</small>}
                 </div>
               </td>
@@ -5025,11 +5061,25 @@ function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub
     checkId: sample.checkId,
     checkLabel: sample.sampleType ? `${sample.checkLabel} / ${sample.sampleType}` : sample.checkLabel,
     repairAction: sample.repairAction,
+    actionHint: sample.actionHint,
     resourceId: sample.resourceId,
     resourceType: sample.resourceType,
     resourceStatus: sample.resourceStatus,
     resourceScope: sample.resourceScope,
-    supplierEmail: sample.supplierEmail
+    supplierEmail: sample.supplierEmail,
+    requestId: sample.requestId ?? sample.proxyRequestLookup,
+    proxyRequestLogId: sample.proxyRequestLogId,
+    upstreamRequestId: sample.upstreamRequestId,
+    proxyRequestPath: sample.proxyRequestPath,
+    proxyRequestStatusCode: sample.proxyRequestStatusCode,
+    proxyRequestErrorCode: sample.proxyRequestErrorCode,
+    model: sample.model,
+    modelsOk: sample.modelsOk,
+    responsesOk: sample.responsesOk,
+    localProxyOk: sample.localProxyOk,
+    smokeTestSkippedReason: sample.smokeTestSkippedReason,
+    ageMinutes: sample.ageMinutes,
+    stale: sample.stale
   };
 }
 
@@ -5979,6 +6029,8 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
   return check.detail.samples.slice(0, 100).map((sample, index): SystemHealthSampleRow => {
     const record = isPlainRecord(sample) ? sample : {};
     const sub2StatusFlag = record.sub2Status === true || check.id === "sub2" || Boolean(textValue(record.sub2AccountId));
+    const refType = textValue(record.refType)?.toLowerCase();
+    const refId = textValue(record.refId);
     return {
       id: textValue(record.id) ?? String(index),
       checkId: check.id,
@@ -5987,19 +6039,44 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       summary: systemHealthSampleSummary(record, sample),
       sampleType: textValue(record.sampleType),
       repairAction: textValue(record.repairAction),
+      actionHint: textValue(record.actionHint),
+      proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
+      requestId: textValue(record.requestId),
+      proxyRequestLogId: textValue(record.proxyRequestLogId),
+      upstreamRequestId: textValue(record.upstreamRequestId),
+      proxyRequestPath: textValue(record.proxyRequestPath),
+      proxyRequestStatusCode: textValue(record.proxyRequestStatusCode),
+      proxyRequestErrorCode: textValue(record.proxyRequestErrorCode),
+      model: textValue(record.model),
+      modelsOk: textValue(record.modelsOk),
+      responsesOk: textValue(record.responsesOk),
+      localProxyOk: textValue(record.localProxyOk),
+      smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
+      ageMinutes: textValue(record.ageMinutes),
+      stale: textValue(record.stale),
       userId: textValue(record.userId),
+      orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
+      rentalId: textValue(record.rentalId),
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId) ?? textValue(record.walletLookup),
-      walletList: record.walletList === true,
-      walletTransactionList: record.walletTransactionList === true,
+      walletList: record.walletList === true || textValue(record.walletList)?.toLowerCase() === "true",
+      walletTransactionList: record.walletTransactionList === true || textValue(record.walletTransactionList)?.toLowerCase() === "true",
       walletTransactionType: textValue(record.walletTransactionType),
-      salesList: record.salesList === true,
+      walletTransactionLookup: textValue(record.walletTransactionId) ?? refTypeLookup(refType, refId, "wallet_transaction"),
+      salesList: record.salesList === true || textValue(record.salesList)?.toLowerCase() === "true",
+      resourceList: record.resourceList === true || textValue(record.resourceList)?.toLowerCase() === "true",
       resourceId: textValue(record.resourceId),
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
       resourceScope: textValue(record.resourceScope),
       supplierEmail: textValue(record.supplierEmail),
       sub2AccountId: textValue(record.sub2AccountId),
-      sub2Status: sub2StatusFlag
+      sub2Status: sub2StatusFlag,
+      apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
+      usageLookup: textValue(record.usageId) ?? refTypeLookup(refType, refId, "usage"),
+      productLookup: textValue(record.productId) ?? textValue(record.priceId),
+      settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId) ?? refTypeLookup(refType, refId, "settlement"),
+      withdrawalLookup: textValue(record.withdrawalId) ?? refTypeLookup(refType, refId, "withdrawal"),
+      auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
     };
   });
 }
@@ -6053,13 +6130,24 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
 
 function systemHealthSampleHasAction(sample: SystemHealthSampleRow) {
   return Boolean(
-    sample.resourceId
+    sample.proxyRequestLookup
+    || sample.resourceList
+    || sample.resourceId
     || sample.sub2Status
+    || sample.orderId
+    || sample.rentalId
     || sample.userId
     || sample.walletList
     || sample.walletTransactionList
+    || sample.walletTransactionLookup
     || sample.salesList
     || sample.walletLookup
+    || sample.apiKeyLookup
+    || sample.usageLookup
+    || sample.productLookup
+    || sample.settlementLookup
+    || sample.withdrawalLookup
+    || sample.auditLogLookup
   );
 }
 

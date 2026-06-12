@@ -58,6 +58,12 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("stale"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("proxyRequestLogId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("orderId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("rentalId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("apiKeyId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("usageId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("walletTransactionId"));
 });
 
 test("sub2 repair context summarizes operator drilldown targets", () => {

@@ -62,3 +62,22 @@
 
 - `npm.cmd --prefix user/apps/admin run typecheck`
 - `npm.cmd --prefix user/apps/admin run build`
+
+## 2026-06-12 扩展：候选样本管理入口补齐
+
+此前 `巡检问题样本` 已经能从 issue 行打开用户、共享资源、余额、售出、订单、租赁、API Key、用量、商品、结算、提现、审计和反代请求等入口，但 `巡检候选样本` 只覆盖资源、Sub2 状态、用户、余额、余额流水和售出情况。部分检查项会把可修复对象放在 `detail.samples` 中，管理员仍需要复制 ID 再手动筛选。
+
+本次补齐候选样本的字段抽取和行内操作：
+
+- 支持从 sample 中抽取 `requestId`、`proxyRequestLogId`、`upstreamRequestId`，并直接打开 `反代请求`。
+- 支持从 sample 中抽取 `orderId`、`rentalId`、`apiKeyId`、`apiKeyPrefix`、`usageId`、`productId`、`priceId`、`settlementId`、`withdrawalId`、`auditLogId` 和 `auditAction`，并打开对应管理入口。
+- 支持 `refType/refId` 后备映射：`order`、`usage`、`wallet_transaction`、`settlement`、`withdrawal` 会自动变成可点击入口。
+- 支持 `resourceList=true` 的候选样本打开共享资源列表，并带入 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 和 `sub2AccountId` 筛选/创建上下文。
+- 支持字符串形式的布尔字段，例如 `walletList="true"`、`walletTransactionList="true"`、`salesList="true"` 和 `resourceList="true"`。
+- 候选样本进入 `反代状态` 时会携带 `actionHint`、请求定位、smoke 分段结果、模型、失败路径、HTTP 状态码、代理错误码、`ageMinutes` 和 `stale`，避免 Sub2 修复页丢失证据上下文。
+
+管理价值：
+
+- 资源凭据、Sub2 上游、支付充值、反代 smoke、账务对账等检查把对象放在 sample 中时，管理员也能一键跳转，不再只对 issue 行生效。
+- 售出交付、余额、共享资源、反代请求和用量等关键管理入口在巡检页面形成统一 drilldown 体验。
+- 这只增强前端巡检入口和摘要字段，不改变系统健康判定、业务数据、Sub2API 请求或 OpenAI/Codex 反代行为。
