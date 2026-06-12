@@ -193,6 +193,7 @@ interface SystemHealthIssueRow {
   type: string;
   ref: string;
   message: string;
+  repairAction?: string;
   resourceId?: string;
   resourceList?: boolean;
   resourceScope?: string;
@@ -225,6 +226,8 @@ interface SystemHealthSampleRow {
   checkLabel: string;
   ref: string;
   summary: string;
+  sampleType?: string;
+  repairAction?: string;
   userId?: string;
   walletLookup?: string;
   walletList?: boolean;
@@ -234,6 +237,7 @@ interface SystemHealthSampleRow {
   resourceId?: string;
   resourceType?: string;
   resourceStatus?: string;
+  resourceScope?: string;
   supplierEmail?: string;
   sub2AccountId?: string;
   sub2Status?: boolean;
@@ -241,10 +245,20 @@ interface SystemHealthSampleRow {
 
 interface Sub2RepairContext {
   accountId?: string | null;
+  sub2AccountName?: string;
+  accountStatus?: string;
+  credentialsStatus?: string;
+  checkId?: string;
+  checkLabel?: string;
+  repairAction?: string;
   resourceId?: string;
   resourceType?: string;
   resourceStatus?: string;
+  resourceScope?: string;
   supplierEmail?: string;
+  requestId?: string;
+  proxyRequestLogId?: string;
+  upstreamRequestId?: string;
 }
 
 interface DeliverySummary {
@@ -1858,7 +1872,7 @@ function App() {
   async function openDashboardHealthCheck(check: DashboardHealthCheckPreview) {
     const record = dashboardHealthDetailRecord(check);
     if (dashboardHealthCheckHasSub2Repair(check)) {
-      await openSub2StatusCandidate(dashboardHealthSub2RepairContext(record));
+      await openSub2StatusCandidate(dashboardHealthSub2RepairContext(check));
       return;
     }
 
@@ -2816,7 +2830,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
             <td>
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
-                {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: issue.sub2AccountId, resourceId: issue.resourceId, supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, resourceStatus: issue.resourceStatus })}>打开反代状态</button>}
+                {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthIssueSub2RepairContext(issue))}>打开反代状态</button>}
                 {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
@@ -2855,7 +2869,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 <div className="row-actions">
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
-                  {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status({ accountId: sample.sub2AccountId, resourceId: sample.resourceId, supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, resourceStatus: sample.resourceStatus })}>打开反代状态</button>}
+                  {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
                   {sample.userId && <button className="secondary mini" onClick={() => onOpenUser(sample.userId!)}>打开用户</button>}
                   {sample.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
                   {sample.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: sample.walletTransactionType })}>打开余额流水</button>}
@@ -4504,6 +4518,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
     ?? openAiAccounts.find((account) => account.status !== "active" || account.schedulable === false)
     ?? openAiAccounts[0];
   const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
+  const repairContextItems = sub2RepairContextItems(repairContext);
 
   return (
     <section className="stack">
@@ -4543,6 +4558,22 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
           </div>
         )}
       </div>
+      {repairContextItems.length > 0 && (
+        <div className="panel glass-panel">
+          <div className="section-head">
+            <div>
+              <span className="eyebrow">Repair Context</span>
+              <h2>修复定位</h2>
+            </div>
+            <StatusPill status={repairContext.accountId ? "active" : "warning"} />
+          </div>
+          <div className="diagnostic-grid">
+            {repairContextItems.map((item) => (
+              <div key={item.label}><span>{item.label}</span><strong>{item.value}</strong></div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="panel glass-panel">
         <div className="section-head">
           <div>
@@ -4911,6 +4942,35 @@ function resourceRepairContext(resource: ResourceRow, supplierEmail?: string): S
     resourceType: resource.resourceType,
     resourceStatus: resource.status,
     supplierEmail
+  };
+}
+
+function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2RepairContext {
+  return {
+    accountId: issue.sub2AccountId,
+    checkId: issue.checkId,
+    checkLabel: issue.checkLabel,
+    repairAction: issue.repairAction,
+    resourceId: issue.resourceId,
+    resourceType: issue.resourceType,
+    resourceStatus: issue.resourceStatus,
+    resourceScope: issue.resourceScope,
+    supplierEmail: issue.supplierEmail,
+    requestId: issue.proxyRequestLookup
+  };
+}
+
+function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub2RepairContext {
+  return {
+    accountId: sample.sub2AccountId,
+    checkId: sample.checkId,
+    checkLabel: sample.sampleType ? `${sample.checkLabel} / ${sample.sampleType}` : sample.checkLabel,
+    repairAction: sample.repairAction,
+    resourceId: sample.resourceId,
+    resourceType: sample.resourceType,
+    resourceStatus: sample.resourceStatus,
+    resourceScope: sample.resourceScope,
+    supplierEmail: sample.supplierEmail
   };
 }
 
@@ -5655,13 +5715,24 @@ function dashboardHealthCheckHasSub2Repair(check: DashboardHealthCheckPreview) {
   return textValue(record?.repairAction) === "apply_openai_refresh_token_to_sub2_account" || Boolean(textValue(record?.sub2AccountId));
 }
 
-function dashboardHealthSub2RepairContext(record: DashboardHealthDetailPreview | undefined): Sub2RepairContext {
+function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): Sub2RepairContext {
+  const record = dashboardHealthDetailRecord(check);
   return {
     accountId: textValue(record?.sub2AccountId) ?? null,
+    sub2AccountName: textValue(record?.sub2AccountName),
+    accountStatus: textValue(record?.accountStatus),
+    credentialsStatus: textValue(record?.credentialsStatus),
+    checkId: check.id,
+    checkLabel: check.label,
+    repairAction: textValue(record?.repairAction),
     resourceId: textValue(record?.resourceId),
     resourceType: textValue(record?.resourceType),
     resourceStatus: textValue(record?.resourceStatus),
-    supplierEmail: textValue(record?.supplierEmail)
+    resourceScope: textValue(record?.resourceScope),
+    supplierEmail: textValue(record?.supplierEmail),
+    requestId: textValue(record?.requestId),
+    proxyRequestLogId: textValue(record?.proxyRequestLogId),
+    upstreamRequestId: textValue(record?.upstreamRequestId)
   };
 }
 
@@ -5742,6 +5813,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       type: textValue(record.type) ?? "-",
       ref: systemHealthIssueRef(record),
       message: systemHealthIssueMessage(record, issue),
+      repairAction: textValue(record.repairAction),
       resourceId: textValue(record.resourceId),
       resourceList: record.resourceList === true || textValue(record.resourceList)?.toLowerCase() === "true",
       resourceScope: textValue(record.resourceScope),
@@ -5782,6 +5854,8 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       checkLabel: check.label,
       ref: systemHealthIssueRef(record),
       summary: systemHealthSampleSummary(record, sample),
+      sampleType: textValue(record.sampleType),
+      repairAction: textValue(record.repairAction),
       userId: textValue(record.userId),
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId) ?? textValue(record.walletLookup),
       walletList: record.walletList === true,
@@ -5791,6 +5865,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       resourceId: textValue(record.resourceId),
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
+      resourceScope: textValue(record.resourceScope),
       supplierEmail: textValue(record.supplierEmail),
       sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: sub2StatusFlag
@@ -5869,6 +5944,27 @@ function healthIssueTone(severity: string) {
   if (severity === "warning") return "warning";
   if (severity === "ok") return "active";
   return severity;
+}
+
+function sub2RepairContextItems(context: Sub2RepairContext) {
+  const account = context.accountId
+    ? `#${context.accountId}${context.sub2AccountName ? ` / ${context.sub2AccountName}` : ""}`
+    : context.sub2AccountName;
+  const resource = [context.resourceId, context.resourceType, context.resourceStatus, context.resourceScope]
+    .filter(Boolean)
+    .join(" / ");
+  const request = [context.requestId, context.proxyRequestLogId, context.upstreamRequestId]
+    .filter(Boolean)
+    .join(" / ");
+  return [
+    { label: "来源", value: [context.checkLabel, context.checkId].filter(Boolean).join(" / ") },
+    { label: "维修动作", value: context.repairAction },
+    { label: "目标账号", value: account },
+    { label: "账号状态", value: [context.accountStatus, context.credentialsStatus].filter(Boolean).join(" / ") },
+    { label: "资源", value: resource },
+    { label: "供给方", value: context.supplierEmail },
+    { label: "请求定位", value: request }
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value));
 }
 
 function sub2BlockingReasonActionHint(reason: string) {
