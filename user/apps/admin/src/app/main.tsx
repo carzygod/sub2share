@@ -1855,6 +1855,28 @@ function App() {
       : "Opened Sub2/OpenAI proxy status for the selected health issue");
   }
 
+  async function openDashboardHealthCheck(check: DashboardHealthCheckPreview) {
+    const record = dashboardHealthDetailRecord(check);
+    if (dashboardHealthCheckHasSub2Repair(check)) {
+      await openSub2StatusCandidate(dashboardHealthSub2RepairContext(record));
+      return;
+    }
+
+    const proxyLookup = dashboardHealthProxyLookup(check);
+    if ((check.id === "proxy" || check.id === "localProxySmoke") && proxyLookup) {
+      await openProxyRequestCandidate(proxyLookup);
+      return;
+    }
+
+    if (["resources", "resourceCredentials"].includes(check.id) && dashboardHealthHasResourceFilter(record)) {
+      await openResourcesCandidate(dashboardHealthResourceFilter(record));
+      return;
+    }
+
+    const target = dashboardHealthCheckTarget(check);
+    if (target) await refresh(target.view);
+  }
+
   async function setResourceStatus(resourceId: string, status: ResourceStatus) {
     if (["paused", "abnormal", "disabled"].includes(status) && !confirmAdminAction("确认调整共享资源状态？", `资源 ID：${resourceId}\n目标状态：${status}`)) return;
     await api(`/api/admin/resources/${resourceId}/status`, {
@@ -2170,6 +2192,7 @@ function App() {
             dashboard={dashboard}
             onOpenSystemHealth={() => refresh("systemHealth")}
             onOpenView={(nextView) => { void refresh(nextView); }}
+            onOpenHealthCheck={(check) => { void openDashboardHealthCheck(check); }}
             onOpenActiveRentals={() => { void openStatusListCandidate("rentals", "active", "已打开 active 租赁通道"); }}
             onOpenOnlineResources={() => { void openResourcesCandidate({ status: "online" }); }}
             onOpenRechargeTransactions={() => { void openWalletTransactionsCandidate({ type: "recharge" }); }}
@@ -2591,6 +2614,7 @@ function DashboardView({
   dashboard,
   onOpenSystemHealth,
   onOpenView,
+  onOpenHealthCheck,
   onOpenActiveRentals,
   onOpenOnlineResources,
   onOpenRechargeTransactions,
@@ -2600,6 +2624,7 @@ function DashboardView({
   dashboard: Dashboard | null;
   onOpenSystemHealth: () => void;
   onOpenView: (view: View) => void;
+  onOpenHealthCheck: (check: DashboardHealthCheckPreview) => void;
   onOpenActiveRentals: () => void;
   onOpenOnlineResources: () => void;
   onOpenRechargeTransactions: () => void;
@@ -2662,7 +2687,7 @@ function DashboardView({
               {criticalChecks.length > 0 && (
                 <div className="dashboard-health-list">
                   {criticalChecks.map((check) => {
-                    const target = dashboardHealthCheckTarget(check.id);
+                    const target = dashboardHealthCheckTarget(check);
                     const context = dashboardHealthPreviewContext(check);
                     return (
                       <div className="dashboard-health-item" key={check.id}>
@@ -2677,7 +2702,7 @@ function DashboardView({
                             <small>{check.issueCount} issue / {check.sampleCount} sample</small>
                           )}
                           {target && (
-                            <button className="secondary mini" onClick={() => onOpenView(target.view)}>
+                            <button className="secondary mini" onClick={() => onOpenHealthCheck(check)}>
                               <ChevronRight size={14} />{target.label}
                             </button>
                           )}
@@ -5590,7 +5615,14 @@ function healthRowClass(status: SystemHealthResult["status"]) {
   return "health-row error";
 }
 
-function dashboardHealthCheckTarget(checkId: string): { view: View; label: string } | null {
+function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {
+  const checkId = check.id;
+  if (dashboardHealthCheckHasSub2Repair(check)) {
+    return { view: "sub2", label: "打开反代状态" };
+  }
+  if ((checkId === "proxy" || checkId === "localProxySmoke") && dashboardHealthProxyLookup(check)) {
+    return { view: "proxyRequests", label: "打开反代请求" };
+  }
   if (["sub2", "localProxySmoke", "openAiProxyContract", "openAiProxyRuntime"].includes(checkId)) {
     return { view: "sub2", label: "打开反代状态" };
   }
@@ -5613,8 +5645,53 @@ function dashboardHealthCheckTarget(checkId: string): { view: View; label: strin
   return null;
 }
 
+function dashboardHealthDetailRecord(check: DashboardHealthCheckPreview) {
+  return check.primaryIssue ?? check.primarySample;
+}
+
+function dashboardHealthCheckHasSub2Repair(check: DashboardHealthCheckPreview) {
+  const record = dashboardHealthDetailRecord(check);
+  if (!["sub2", "localProxySmoke", "resourceCredentials", "resources"].includes(check.id)) return false;
+  return textValue(record?.repairAction) === "apply_openai_refresh_token_to_sub2_account" || Boolean(textValue(record?.sub2AccountId));
+}
+
+function dashboardHealthSub2RepairContext(record: DashboardHealthDetailPreview | undefined): Sub2RepairContext {
+  return {
+    accountId: textValue(record?.sub2AccountId) ?? null,
+    resourceId: textValue(record?.resourceId),
+    resourceType: textValue(record?.resourceType),
+    resourceStatus: textValue(record?.resourceStatus),
+    supplierEmail: textValue(record?.supplierEmail)
+  };
+}
+
+function dashboardHealthProxyLookup(check: DashboardHealthCheckPreview) {
+  const record = dashboardHealthDetailRecord(check);
+  return textValue(record?.requestId) ?? textValue(record?.proxyRequestLogId) ?? textValue(record?.upstreamRequestId);
+}
+
+function dashboardHealthHasResourceFilter(record: DashboardHealthDetailPreview | undefined) {
+  return Boolean(
+    textValue(record?.supplierEmail)
+    || textValue(record?.resourceType)
+    || textValue(record?.resourceStatus)
+    || textValue(record?.resourceScope)
+    || textValue(record?.sub2AccountId)
+  );
+}
+
+function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | undefined) {
+  return {
+    supplierEmail: textValue(record?.supplierEmail),
+    resourceType: textValue(record?.resourceType),
+    status: textValue(record?.resourceStatus),
+    scope: textValue(record?.resourceScope),
+    sub2AccountId: textValue(record?.sub2AccountId)
+  };
+}
+
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
-  const record = check.primaryIssue ?? check.primarySample;
+  const record = dashboardHealthDetailRecord(check);
   if (!record) return "";
   const fields = [
     "repairAction",
@@ -5623,6 +5700,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "accountStatus",
     "credentialsStatus",
     "resourceType",
+    "resourceStatus",
     "resourceScope",
     "supplierEmail",
     "requestId",

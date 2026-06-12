@@ -191,6 +191,7 @@ const dashboardHealthDetailPreviewFields = [
   "schedulable",
   "resourceId",
   "resourceType",
+  "resourceStatus",
   "resourceScope",
   "supplierEmail",
   "requestId",

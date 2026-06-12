@@ -64,6 +64,15 @@
 - `累计充值` / `累计消费` 会分别打开 `recharge` / `consume` 余额流水。
 - `待提现` 会直接打开 `status=pending` 的提现列表。
 
+## 2026-06-12 扩展：关键巡检项上下文跳转
+
+首页关键巡检项的行内按钮进一步使用 `primaryIssue` / `primarySample` 中的定位字段选择更精确的入口：
+
+- 当问题携带 `repairAction=apply_openai_refresh_token_to_sub2_account` 或 `sub2AccountId`，并且来自 `sub2`、`localProxySmoke`、`resourceCredentials` 或 `resources` 时，按钮直接打开 `反代状态`，并预选目标 Sub2/OpenAI 账号。
+- 当 `proxy` 或 `localProxySmoke` 问题携带 `requestId`、`proxyRequestLogId` 或 `upstreamRequestId` 且没有更高优先级的 Sub2 修复上下文时，按钮打开对应 `反代请求` 列表。
+- 当资源或资源凭据问题携带 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 或 `sub2AccountId` 时，按钮打开 `共享资源`，并带入筛选与创建默认值。
+- 首页上下文摘要新增展示 `resourceStatus`，便于管理员在首页确认资源状态与跳转筛选口径。
+
 ## 管理价值
 
 - 管理员进入后台首页即可看到真实巡检状态，而不是静态提示。
