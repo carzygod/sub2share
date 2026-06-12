@@ -7,6 +7,7 @@ import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { ok } from "../../common/response.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
+import { requireReadySupplierResourceForDelivery } from "../suppliers/resource-delivery-readiness.js";
 import { recordOrderStatusHistory } from "./status-history.js";
 
 const idempotencyKeySchema = z.string().trim().min(1).max(160).regex(/^[A-Za-z0-9._:-]+$/);
@@ -48,6 +49,8 @@ export async function registerOrderRoutes(app: FastifyInstance) {
       }
     }
 
+    const deliveryReadiness = await requireReadySupplierResourceForDelivery(price.product.resourceType);
+
     let result: {
       order: Prisma.OrderGetPayload<Record<string, never>>;
       rental: Prisma.RentalGetPayload<Record<string, never>>;
@@ -77,7 +80,12 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           toStatus: "provisioning",
           actorUserId: user.id,
           reason: "user.order.create",
-          meta: { productId: price.productId, priceId: price.id, amount: String(amount) }
+          meta: {
+            productId: price.productId,
+            priceId: price.id,
+            amount: String(amount),
+            supplierResourceId: deliveryReadiness.resource?.id ?? null
+          }
         });
         if (amount.gt(0)) {
           const debit = await tx.walletAccount.updateMany({
@@ -166,7 +174,11 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           toStatus: "active",
           actorUserId: user.id,
           reason: "user.order.provisioned",
-          meta: { sub2UserId: sub2Key.sub2UserId, sub2KeyId: sub2Key.sub2KeyId }
+          meta: {
+            sub2UserId: sub2Key.sub2UserId,
+            sub2KeyId: sub2Key.sub2KeyId,
+            supplierResourceId: deliveryReadiness.resource?.id ?? null
+          }
         });
         const rental = await tx.rental.update({
           where: { id: result.rental.id },

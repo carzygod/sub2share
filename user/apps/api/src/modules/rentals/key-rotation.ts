@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { AppError } from "../../common/errors.js";
 import { prisma } from "../../common/prisma.js";
 import { sub2Client } from "../../integrations/sub2/client.js";
+import { requireReadySupplierResourceForDelivery } from "../suppliers/resource-delivery-readiness.js";
 
 export interface RotateRentalKeyInput {
   rentalId: string;
@@ -40,6 +41,8 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
   if (remainingSpend && remainingSpend.lte(0)) {
     throw new AppError("spend_limit_exhausted", "Rental spend limit has been exhausted", 402);
   }
+
+  await requireReadySupplierResourceForDelivery(rental.resourceType);
 
   const previousSub2KeyId = rental.sub2KeyId;
   const previousApiKeyIds = rental.apiKeys.map((apiKey) => apiKey.id);

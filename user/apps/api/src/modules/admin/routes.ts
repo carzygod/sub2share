@@ -33,6 +33,7 @@ import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
+import { requireReadySupplierResourceForDelivery } from "../suppliers/resource-delivery-readiness.js";
 import {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage,
@@ -1371,6 +1372,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       throw new AppError("order_retry_refund_missing", "Paid failed orders must have the original failed provisioning refund before retry", 409);
     }
 
+    const deliveryReadiness = await requireReadySupplierResourceForDelivery(rental.resourceType);
+
     let walletDebited = false;
     let debitTransactionId: string | null = null;
     let reversalTransactionId: string | null = null;
@@ -1391,7 +1394,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         meta: {
           note: input.note,
           previousRefundId: existingRefund?.id ?? null,
-          previousRefundAmount: existingRefund ? String(existingRefund.amount) : null
+          previousRefundAmount: existingRefund ? String(existingRefund.amount) : null,
+          supplierResourceId: deliveryReadiness.resource?.id ?? null
         }
       });
       await tx.rental.update({
@@ -1462,6 +1466,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
             note: input.note,
             sub2UserId: createdSub2Key.sub2UserId,
             sub2KeyId: createdSub2Key.sub2KeyId,
+            supplierResourceId: deliveryReadiness.resource?.id ?? null,
             walletDebited,
             debitTransactionId
           }
@@ -1517,6 +1522,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         sub2KeyId: createdSub2Key.sub2KeyId,
         apiKeyId: result.apiKeyId,
         keyPrefix: result.keyPrefix,
+        supplierResourceId: deliveryReadiness.resource?.id ?? null,
         walletDebited,
         debitTransactionId,
         note: input.note
