@@ -284,6 +284,13 @@ interface DashboardUpstreamBlockerPreview {
   actionHint?: string | null;
   repairAction?: string | null;
   sub2AccountId?: string | number | boolean | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
+  accountMessage?: string | null;
+  accountUpdatedAt?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
   resourceType?: string | number | boolean | null;
@@ -5718,6 +5725,13 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     actionHint: textJsonValue(detail.actionHint) ?? null,
     repairAction: textJsonValue(detail.repairAction) ?? null,
     sub2AccountId: dashboardHealthScalarValue(detail.sub2AccountId) ?? null,
+    sub2AccountName: textJsonValue(detail.sub2AccountName) ?? null,
+    accountStatus: textJsonValue(detail.accountStatus) ?? null,
+    credentialsStatus: textJsonValue(detail.credentialsStatus) ?? null,
+    schedulable: dashboardDetailBoolean(detail, "schedulable"),
+    tempUnschedulableReason: textJsonValue(detail.tempUnschedulableReason) ?? null,
+    accountMessage: textJsonValue(detail.accountMessage) ?? null,
+    accountUpdatedAt: textJsonValue(detail.updatedAt) ?? null,
     resourceId: dashboardHealthScalarValue(detail.resourceId) ?? null,
     resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,
     resourceType: dashboardHealthScalarValue(detail.resourceType) ?? null,

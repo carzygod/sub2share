@@ -186,6 +186,13 @@ interface DashboardUpstreamBlocker {
   actionHint?: string | null;
   repairAction?: string | null;
   sub2AccountId?: string | number | boolean | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
+  accountMessage?: string | null;
+  accountUpdatedAt?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
   resourceType?: string | number | boolean | null;
@@ -2912,6 +2919,7 @@ function DashboardView({
   const criticalChecks = latestHealth?.criticalChecks ?? [];
   const upstreamBlocker = latestHealth?.upstreamBlocker ?? null;
   const upstreamBlockerEvidence = upstreamBlocker ? dashboardUpstreamBlockerEvidenceText(upstreamBlocker) : "";
+  const upstreamAccountDiagnosis = upstreamBlocker ? dashboardUpstreamAccountDiagnosisText(upstreamBlocker) : "";
   const upstreamCredentialReadiness = upstreamBlocker ? dashboardUpstreamCredentialReadinessText(upstreamBlocker.credentialReadiness) : "";
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
@@ -2986,6 +2994,7 @@ function DashboardView({
                   <p>{upstreamBlocker.summary}</p>
                   {upstreamBlocker.actionHint && <small>{upstreamBlocker.actionHint}</small>}
                   {upstreamBlockerEvidence && <small>{upstreamBlockerEvidence}</small>}
+                  {upstreamAccountDiagnosis && <small>{upstreamAccountDiagnosis}</small>}
                   {upstreamCredentialReadiness && <small>{upstreamCredentialReadiness}</small>}
                   <div className="health-preview-actions">
                     {(upstreamBlocker.issueCount > 0 || upstreamBlocker.sampleCount > 0) && (
@@ -6158,8 +6167,9 @@ function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) 
 function dashboardUpstreamBlockerText(blocker: DashboardUpstreamBlocker) {
   const status = blocker.blocked ? "阻断" : "警告";
   const evidence = dashboardUpstreamBlockerEvidenceText(blocker);
+  const account = dashboardUpstreamAccountDiagnosisText(blocker);
   const credentials = dashboardUpstreamCredentialReadinessText(blocker.credentialReadiness);
-  return `${status} / ${blocker.label} / ${blocker.summary}${evidence ? ` / ${evidence}` : ""}${credentials ? ` / ${credentials}` : ""}`;
+  return `${status} / ${blocker.label} / ${blocker.summary}${evidence ? ` / ${evidence}` : ""}${account ? ` / ${account}` : ""}${credentials ? ` / ${credentials}` : ""}`;
 }
 
 function dashboardUpstreamBlockerActionLabel(blocker: DashboardUpstreamBlocker) {
@@ -6194,6 +6204,47 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
     failure,
     blocker.evidenceStaleAt ? `过期于 ${blocker.evidenceStaleAt}` : ""
   ].filter(Boolean).join(" / ");
+}
+
+function dashboardUpstreamAccountDiagnosisText(blocker: DashboardUpstreamBlocker) {
+  if (
+    blocker.sub2AccountId === undefined
+    && !blocker.sub2AccountName
+    && !blocker.accountStatus
+    && !blocker.credentialsStatus
+    && typeof blocker.schedulable !== "boolean"
+    && !blocker.tempUnschedulableReason
+    && !blocker.accountMessage
+    && !blocker.accountUpdatedAt
+  ) return "";
+
+  const accountId = dashboardMetricValue(blocker.sub2AccountId);
+  const account = accountId ? `Sub2 #${accountId}${blocker.sub2AccountName ? ` ${blocker.sub2AccountName}` : ""}` : blocker.sub2AccountName ?? "";
+  const parts = [
+    account,
+    blocker.accountStatus ? `账号 ${blocker.accountStatus}` : "",
+    blocker.credentialsStatus ? `凭据 ${blocker.credentialsStatus}` : "",
+    typeof blocker.schedulable === "boolean" ? `调度 ${blocker.schedulable ? "可用" : "不可用"}` : "",
+    blocker.tempUnschedulableReason ? `原因 ${blocker.tempUnschedulableReason}` : "",
+    blocker.accountMessage ? `消息 ${dashboardUpstreamAccountMessageText(blocker.accountMessage)}` : "",
+    blocker.accountUpdatedAt ? `更新 ${blocker.accountUpdatedAt}` : ""
+  ].filter(Boolean);
+
+  return parts.length ? `账号诊断 ${parts.join(" / ")}` : "";
+}
+
+function dashboardUpstreamAccountMessageText(message: string) {
+  const normalized = message.replace(/\s+/g, " ").trim();
+  const status = normalized.match(/\((\d{3})\)/)?.[1] ?? normalized.match(/"status"\s*:\s*(\d+)/)?.[1];
+  const code = normalized.match(/"code"\s*:\s*"([^"]+)"/)?.[1];
+  const upstreamMessage = normalized.match(/"message"\s*:\s*"([^"]+)"/)?.[1];
+  const summary = [
+    status ? `HTTP ${status}` : "",
+    code ?? "",
+    upstreamMessage ?? ""
+  ].filter(Boolean).join(" / ") || normalized;
+
+  return summary.length > 180 ? `${summary.slice(0, 177)}...` : summary;
 }
 
 function dashboardUpstreamCredentialReadinessText(readiness?: DashboardUpstreamCredentialReadiness | null) {

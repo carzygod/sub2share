@@ -280,6 +280,14 @@ test("dashboard latest system health preview exposes actionable upstream blocker
             type: "openai_refresh_token_candidate_missing",
             repairAction: "apply_openai_refresh_token_to_sub2_account",
             actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.",
+            sub2AccountId: 2,
+            sub2AccountName: "main",
+            accountStatus: "error",
+            credentialsStatus: "configured(3)",
+            schedulable: false,
+            tempUnschedulableReason: "",
+            accountMessage: 'Authentication failed (401): {"error":{"message":"Your authentication token has been invalidated.","code":"token_invalidated"},"status":401}',
+            updatedAt: "2026-06-12T22:53:59.925286+08:00",
             resourceList: true,
             resourceType: "codex",
             resourceScope: "production",
@@ -314,6 +322,14 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.checkId, "resourceCredentials");
   assert.equal(preview.upstreamBlocker?.label, "资源凭据");
   assert.equal(preview.upstreamBlocker?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(preview.upstreamBlocker?.sub2AccountId, 2);
+  assert.equal(preview.upstreamBlocker?.sub2AccountName, "main");
+  assert.equal(preview.upstreamBlocker?.accountStatus, "error");
+  assert.equal(preview.upstreamBlocker?.credentialsStatus, "configured(3)");
+  assert.equal(preview.upstreamBlocker?.schedulable, false);
+  assert.equal(preview.upstreamBlocker?.tempUnschedulableReason, null);
+  assert.equal(preview.upstreamBlocker?.accountMessage, 'Authentication failed (401): {"error":{"message":"Your authentication token has been invalidated.","code":"token_invalidated"},"status":401}');
+  assert.equal(preview.upstreamBlocker?.accountUpdatedAt, "2026-06-12T22:53:59.925286+08:00");
   assert.equal(preview.upstreamBlocker?.resourceList, true);
   assert.equal(preview.upstreamBlocker?.resourceType, "codex");
   assert.equal(preview.upstreamBlocker?.resourceScope, "production");

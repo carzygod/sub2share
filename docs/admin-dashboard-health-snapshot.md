@@ -338,3 +338,19 @@
 - 该能力不新增凭据读取或外部调用，只复用最近系统巡检已经生成的资源凭据 readiness 结果。
 
 这样管理员可以在首屏判断：当前 Sub2/OpenAI 上游阻断是“已有可应用凭据，去应用”还是“没有可应用凭据，需要新建/粘贴 refresh token”。
+
+## 2026-06-13 扩展：首页上游阻断保留 Sub2 账号诊断
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.upstreamBlocker` 顶层新增 Sub2 账号诊断字段：
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `tempUnschedulableReason`
+  - `accountMessage`
+  - `accountUpdatedAt`
+- Admin 首页“上游阻断”摘要会展示 Sub2 账号、账号状态、凭据状态、调度状态、上游认证错误摘要和最近更新时间。
+- 前端会把较长的 OpenAI/Sub2 账号错误压缩成可扫描的一行，例如 `HTTP 401 / token_invalidated / Your authentication token has been invalidated.`。
+- 该能力继续只提炼最近系统巡检中的 `primaryIssue` 或 `primarySample`，不读取 refresh token 明文，也不新增外部调用。
+
+这样当前生产环境出现 “Sub2 默认 OpenAI 分组无 active 账号” 时，管理员在首屏即可看到具体账号与 `token_invalidated` 根因，再进入反代状态页应用新的 OpenAI refresh token。
