@@ -23,7 +23,7 @@
   - API 路径。
   - 允许角色。
   - 是否关键操作。
-- 每个能力操作新增“入口”按钮，可打开对应 Admin 管理页面：
+- 每个能力操作使用后端返回的 `target` 展示“入口”按钮，可打开对应 Admin 管理页面：
   - 用户能力打开 `用户管理`。
   - 共享资源与供给方能力打开 `共享资源` 或 `供给方`。
   - 余额能力打开 `余额管理`、`余额流水` 或 `账务对账`。
@@ -32,15 +32,18 @@
   - 治理能力打开 `总览`、`可用性巡检`、`巡检历史`、`入口能力` 或 `审计日志`。
 - 如果能力覆盖存在缺失，页面展示 `coverage.issues` 中的范围、操作、路由、说明和修复建议。
 - Admin 测试新增 `capabilities` 入口断言，避免后续侧边栏误删。
-- Admin 测试新增能力操作跳转断言，避免核心能力项退回只能查看不能进入。
+- API 测试新增能力操作 `target` 断言，避免后端声明的核心能力项退回只能查看不能进入。
+- 页面覆盖摘要新增 `可达入口`，展示 `operationsWithTargets/totalOperations`。
 
 ## 管理价值
 
 - 管理员可以直接在后台确认用户、共享、余额、售出和 OpenAI/Codex 反代五个核心范围是否仍被 API 路由完整覆盖。
 - 能力矩阵从“系统健康里的一个检查项”变成可浏览、可进入对应管理页面的治理入口，便于上线验收、交接和故障排查。
 - 操作按钮只负责打开对应管理页面，不直接执行 POST/PATCH/DELETE 等写操作，不触发 Sub2API 或 OpenAI/Codex 请求。
+- 入口目标由 `/api/admin/capabilities` 返回，前端不再维护重复映射表，减少后续能力项新增或改名时的漂移。
 
 ## 验收方式
 
 - `pnpm.cmd --filter @zyz/admin run typecheck`
 - `pnpm.cmd --filter @zyz/admin test`
+- `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`

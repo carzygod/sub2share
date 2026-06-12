@@ -16,7 +16,6 @@ import {
   sub2RepairContextShouldRunSmokeTest,
   sub2RepairContextSmokeModel
 } from "../src/app/sub2-repair-context";
-import { adminCapabilityOperationTarget } from "../src/app/admin-capability-navigation";
 
 test("admin navigation covers the required management areas", () => {
   const coverage = inspectAdminSurfaceCoverage();
@@ -50,29 +49,6 @@ test("all managed list views are reachable from the sidebar navigation", () => {
 
   assert.deepEqual(inspectAdminSurfaceCoverage().missingManagedListViews, []);
   assert.deepEqual(inspectAdminSurfaceCoverage().duplicateViews, []);
-});
-
-test("admin capability operations open the matching management surfaces", () => {
-  const expectedTargets = {
-    "users.updateRoles": "users",
-    "resources.applyCredential": "resources",
-    "wallets.adjust": "wallets",
-    "orders.retryProvision": "orders",
-    "sales.list": "sales",
-    "usages.syncSub2": "usages",
-    "proxyRequests.list": "proxyRequests",
-    "sub2.applyOpenAiRefreshToken": "sub2",
-    "capabilities.read": "capabilities",
-    "systemHealth.read": "systemHealth",
-    "auditLogs.list": "audit"
-  } as const;
-
-  for (const [operationId, view] of Object.entries(expectedTargets)) {
-    const target = adminCapabilityOperationTarget(operationId);
-    assert.ok(target, `missing capability navigation target: ${operationId}`);
-    assert.equal(target.view, view);
-    assert.match(target.label, /^打开/);
-  }
 });
 
 test("system health summaries expose repair actions for operator drilldown", () => {

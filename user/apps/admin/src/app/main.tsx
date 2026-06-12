@@ -35,10 +35,6 @@ import {
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import {
-  adminCapabilityOperationTarget,
-  type AdminCapabilityNavigationTarget
-} from "./admin-capability-navigation";
-import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -197,6 +193,12 @@ interface AdminCapabilityOperation {
   path: string;
   roles: string[];
   critical: boolean;
+  target?: AdminCapabilityNavigationTarget | null;
+}
+
+interface AdminCapabilityNavigationTarget {
+  view: View;
+  label: string;
 }
 
 interface AdminCapabilityArea {
@@ -227,6 +229,8 @@ interface AdminCapabilityCoverage {
     criticalOperations: number;
     registeredOperations: number;
     missingRoutes: number;
+    operationsWithTargets: number;
+    missingTargets: number;
   };
   issues: AdminCapabilityCoverageIssue[];
 }
@@ -3110,6 +3114,7 @@ function CapabilitiesView({ capabilities, onRefresh, onOpenTarget }: {
         <Metric label="关键操作" value={summary?.criticalOperations ?? 0} />
         <Metric label="已注册" value={summary?.registeredOperations ?? 0} />
         <Metric label="缺失路由" value={summary?.missingRoutes ?? 0} />
+        <Metric label="可达入口" value={`${summary?.operationsWithTargets ?? 0}/${summary?.totalOperations ?? 0}`} />
       </section>
       {coverage && coverage.issues.length > 0 && (
         <TablePanel title="能力覆盖问题" count={coverage.issues.length} headers={["级别", "范围", "操作", "路由", "说明"]}>
@@ -3132,7 +3137,7 @@ function CapabilitiesView({ capabilities, onRefresh, onOpenTarget }: {
           headers={["范围", "操作", "方法", "路径", "角色", "级别", "入口"]}
         >
           {area.operations.map((operation) => {
-            const target = adminCapabilityOperationTarget(operation.id);
+            const target = operation.target;
             return (
               <tr key={operation.id}>
                 <td><strong>{area.id}</strong><small>{area.required ? "required" : "optional"}</small></td>

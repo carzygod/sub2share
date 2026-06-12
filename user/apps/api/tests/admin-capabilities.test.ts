@@ -28,11 +28,33 @@ test("admin capability matrix covers the required management areas", () => {
   assert.ok(capabilities.find((area) => area.id === "openaiProxy")?.operations.some((operation) => operation.id === "sub2.proxySmokeTest"));
 });
 
+test("admin capability operations include frontend management targets", () => {
+  const operations = adminCapabilities().flatMap((area) => area.operations.map((operation) => ({ ...operation, areaId: area.id })));
+  const missingTargets = operations.filter((operation) => !operation.target);
+  const targetById = new Map(operations.map((operation) => [operation.id, operation.target]));
+
+  assert.equal(operations.length, 65);
+  assert.deepEqual(missingTargets, []);
+  assert.equal(targetById.get("users.updateRoles")?.view, "users");
+  assert.equal(targetById.get("resources.applyCredential")?.view, "resources");
+  assert.equal(targetById.get("wallets.adjust")?.view, "wallets");
+  assert.equal(targetById.get("orders.retryProvision")?.view, "orders");
+  assert.equal(targetById.get("sales.list")?.view, "sales");
+  assert.equal(targetById.get("usages.syncSub2")?.view, "usages");
+  assert.equal(targetById.get("proxyRequests.list")?.view, "proxyRequests");
+  assert.equal(targetById.get("sub2.applyOpenAiRefreshToken")?.view, "sub2");
+  assert.equal(targetById.get("capabilities.read")?.view, "capabilities");
+  assert.equal(targetById.get("systemHealth.read")?.view, "systemHealth");
+  assert.equal(targetById.get("auditLogs.list")?.view, "audit");
+  assert.ok(operations.every((operation) => operation.target?.label.startsWith("打开")));
+});
+
 test("admin capability coverage reports missing declared routes", () => {
   const result = inspectAdminCapabilityRouteCoverage((operation) => operation.id !== "sales.list");
 
   assert.equal(result.ok, false);
   assert.equal(result.summary.missingRoutes, 1);
+  assert.equal(result.summary.missingTargets, 0);
   assert.equal(result.issues.length, 1);
   assert.equal(result.issues[0].operationId, "sales.list");
   assert.equal(result.issues[0].method, "GET");
@@ -51,6 +73,8 @@ test("registered admin routes cover the declared capability matrix", async () =>
   assert.equal(result.summary.requiredAreas, 5);
   assert.equal(result.summary.coveredRequiredAreas, 5);
   assert.equal(result.summary.missingRoutes, 0);
+  assert.equal(result.summary.operationsWithTargets, result.summary.totalOperations);
+  assert.equal(result.summary.missingTargets, 0);
   assert.equal(result.summary.registeredOperations, result.summary.totalOperations);
 
   await app.close();
