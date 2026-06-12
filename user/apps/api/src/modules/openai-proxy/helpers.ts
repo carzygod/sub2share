@@ -16,6 +16,18 @@ export const openAiProxyRouteBasePath = "/v1";
 export const openAiProxyRoutePath = "/v1/*";
 export const openAiProxyRoutePaths = [openAiProxyRouteBasePath, openAiProxyRoutePath] as const;
 export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+export const openAiProxyCorePathSamples = [
+  "/v1",
+  "/v1/models",
+  "/v1/models/gpt-5.3-codex",
+  "/v1/responses",
+  "/v1/responses/resp_123",
+  "/v1/responses/resp_123/input_items?after=item_1",
+  "/v1/chat/completions",
+  "/v1/files",
+  "/v1/uploads",
+  "/v1/batches"
+] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
 export type OpenAiProxyRateLimitHeaderName = typeof openAiProxyRateLimitHeaderNames[number];
@@ -172,6 +184,12 @@ export function extractUpstreamRequestId(headers: Pick<Headers, "get">) {
   return null;
 }
 
+export function buildSub2ProxyUrl(baseUrl: string, rawUrl: string) {
+  const normalizedBase = baseUrl.trim().replace(/\/+$/, "");
+  const normalizedRawUrl = rawUrl.trim().replace(/^\/+/, "");
+  return `${normalizedBase}/${normalizedRawUrl}`;
+}
+
 export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: OpenAiProxyContractRuntimeOptions = {}) {
   const trimmedEndpoint = endpoint.trim();
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
@@ -188,6 +206,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const routesResponsesItems = isOpenAiProxyRoutedPath("/v1/responses/resp_123");
   const routesChatCompletions = isOpenAiProxyRoutedPath("/v1/chat/completions");
   const routesModelMetadata = isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex");
+  const routesCorePathSamples = openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path));
+  const sub2UrlWithTrailingBase = buildSub2ProxyUrl("https://sub2.example.com/api/", "/v1/responses/resp_123/input_items?after=item_1&include=output_text");
+  const sub2UrlWithoutLeadingPath = buildSub2ProxyUrl("https://sub2.example.com/api", "v1/chat/completions?stream=true");
+  const preservesRawPathAndQuery = sub2UrlWithTrailingBase === "https://sub2.example.com/api/v1/responses/resp_123/input_items?after=item_1&include=output_text";
+  const normalizesSub2BaseTrailingSlash = sub2UrlWithoutLeadingPath === "https://sub2.example.com/api/v1/chat/completions?stream=true";
 
   let endpointProtocol: string | null = null;
   try {
@@ -283,6 +306,20 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy route must cover Responses API, response item paths, Chat Completions, and model metadata"
     });
   }
+  if (!routesCorePathSamples) {
+    issues.push({
+      type: "core_openai_path_samples_not_routed",
+      severity: "error",
+      message: "OpenAI proxy route must cover representative Responses, Chat Completions, files, uploads, and batches paths"
+    });
+  }
+  if (!preservesRawPathAndQuery || !normalizesSub2BaseTrailingSlash) {
+    issues.push({
+      type: "sub2_proxy_url_forwarding_incomplete",
+      severity: "error",
+      message: "OpenAI proxy must forward the raw /v1 path and query to Sub2API after normalizing the Sub2 base URL"
+    });
+  }
 
   validatePositiveIntegerRuntimeOption(issues, "bodyLimitBytes", runtimeOptions.bodyLimitBytes, "invalid_body_limit", "OpenAI proxy body limit must be a positive integer");
   validatePositiveIntegerRuntimeOption(issues, "upstreamTimeoutMs", runtimeOptions.upstreamTimeoutMs, "invalid_upstream_timeout", "OpenAI proxy upstream timeout must be a positive integer");
@@ -353,6 +390,10 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesResponsesItems,
       routesChatCompletions,
       routesModelMetadata,
+      corePathSamples: openAiProxyCorePathSamples.join(","),
+      routesCorePathSamples,
+      preservesRawPathAndQuery,
+      normalizesSub2BaseTrailingSlash,
       requestIdHeader: proxyRequestIdHeaderName,
       upstreamRequestIdHeaders: upstreamRequestIdHeaderNames.join(","),
       rateLimitHeaders: openAiProxyRateLimitHeaderNames.join(","),

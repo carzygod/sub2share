@@ -179,3 +179,33 @@ pnpm.cmd --filter @zyz/api run build
   - `pnpm.cmd --filter @zyz/api typecheck`
   - `pnpm.cmd --filter @zyz/api test`
   - `pnpm.cmd --filter @zyz/api build`
+
+## 2026-06-13 追加：Sub2API 原始路径与查询透传契约
+
+- 新增 `buildSub2ProxyUrl()`，本地 OpenAI/Codex 反代转发到 Sub2API 时会统一：
+  - 去掉 `SUB2_BASE_URL` 尾部多余 `/`。
+  - 接受带 `/` 或不带 `/` 的原始 OpenAI 路径。
+  - 保留 `/v1/responses/:id/input_items` 等完整 path。
+  - 保留 `?after=item_1&include=output_text`、`?stream=true` 等原始 query。
+- `registerOpenAiProxyRoutes()` 现在复用该 helper 构造 Sub2API 上游 URL，避免运行路径和契约测试分叉。
+- 新增 `openAiProxyCorePathSamples`，显式覆盖：
+  - `/v1`
+  - `/v1/models`
+  - `/v1/models/gpt-5.3-codex`
+  - `/v1/responses`
+  - `/v1/responses/resp_123`
+  - `/v1/responses/resp_123/input_items?after=item_1`
+  - `/v1/chat/completions`
+  - `/v1/files`
+  - `/v1/uploads`
+  - `/v1/batches`
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `corePathSamples`
+  - `routesCorePathSamples`
+  - `preservesRawPathAndQuery`
+  - `normalizesSub2BaseTrailingSlash`
+- 当核心样例路径无法进入本地 `/v1` 反代时，巡检返回 `core_openai_path_samples_not_routed`。
+- 当 Sub2API 上游 URL 拼接无法保留原始 path/query 或无法规整 base 尾斜杠时，巡检返回 `sub2_proxy_url_forwarding_incomplete`。
+- 单元测试新增覆盖 Sub2API URL 拼接、核心路径样例路由和契约摘要字段。
+
+这项补齐不改变鉴权、余额、租赁、限流或 Sub2API 调用结果，只把“完整 `/v1` 路径进入同一条 Sub2API 反代链路”的证据做成可测试、可巡检的契约。

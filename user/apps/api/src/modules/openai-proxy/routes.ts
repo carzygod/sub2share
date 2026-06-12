@@ -7,6 +7,7 @@ import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 import {
   attachProxyRequestIdHeader,
+  buildSub2ProxyUrl,
   estimateProxyInputTokens,
   extractUpstreamRequestId,
   isMetadataProxyRequest,
@@ -184,7 +185,7 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
           data: { lastUsedAt: new Date() }
         });
 
-        const upstreamUrl = `${sub2BaseUrl}${request.raw.url ?? request.url}`;
+        const upstreamUrl = buildSub2ProxyUrl(sub2BaseUrl, request.raw.url ?? request.url);
         let upstream: ForwardedUpstream;
         try {
           upstream = await forwardToSub2(request, reply, upstreamUrl, apiKey);

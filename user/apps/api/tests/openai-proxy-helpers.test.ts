@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   attachProxyRequestIdHeader,
+  buildSub2ProxyUrl,
   evaluateProxyRateLimitWindow,
   extractUpstreamRequestId,
   estimateProxyInputTokens,
@@ -13,6 +14,7 @@ import {
   normalizeProxyRequestLookup,
   openAiProxyErrorPayload,
   openAiProxyErrorType,
+  openAiProxyCorePathSamples,
   openAiProxyCorsExposedHeaders,
   openAiProxyRateLimitHeaders,
   openAiProxyRateLimitHeaderNames,
@@ -48,6 +50,19 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
   assert.equal(openAiProxyRoutePath, "/v1/*");
   assert.deepEqual([...openAiProxyRoutePaths], ["/v1", "/v1/*"]);
   assert.deepEqual([...openAiProxyRouteMethods], ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+  assert.deepEqual([...openAiProxyCorePathSamples], [
+    "/v1",
+    "/v1/models",
+    "/v1/models/gpt-5.3-codex",
+    "/v1/responses",
+    "/v1/responses/resp_123",
+    "/v1/responses/resp_123/input_items?after=item_1",
+    "/v1/chat/completions",
+    "/v1/files",
+    "/v1/uploads",
+    "/v1/batches"
+  ]);
+  assert.equal(openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path)), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses"), true);
@@ -57,6 +72,21 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
   assert.equal(isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v10/responses"), false);
   assert.equal(isOpenAiProxyRoutedPath("/api/admin/system-health"), false);
+});
+
+test("builds Sub2API upstream urls without losing raw OpenAI path or query", () => {
+  assert.equal(
+    buildSub2ProxyUrl("https://sub2.example.com/api/", "/v1/responses/resp_123/input_items?after=item_1&include=output_text"),
+    "https://sub2.example.com/api/v1/responses/resp_123/input_items?after=item_1&include=output_text"
+  );
+  assert.equal(
+    buildSub2ProxyUrl("https://sub2.example.com/api", "v1/chat/completions?stream=true"),
+    "https://sub2.example.com/api/v1/chat/completions?stream=true"
+  );
+  assert.equal(
+    buildSub2ProxyUrl(" https://sub2.example.com ", " /v1/models/gpt-5.3-codex "),
+    "https://sub2.example.com/v1/models/gpt-5.3-codex"
+  );
 });
 
 test("estimates proxy input tokens from raw request bodies", () => {
@@ -305,6 +335,10 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesResponsesItems, true);
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
+  assert.equal(result.summary.corePathSamples, "/v1,/v1/models,/v1/models/gpt-5.3-codex,/v1/responses,/v1/responses/resp_123,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/files,/v1/uploads,/v1/batches");
+  assert.equal(result.summary.routesCorePathSamples, true);
+  assert.equal(result.summary.preservesRawPathAndQuery, true);
+  assert.equal(result.summary.normalizesSub2BaseTrailingSlash, true);
   assert.equal(result.summary.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(result.summary.rateLimitHeaders, "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens");
   assert.equal(result.summary.proxyRequestLookupHeaders, "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id");
