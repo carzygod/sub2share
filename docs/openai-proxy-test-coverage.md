@@ -209,3 +209,24 @@ pnpm.cmd --filter @zyz/api run build
 - 单元测试新增覆盖 Sub2API URL 拼接、核心路径样例路由和契约摘要字段。
 
 这项补齐不改变鉴权、余额、租赁、限流或 Sub2API 调用结果，只把“完整 `/v1` 路径进入同一条 Sub2API 反代链路”的证据做成可测试、可巡检的契约。
+
+## 2026-06-13 追加：Sub2API 上游请求头透传契约
+
+- 新增 `buildOpenAiProxyUpstreamHeaders()`，`registerOpenAiProxyRoutes()` 与单元测试复用同一套上游请求头构造逻辑。
+- 该 helper 会稳定执行：
+  - 剥离本地 `authorization`。
+  - 剥离 `host`、`content-length`、`connection` 等 hop-by-hop headers。
+  - 剥离调用方 `accept-encoding`，并重设为 `identity`。
+  - 使用售出的 Sub2API Key 重注入 `authorization: Bearer <key>`。
+  - 保留 `content-type`、`openai-beta`、自定义诊断头等 end-to-end headers。
+  - 补齐 `x-forwarded-host`、`x-forwarded-proto`、`x-forwarded-for` 和 `x-request-id`。
+- 新增 `openAiProxyHopByHopHeaderNames` 与 `isOpenAiProxyHopByHopHeader()`，响应头回传和请求头上游转发共用同一份 hop-by-hop 判断。
+- `inspectOpenAiProxyContract()` 摘要新增 `forwardsUpstreamHeaders`。
+- 当样例请求头无法证明“本地鉴权不外泄、售出 Key 注入、诊断头保留”时，巡检返回 `upstream_header_forwarding_incomplete`。
+- 单元测试新增覆盖：
+  - 本地 Authorization 不透传到 Sub2API。
+  - 售出的 Sub2API Key 被注入到上游 Authorization。
+  - hop-by-hop headers 被剥离。
+  - `openai-beta`、`content-type`、自定义 trace header 和 forwarded headers 被保留/补齐。
+
+这项补齐让“完整 OpenAI/Codex 反代”不仅证明 path/query 进入 Sub2API，也证明请求头不会泄漏本地密钥且保留客户端诊断上下文。

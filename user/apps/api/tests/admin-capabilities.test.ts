@@ -122,6 +122,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
         routesCorePathSamples: true,
         preservesRawPathAndQuery: true,
         normalizesSub2BaseTrailingSlash: true,
+        forwardsUpstreamHeaders: true,
         corePathSamples: "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions",
         routesResponsesItems: true,
         endpoint: "https://api.example.com/v1",
@@ -210,6 +211,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[4].metrics?.routesCorePathSamples, true);
   assert.equal(previews[4].metrics?.preservesRawPathAndQuery, true);
   assert.equal(previews[4].metrics?.normalizesSub2BaseTrailingSlash, true);
+  assert.equal(previews[4].metrics?.forwardsUpstreamHeaders, true);
   assert.equal(previews[4].metrics?.routesResponsesItems, true);
   assert.equal(previews[4].metrics?.corePathSamples, "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions");
   assert.equal(previews[4].metrics?.endpoint, "https://api.example.com/v1");

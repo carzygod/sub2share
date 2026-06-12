@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   attachProxyRequestIdHeader,
+  buildOpenAiProxyUpstreamHeaders,
   buildSub2ProxyUrl,
   evaluateProxyRateLimitWindow,
   extractUpstreamRequestId,
@@ -16,6 +17,7 @@ import {
   openAiProxyErrorType,
   openAiProxyCorePathSamples,
   openAiProxyCorsExposedHeaders,
+  openAiProxyHopByHopHeaderNames,
   openAiProxyRateLimitHeaders,
   openAiProxyRateLimitHeaderNames,
   openAiProxyRouteMethods,
@@ -27,6 +29,7 @@ import {
   proxyBodyText,
   proxyRequestModel,
   pruneProxyRateLimitWindow,
+  isOpenAiProxyHopByHopHeader,
   upstreamHttpProxyErrorCode,
   upstreamRequestIdHeaderNames,
   type ProxyRateLimitWindow
@@ -87,6 +90,41 @@ test("builds Sub2API upstream urls without losing raw OpenAI path or query", () 
     buildSub2ProxyUrl(" https://sub2.example.com ", " /v1/models/gpt-5.3-codex "),
     "https://sub2.example.com/v1/models/gpt-5.3-codex"
   );
+});
+
+test("builds Sub2API upstream headers with local auth stripped and sold key injected", () => {
+  const headers = buildOpenAiProxyUpstreamHeaders({
+    headers: {
+      authorization: "Bearer local-user-key",
+      host: "api.local.test",
+      connection: "keep-alive",
+      "content-length": "100",
+      "accept-encoding": "br, gzip",
+      "content-type": "application/json",
+      "openai-beta": "responses=v1",
+      "x-client-trace": ["trace-a", "trace-b"],
+      "x-forwarded-for": "203.0.113.1"
+    },
+    apiKey: "sub2-rental-key",
+    hostname: "proxy.example.com",
+    protocol: "https",
+    ip: "198.51.100.2",
+    requestId: "req-upstream"
+  });
+
+  assert.equal(headers.get("authorization"), "Bearer sub2-rental-key");
+  assert.equal(headers.get("host"), null);
+  assert.equal(headers.get("connection"), null);
+  assert.equal(headers.get("content-length"), null);
+  assert.equal(headers.get("accept-encoding"), "identity");
+  assert.equal(headers.get("content-type"), "application/json");
+  assert.equal(headers.get("openai-beta"), "responses=v1");
+  assert.equal(headers.get("x-client-trace"), "trace-a, trace-b");
+  assert.equal(headers.get("x-forwarded-host"), "proxy.example.com");
+  assert.equal(headers.get("x-forwarded-proto"), "https");
+  assert.equal(headers.get("x-forwarded-for"), "203.0.113.1, 198.51.100.2");
+  assert.equal(headers.get("x-request-id"), "req-upstream");
+  assert.ok(openAiProxyHopByHopHeaderNames.every((name) => isOpenAiProxyHopByHopHeader(name)));
 });
 
 test("estimates proxy input tokens from raw request bodies", () => {
@@ -339,6 +377,7 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesCorePathSamples, true);
   assert.equal(result.summary.preservesRawPathAndQuery, true);
   assert.equal(result.summary.normalizesSub2BaseTrailingSlash, true);
+  assert.equal(result.summary.forwardsUpstreamHeaders, true);
   assert.equal(result.summary.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(result.summary.rateLimitHeaders, "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens");
   assert.equal(result.summary.proxyRequestLookupHeaders, "x-proxy-request-id,x-request-id,openai-request-id,x-openai-request-id,request-id");

@@ -16,6 +16,18 @@ export const openAiProxyRouteBasePath = "/v1";
 export const openAiProxyRoutePath = "/v1/*";
 export const openAiProxyRoutePaths = [openAiProxyRouteBasePath, openAiProxyRoutePath] as const;
 export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
+export const openAiProxyHopByHopHeaderNames = [
+  "connection",
+  "content-encoding",
+  "content-length",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade"
+] as const;
 export const openAiProxyCorePathSamples = [
   "/v1",
   "/v1/models",
@@ -54,6 +66,15 @@ export interface OpenAiProxyContractRuntimeOptions {
   streamIdleTimeoutMs?: number;
 }
 
+export interface OpenAiProxyUpstreamHeaderInput {
+  headers: Record<string, string | string[] | undefined>;
+  apiKey: string;
+  hostname: string;
+  protocol: string;
+  ip: string;
+  requestId: string;
+}
+
 export const openAiProxyForwardingContract = {
   requestBodyMode: "raw-buffer",
   parsesAllContentTypesAsBuffer: true,
@@ -75,6 +96,8 @@ export const openAiProxyForwardingContract = {
   logsStreamErrors: true,
   hasStreamIdleTimeout: true
 } as const;
+
+const openAiProxyHopByHopHeaderSet = new Set<string>(openAiProxyHopByHopHeaderNames);
 
 export interface ProxyRateLimitWindow {
   requests: number[];
@@ -184,6 +207,30 @@ export function extractUpstreamRequestId(headers: Pick<Headers, "get">) {
   return null;
 }
 
+export function isOpenAiProxyHopByHopHeader(name: string) {
+  return openAiProxyHopByHopHeaderSet.has(name.toLowerCase());
+}
+
+export function buildOpenAiProxyUpstreamHeaders(input: OpenAiProxyUpstreamHeaderInput) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(input.headers)) {
+    const lower = name.toLowerCase();
+    if (isOpenAiProxyHopByHopHeader(lower) || lower === "host" || lower === "authorization" || lower === "accept-encoding") continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item);
+    } else if (value !== undefined) {
+      headers.set(name, String(value));
+    }
+  }
+  headers.set("authorization", `Bearer ${input.apiKey}`);
+  headers.set("accept-encoding", "identity");
+  headers.set("x-forwarded-host", input.hostname);
+  headers.set("x-forwarded-proto", input.protocol);
+  appendOpenAiProxyForwardedFor(headers, input.ip);
+  headers.set("x-request-id", input.requestId);
+  return headers;
+}
+
 export function buildSub2ProxyUrl(baseUrl: string, rawUrl: string) {
   const normalizedBase = baseUrl.trim().replace(/\/+$/, "");
   const normalizedRawUrl = rawUrl.trim().replace(/^\/+/, "");
@@ -211,6 +258,32 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const sub2UrlWithoutLeadingPath = buildSub2ProxyUrl("https://sub2.example.com/api", "v1/chat/completions?stream=true");
   const preservesRawPathAndQuery = sub2UrlWithTrailingBase === "https://sub2.example.com/api/v1/responses/resp_123/input_items?after=item_1&include=output_text";
   const normalizesSub2BaseTrailingSlash = sub2UrlWithoutLeadingPath === "https://sub2.example.com/api/v1/chat/completions?stream=true";
+  const upstreamHeaderSample = buildOpenAiProxyUpstreamHeaders({
+    headers: {
+      authorization: "Bearer local-user-key",
+      host: "api.local.test",
+      "accept-encoding": "gzip",
+      "content-length": "123",
+      "content-type": "application/json",
+      "x-client-trace": "trace-1",
+      "x-forwarded-for": "203.0.113.1"
+    },
+    apiKey: "sub2-rental-key",
+    hostname: "proxy.example.com",
+    protocol: "https",
+    ip: "198.51.100.2",
+    requestId: "req-contract"
+  });
+  const forwardsUpstreamHeaders = upstreamHeaderSample.get("authorization") === "Bearer sub2-rental-key"
+    && upstreamHeaderSample.get("accept-encoding") === "identity"
+    && upstreamHeaderSample.get("content-type") === "application/json"
+    && upstreamHeaderSample.get("x-client-trace") === "trace-1"
+    && upstreamHeaderSample.get("x-forwarded-host") === "proxy.example.com"
+    && upstreamHeaderSample.get("x-forwarded-proto") === "https"
+    && upstreamHeaderSample.get("x-forwarded-for") === "203.0.113.1, 198.51.100.2"
+    && upstreamHeaderSample.get("x-request-id") === "req-contract"
+    && upstreamHeaderSample.get("host") === null
+    && upstreamHeaderSample.get("content-length") === null;
 
   let endpointProtocol: string | null = null;
   try {
@@ -320,6 +393,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy must forward the raw /v1 path and query to Sub2API after normalizing the Sub2 base URL"
     });
   }
+  if (!forwardsUpstreamHeaders) {
+    issues.push({
+      type: "upstream_header_forwarding_incomplete",
+      severity: "error",
+      message: "OpenAI proxy must strip local hop-by-hop/auth headers, reinject the sold Sub2 key, and preserve diagnostic forwarding headers"
+    });
+  }
 
   validatePositiveIntegerRuntimeOption(issues, "bodyLimitBytes", runtimeOptions.bodyLimitBytes, "invalid_body_limit", "OpenAI proxy body limit must be a positive integer");
   validatePositiveIntegerRuntimeOption(issues, "upstreamTimeoutMs", runtimeOptions.upstreamTimeoutMs, "invalid_upstream_timeout", "OpenAI proxy upstream timeout must be a positive integer");
@@ -394,6 +474,7 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesCorePathSamples,
       preservesRawPathAndQuery,
       normalizesSub2BaseTrailingSlash,
+      forwardsUpstreamHeaders,
       requestIdHeader: proxyRequestIdHeaderName,
       upstreamRequestIdHeaders: upstreamRequestIdHeaderNames.join(","),
       rateLimitHeaders: openAiProxyRateLimitHeaderNames.join(","),
@@ -432,6 +513,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
     errorTypes,
     issues
   };
+}
+
+function appendOpenAiProxyForwardedFor(headers: Headers, ip: string) {
+  const existing = headers.get("x-forwarded-for");
+  headers.set("x-forwarded-for", existing ? `${existing}, ${ip}` : ip);
 }
 
 function normalizeHeaderValue(value: string | null | undefined) {

@@ -258,10 +258,23 @@
   - `routesCorePathSamples`
   - `preservesRawPathAndQuery`
   - `normalizesSub2BaseTrailingSlash`
+  - `forwardsUpstreamHeaders`
   - `routesResponsesItems`
 - Admin 首页在关键巡检没有 issue/sample 上下文时，会回退展示 metrics 摘要。
 
 这样管理员在首屏就能确认 OpenAI/Codex 反代契约是否覆盖核心 `/v1` 路径并保留 Sub2API 原始 path/query，而不必先进入完整巡检详情。
+
+## 2026-06-13 扩展：首页保留反代请求头透传证据
+
+- `GET /api/admin/dashboard` 的 `openAiProxyContract.metrics` 预览新增 `forwardsUpstreamHeaders`。
+- 该字段来自 `inspectOpenAiProxyContract()` 的上游请求头样例检查，证明：
+  - 本地 `authorization` 不会透传到 Sub2API。
+  - 售出的 Sub2API Key 会重注入到上游 `authorization`。
+  - `host`、`content-length`、`connection` 等 hop-by-hop headers 会被剥离。
+  - `content-type`、`openai-beta`、trace header、`x-forwarded-*` 和 `x-request-id` 等诊断上下文会保留/补齐。
+- Admin 首页在 `openAiProxyContract` 没有 issue/sample 时，metrics 回退摘要会展示该字段。
+
+这样管理员在首页即可同时看到路径覆盖、query 透传和请求头透传三类反代契约证据。
 
 ## 2026-06-13 扩展：首页稳定展示管理员入口覆盖
 

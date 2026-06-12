@@ -379,6 +379,7 @@ const dashboardHealthMetricPreviewFields = [
   "routesCorePathSamples",
   "preservesRawPathAndQuery",
   "normalizesSub2BaseTrailingSlash",
+  "forwardsUpstreamHeaders",
   "requestBodyMode",
   "parsesAllContentTypesAsBuffer",
   "forwardsOriginalBodyBytes",

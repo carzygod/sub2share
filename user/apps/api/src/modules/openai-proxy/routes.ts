@@ -7,9 +7,11 @@ import { env } from "../../config/env.js";
 import { expireOverdueRental } from "../../jobs/expire-overdue-rentals.js";
 import {
   attachProxyRequestIdHeader,
+  buildOpenAiProxyUpstreamHeaders,
   buildSub2ProxyUrl,
   estimateProxyInputTokens,
   extractUpstreamRequestId,
+  isOpenAiProxyHopByHopHeader,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   openAiProxyRateLimitHeaders,
@@ -23,18 +25,6 @@ import {
 import { acquireOpenAiProxyConcurrency, consumeOpenAiProxyRateLimit } from "./limiter-store.js";
 
 const sub2BaseUrl = env.SUB2_BASE_URL.replace(/\/$/, "");
-const hopByHopHeaders = new Set([
-  "connection",
-  "content-encoding",
-  "content-length",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade"
-]);
 
 type ActiveApiKeyRecord = Extract<Awaited<ReturnType<typeof findActiveLocalKey>>, { ok: true }>["apiKey"];
 
@@ -636,23 +626,14 @@ function isMetadataRequest(request: FastifyRequest) {
 }
 
 async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: string, apiKey: string) {
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(request.headers)) {
-    const lower = name.toLowerCase();
-    if (hopByHopHeaders.has(lower) || lower === "host" || lower === "authorization" || lower === "accept-encoding") continue;
-    if (Array.isArray(value)) {
-      for (const item of value) headers.append(name, item);
-    } else if (value !== undefined) {
-      headers.set(name, String(value));
-    }
-  }
-  headers.set("authorization", `Bearer ${apiKey}`);
-  headers.set("accept-encoding", "identity");
-  headers.set("x-forwarded-host", request.hostname);
-  headers.set("x-forwarded-proto", request.protocol);
-  appendForwardedFor(headers, request.ip);
-  headers.set("x-request-id", request.id);
-
+  const headers = buildOpenAiProxyUpstreamHeaders({
+    headers: request.headers,
+    apiKey,
+    hostname: request.hostname,
+    protocol: request.protocol,
+    ip: request.ip,
+    requestId: request.id
+  });
   const body = bodyForUpstream(request);
   const controller = new AbortController();
   const abort = () => {
@@ -696,11 +677,6 @@ function bodyForUpstream(request: FastifyRequest): BodyInit | undefined {
   return JSON.stringify(body);
 }
 
-function appendForwardedFor(headers: Headers, ip: string) {
-  const existing = headers.get("x-forwarded-for");
-  headers.set("x-forwarded-for", existing ? `${existing}, ${ip}` : ip);
-}
-
 function arrayBufferFromBytes(bytes: Uint8Array) {
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
@@ -709,7 +685,7 @@ function arrayBufferFromBytes(bytes: Uint8Array) {
 
 function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
   upstream.headers.forEach((value, name) => {
-    if (hopByHopHeaders.has(name.toLowerCase())) return;
+    if (isOpenAiProxyHopByHopHeader(name)) return;
     reply.header(name, value);
   });
 }
