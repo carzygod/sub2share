@@ -8,6 +8,7 @@ import {
   managedListViews,
   requiredAdminSurfaceAreas
 } from "@zyz/shared";
+import { sub2RepairContextItems } from "../src/app/sub2-repair-context";
 
 test("admin navigation covers the required management areas", () => {
   const coverage = inspectAdminSurfaceCoverage();
@@ -49,4 +50,32 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("resourceScope"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
+});
+
+test("sub2 repair context summarizes operator drilldown targets", () => {
+  const items = sub2RepairContextItems({
+    checkId: "localProxySmoke",
+    checkLabel: "本地 OpenAI/Codex 反代 smoke",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    accountId: "2",
+    sub2AccountName: "codex-primary",
+    accountStatus: "inactive",
+    credentialsStatus: "expired",
+    resourceId: "resource-1",
+    resourceType: "codex",
+    resourceStatus: "online",
+    resourceScope: "production",
+    supplierEmail: "admin@zhisuan.local",
+    requestId: "req-local",
+    proxyRequestLogId: "log-1",
+    upstreamRequestId: "req-upstream"
+  });
+
+  assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "目标账号", "账号状态", "资源", "供给方", "请求定位"]);
+  assert.equal(items.find((item) => item.label === "来源")?.value, "本地 OpenAI/Codex 反代 smoke / localProxySmoke");
+  assert.equal(items.find((item) => item.label === "目标账号")?.value, "#2 / codex-primary");
+  assert.equal(items.find((item) => item.label === "账号状态")?.value, "inactive / expired");
+  assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
+  assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
+  assert.ok(items.every((item) => item.value.trim().length > 0));
 });
