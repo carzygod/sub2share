@@ -3598,13 +3598,7 @@ async function buildSystemHealthReport() {
       openAiProxyRuntime.issues.length > 0 ? { issues: openAiProxyRuntime.issues } : undefined
     ),
     localProxySmokeEvidenceHealthCheck(localProxySmokeEvidenceWithRepair),
-    systemHealthCheck(
-      "sub2Bindings",
-      "Sub2 绑定",
-      sub2Bindings.ok ? "ok" : "warning",
-      sub2Bindings.ok ? "Sub2Binding 与本地租赁一致" : `${sub2Bindings.summary.totalIssues} 个 Sub2 绑定问题`,
-      sub2Bindings.summary
-    ),
+    sub2BindingHealthCheck(sub2Bindings),
     systemHealthCheck(
       "proxy",
       "反代请求",
@@ -4925,6 +4919,21 @@ function systemHealthCheck(
   detail?: unknown
 ): SystemHealthCheck {
   return { id, label, status, summary, metrics, detail };
+}
+
+export function sub2BindingHealthCheck(sub2Bindings: {
+  ok: boolean;
+  summary: { totalIssues: number } & Record<string, string | number | boolean | null>;
+  issues: unknown[];
+}) {
+  return systemHealthCheck(
+    "sub2Bindings",
+    "Sub2 绑定",
+    sub2Bindings.ok ? "ok" : "warning",
+    sub2Bindings.ok ? "Sub2Binding 与本地租赁一致" : `${sub2Bindings.summary.totalIssues} 个 Sub2 绑定问题`,
+    sub2Bindings.summary,
+    sub2Bindings.issues.length > 0 ? { issues: sub2Bindings.issues } : undefined
+  );
 }
 
 const dashboardHealthCheckPriority = [
