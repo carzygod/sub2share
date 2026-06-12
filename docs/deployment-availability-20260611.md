@@ -4891,3 +4891,65 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 管理员从首页或完整巡检页进入 `反代状态` 后，现在可以在应用 OpenAI refresh token 前看到修复定位上下文，降低目标账号或资源判断错误的风险。真实 OpenAI/Codex `/v1/responses` 仍未恢复，剩余阻断继续是缺少有效 OpenAI refresh token 或 active Sub2 OpenAI 账号。
+
+## 2026-06-12 16:59 Sub2 修复上下文测试覆盖发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`f01df5c`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=f01df5c`
+  - `deployed_at=20260612T085900Z`
+- 本次能力：将 Admin `反代状态` 页的修复上下文摘要抽为 `sub2-repair-context` helper，并新增 Admin 单元测试锁定来源、维修动作、目标账号、账号/凭据状态、资源、供给方和请求定位字段，避免后续重构丢失关键运维上下文。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，5/5。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：79/79 通过。
+  - Admin tests：5/5 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- Admin 静态资源：
+  - 当前 bundle：`/assets/index-BKDr7h2L.js`
+  - bundle 包含 `修复定位`：true
+  - bundle 包含 `Repair Context`：true
+- `/opt/zhisuan-yizhan/user.new-*` staging 目录已清理。
+- `/tmp/sub2share-user-f01df5c.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=f01df5c`
+- `GET /api/admin/dashboard`：200。
+  - `latestSystemHealth.status=error`
+  - `criticalChecks` 数量：`8`
+- 当前 non-ok checks 仍为：`payments`、`resources`、`resourceCredentials`、`sub2`、`localProxySmoke`。
+
+### 结论
+
+Sub2/OpenAI 修复入口现在不只具备页面展示，也有 Admin 单元测试锁定关键上下文字段。真实 OpenAI/Codex `/v1/responses` 仍未恢复，剩余阻断继续是缺少有效 OpenAI refresh token 或 active Sub2 OpenAI 账号。
