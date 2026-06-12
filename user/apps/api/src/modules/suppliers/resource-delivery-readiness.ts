@@ -57,6 +57,7 @@ export function publicProductDeliveryReadinessFields(input: {
 export function codexCatalogDeliveryReadinessIssueFields(input: {
   productId: string;
   productName: string;
+  priceId?: string;
   resourceType: string;
   readyCodexDeliveryResources: number;
 }) {
@@ -66,6 +67,7 @@ export function codexCatalogDeliveryReadinessIssueFields(input: {
     type: "active_codex_product_without_ready_delivery_resource",
     productId: input.productId,
     productName: input.productName,
+    priceId: input.priceId,
     resourceType: "codex",
     resourceList: true,
     resourceScope: "production" as const,

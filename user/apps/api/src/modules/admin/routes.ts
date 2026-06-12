@@ -5970,6 +5970,7 @@ async function inspectProductCatalogReadiness() {
     const deliveryReadinessIssue = codexCatalogDeliveryReadinessIssueFields({
       productId: product.id,
       productName: product.name,
+      priceId: purchasablePrices[0]?.id,
       resourceType: product.resourceType,
       readyCodexDeliveryResources
     });

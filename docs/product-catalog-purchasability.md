@@ -47,3 +47,10 @@
 - 从商品目录 warning 打开共享资源时，系统会继续传递 `productId`、`productName` 和 `priceId`。
 - 共享资源创建表单的修复诊断条会展示 `Product`，管理员提交前可以确认当前资源修复对应的受影响商品。
 - 该能力覆盖 Admin 首页和完整可用性巡检页两条入口。
+
+## 2026-06-13 扩展：Codex 可交付风险携带价格定位
+
+- `productCatalog` 巡检在判断 active Codex 商品存在可购买价格但没有 ready production Codex shared resource 时，会把首个可购买价格 ID 写入 issue。
+- Codex delivery readiness issue 的 id 会包含 `productId` 与 `priceId`，不再只能落到商品级别。
+- Dashboard 预览、商品管理搜索、共享资源修复默认值、修复诊断条和凭据应用确认弹窗可以复用同一个价格定位字段。
+- 该能力只补齐巡检证据和管理员排障上下文，不改变商品可购买性、下单闸门或共享资源 ready 判定。

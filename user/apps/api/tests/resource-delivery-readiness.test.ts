@@ -48,12 +48,14 @@ test("reports purchasable Codex catalog products without delivery resources", ()
   assert.deepEqual(codexCatalogDeliveryReadinessIssueFields({
     productId: "product-1",
     productName: "Codex Monthly",
+    priceId: "price-monthly",
     resourceType: "codex",
     readyCodexDeliveryResources: 0
   }), {
     type: "active_codex_product_without_ready_delivery_resource",
     productId: "product-1",
     productName: "Codex Monthly",
+    priceId: "price-monthly",
     resourceType: "codex",
     resourceList: true,
     resourceScope: "production",
