@@ -202,6 +202,7 @@ const dashboardHealthDetailPreviewFields = [
   "credentialsStatus",
   "schedulable",
   "resourceId",
+  "resourceList",
   "resourceType",
   "resourceStatus",
   "resourceScope",
@@ -3879,7 +3880,7 @@ async function buildSystemHealthReport() {
     )
   ];
 
-  const enrichedChecks = enrichSub2RepairContextChecks(checks, repairSupplierEmailCandidate);
+  const enrichedChecks = enrichSub2RepairContextChecks(checks, repairSupplierEmailCandidate, sub2Status.accountSamples);
 
   return {
     checkedAt: checkedAt.toISOString(),
@@ -3906,8 +3907,13 @@ async function activeSupplierEmailRepairCandidate() {
   return suppliers.length === 1 ? suppliers[0].user.email : null;
 }
 
-function enrichSub2RepairContextChecks(checks: SystemHealthCheck[], supplierEmail: string | null) {
-  if (!supplierEmail) return checks;
+export function enrichSub2RepairContextChecks(
+  checks: SystemHealthCheck[],
+  supplierEmail: string | null,
+  sub2AccountCandidates: ResourceCredentialSub2AccountCandidate[] = []
+) {
+  if (!supplierEmail && sub2AccountCandidates.length === 0) return checks;
+  const repairCandidateFields = resourceCredentialRepairCandidateFields(sub2AccountCandidates);
 
   return checks.map((check) => {
     const detail = jsonObject(check.detail);
@@ -3920,12 +3926,20 @@ function enrichSub2RepairContextChecks(checks: SystemHealthCheck[], supplierEmai
       if (!Array.isArray(rows)) continue;
       const nextRows = rows.map((row) => {
         const record = jsonObject(row);
-        if (!record || record.supplierEmail || record.repairAction !== "apply_openai_refresh_token_to_sub2_account") return row;
+        if (!record || record.repairAction !== "apply_openai_refresh_token_to_sub2_account") return row;
+        const additions: Record<string, unknown> = {};
+        if (supplierEmail && !record.supplierEmail) additions.supplierEmail = supplierEmail;
+        if (!record.resourceType) additions.resourceType = "codex";
+        if (record.sub2AccountId === undefined || record.sub2AccountId === null) {
+          for (const [field, value] of Object.entries(repairCandidateFields)) {
+            if (value !== undefined && (record[field] === undefined || record[field] === null)) additions[field] = value;
+          }
+        }
+        if (Object.keys(additions).length === 0) return row;
         changed = true;
         return {
           ...record,
-          supplierEmail,
-          resourceType: record.resourceType ?? "codex"
+          ...additions
         };
       });
       nextDetail[key] = nextRows;

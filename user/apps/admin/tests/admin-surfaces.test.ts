@@ -135,6 +135,20 @@ test("resource create defaults continue the OpenAI credential repair flow", () =
   assert.equal(resourceCreateDefaultsShouldApplyCredential(repairDefaults), true);
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest(repairDefaults), true);
   assert.equal(resourceCreateDefaultsSmokeModel(repairDefaults), "gpt-5.3-codex");
+  assert.equal(resourceCreateDefaultsShouldApplyCredential({
+    checkId: "productCatalog",
+    resourceType: "codex",
+    resourceScope: "production",
+    sub2AccountId: "2",
+    repairAction: "apply_openai_refresh_token_to_sub2_account"
+  }), true);
+  assert.equal(resourceCreateDefaultsShouldRunSmokeTest({
+    checkId: "productCatalog",
+    resourceType: "codex",
+    resourceScope: "production",
+    sub2AccountId: "2",
+    repairAction: "apply_openai_refresh_token_to_sub2_account"
+  }), true);
   assert.equal(resourceCreateDefaultsShouldApplyCredential({ resourceType: "codex", sub2AccountId: "2" }), false);
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
 });

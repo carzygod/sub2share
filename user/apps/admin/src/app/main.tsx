@@ -2347,6 +2347,7 @@ function App() {
             onOpenSystemHealth={() => refresh("systemHealth")}
             onOpenView={(nextView) => { void refresh(nextView); }}
             onOpenHealthCheck={(check) => { void openDashboardHealthCheck(check); }}
+            onOpenHealthResources={(check) => { void openResourcesCandidate(dashboardHealthResourceFilter(dashboardHealthDetailRecord(check), check.id)); }}
             onOpenActiveRentals={() => { void openStatusListCandidate("rentals", "active", "已打开 active 租赁通道"); }}
             onOpenOnlineResources={() => { void openResourcesCandidate({ status: "online" }); }}
             onOpenRechargeTransactions={() => { void openWalletTransactionsCandidate({ type: "recharge" }); }}
@@ -2776,6 +2777,7 @@ function DashboardView({
   onOpenSystemHealth,
   onOpenView,
   onOpenHealthCheck,
+  onOpenHealthResources,
   onOpenActiveRentals,
   onOpenOnlineResources,
   onOpenRechargeTransactions,
@@ -2786,6 +2788,7 @@ function DashboardView({
   onOpenSystemHealth: () => void;
   onOpenView: (view: View) => void;
   onOpenHealthCheck: (check: DashboardHealthCheckPreview) => void;
+  onOpenHealthResources: (check: DashboardHealthCheckPreview) => void;
   onOpenActiveRentals: () => void;
   onOpenOnlineResources: () => void;
   onOpenRechargeTransactions: () => void;
@@ -2850,6 +2853,7 @@ function DashboardView({
                   {criticalChecks.map((check) => {
                     const target = dashboardHealthCheckTarget(check);
                     const context = dashboardHealthPreviewContext(check);
+                    const resourceRepairTarget = dashboardHealthCanOpenResourceRepair(check);
                     return (
                       <div className="dashboard-health-item" key={check.id}>
                         <div className={healthRowClass(check.status)}>
@@ -2865,6 +2869,11 @@ function DashboardView({
                           {target && (
                             <button className="secondary mini" onClick={() => onOpenHealthCheck(check)}>
                               <ChevronRight size={14} />{target.label}
+                            </button>
+                          )}
+                          {resourceRepairTarget && (
+                            <button className="secondary mini" onClick={() => onOpenHealthResources(check)}>
+                              <ChevronRight size={14} />打开共享资源
                             </button>
                           )}
                         </div>
@@ -6060,7 +6069,7 @@ function dashboardHealthHasResourceFilter(record: DashboardHealthDetailPreview |
   );
 }
 
-function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | undefined) {
+function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | undefined, checkId = "resources") {
   return {
     supplierEmail: textValue(record?.supplierEmail),
     resourceType: textValue(record?.resourceType),
@@ -6068,7 +6077,7 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     scope: textValue(record?.resourceScope),
     sub2AccountId: textValue(record?.sub2AccountId),
     repairAction: textValue(record?.repairAction),
-    checkId: "resources",
+    checkId,
     model: textValue(record?.model),
     responsesOk: textValue(record?.responsesOk),
     localProxyOk: textValue(record?.localProxyOk),
@@ -6095,6 +6104,10 @@ function dashboardHealthProductLookup(check: DashboardHealthCheckPreview) {
   return textValue(record?.productId) ?? textValue(record?.priceId) ?? textValue(record?.productName);
 }
 
+function dashboardHealthCanOpenResourceRepair(check: DashboardHealthCheckPreview) {
+  return check.id === "productCatalog" && dashboardHealthHasResourceFilter(dashboardHealthDetailRecord(check));
+}
+
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
   if (!record) return "";
@@ -6105,6 +6118,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "sub2AccountName",
     "accountStatus",
     "credentialsStatus",
+    "resourceList",
     "resourceType",
     "resourceStatus",
     "resourceScope",

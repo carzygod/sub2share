@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
@@ -208,6 +208,7 @@ test("dashboard health previews retain product catalog drilldown fields", () => 
   assert.equal(previews[0].primaryIssue?.productId, "prod-codex");
   assert.equal(previews[0].primaryIssue?.productName, "Codex Pro");
   assert.equal(previews[0].primaryIssue?.priceId, "price-monthly");
+  assert.equal(previews[0].primaryIssue?.resourceList, true);
   assert.equal(previews[0].primaryIssue?.resourceType, "codex");
   assert.equal(previews[0].primaryIssue?.resourceScope, "production");
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
@@ -234,4 +235,40 @@ test("dashboard health previews keep product catalog warnings in the critical sl
   assert.equal(previews.length, 8);
   assert.equal(previews[0].id, "productCatalog");
   assert.ok(previews.some((item) => item.id === "productCatalog"));
+});
+
+test("sub2 repair context enrichment fills product catalog repair candidates", () => {
+  const [check] = enrichSub2RepairContextChecks([
+    {
+      id: "productCatalog",
+      label: "商品目录",
+      status: "warning",
+      summary: "1 个商品目录可购买性问题",
+      detail: {
+        issues: [{
+          id: "product-risk",
+          type: "active_codex_product_without_ready_delivery_resource",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          resourceType: "codex",
+          resourceScope: "production",
+          productId: "prod-codex"
+        }]
+      }
+    }
+  ], "admin@zhisuan.local", [{
+    sub2AccountId: 2,
+    sub2AccountName: "codex-primary",
+    accountStatus: "error",
+    credentialsStatus: "configured(3)",
+    schedulable: false
+  }]);
+
+  const issue = (check.detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  assert.equal(issue.supplierEmail, "admin@zhisuan.local");
+  assert.equal(issue.sub2AccountId, 2);
+  assert.equal(issue.sub2AccountName, "codex-primary");
+  assert.equal(issue.accountStatus, "error");
+  assert.equal(issue.credentialsStatus, "configured(3)");
+  assert.equal(issue.schedulable, false);
+  assert.equal(issue.productId, "prod-codex");
 });

@@ -133,3 +133,14 @@
 - 若商品目录问题没有具体定位字段，按钮仍回退到商品配置页。
 
 该能力让“商品可售但交付资源未 ready”的风险可以从首页直接落到商品管理入口，不再需要管理员先进入完整可用性巡检页再复制商品 ID。
+
+## 2026-06-12 扩展：商品目录巡检共享资源修复入口
+
+`productCatalog` 的首页关键巡检项继续补齐共享资源修复路径：
+
+- 带 `repairAction=apply_openai_refresh_token_to_sub2_account` 的商品目录问题会继承当前 Sub2 修复候选账号字段，包括 `sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus` 和 `schedulable`。
+- `GET /api/admin/dashboard` 的关键巡检预览保留 `resourceList`，首页摘要可以显示这条商品风险同时关联共享资源修复。
+- Admin 首页在 `productCatalog` 问题具备资源修复上下文时，除“打开商品”外，还会显示“打开共享资源”按钮。
+- 点击“打开共享资源”会带入 `supplierEmail`、`resourceType`、`resourceScope`、`resourceStatus`、`sub2AccountId` 和 `repairAction`，共享资源创建表单会默认继续凭据应用和端到端 smoke 验收。
+
+这样管理员既能从首页确认受影响商品，也能直接进入真正恢复交付能力所需的生产 Codex 共享资源修复入口。
