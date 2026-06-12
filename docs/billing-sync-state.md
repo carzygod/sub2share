@@ -27,6 +27,7 @@ user/prisma/migrations/0003_billing_sync_state/migration.sql
 - `cursorOut`
 - `status`
 - `imported`
+- `recovered`
 - `skipped`
 - `unmatched`
 - `error`
@@ -47,7 +48,7 @@ user/prisma/migrations/0003_billing_sync_state/migration.sql
 
 重复 Sub2 usage 仍由 `UsageRecord.sub2RequestId` 唯一索引和事务内已存在检查保证幂等。
 
-如果重复记录对应的本地 usage 仍为 `pending` 且 `buyerCharge > 0`，同步任务会把它作为待恢复账务重新尝试扣费。恢复成功时返回值会包含 `recovered` 计数；由于 `BillingSyncRun` 仍沿用原有 `imported/skipped/unmatched` 三列，持久化的 `imported` 包含已恢复入账的 pending usage。
+如果重复记录对应的本地 usage 仍为 `pending` 且 `buyerCharge > 0`，同步任务会把它作为待恢复账务重新尝试扣费。恢复成功时返回值会包含 `recovered` 计数，`BillingSyncRun.recovered` 和 `BillingSyncState.lastRecovered` 会同步持久化该恢复数量；`imported` 仍保留本次成功入账总数，用于兼容既有统计。
 
 ## 管理员入口
 
@@ -71,10 +72,11 @@ POST /api/admin/usages/sync-sub2
 - 最近状态
 - 最近开始/完成时间
 - 最近导入/跳过/未匹配数量
+- 最近恢复入账数量
 - 手动同步完成提示中的 pending usage 恢复数量
 - 最近错误
 - 最近 5 个同步批次
 
 ## 可用性结论
 
-该能力补齐了 `BILLING-002`：用量同步现在具备 cursor、批次、时间和错误的持久化记录，管理员可以在后台直接判断同步是否连续、是否失败以及失败原因。
+该能力补齐了 `BILLING-002`：用量同步现在具备 cursor、批次、时间、错误和 pending usage 恢复数量的持久化记录，管理员可以在后台直接判断同步是否连续、是否失败、失败原因以及余额恢复后账务是否正在补扣。

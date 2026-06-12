@@ -59,6 +59,7 @@ interface BillingSyncStateRow {
   lastStatus?: string | null;
   lastError?: string | null;
   lastImported: number;
+  lastRecovered: number;
   lastSkipped: number;
   lastUnmatched: number;
   lastStartedAt?: string | null;
@@ -73,6 +74,7 @@ interface BillingSyncRunRow {
   cursorOut?: string | null;
   status: string;
   imported: number;
+  recovered: number;
   skipped: number;
   unmatched: number;
   error?: string | null;
@@ -3523,16 +3525,16 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onOpenUse
           <div><span>Cursor</span><strong>{state?.cursor ?? "-"}</strong></div>
           <div><span>最近开始</span><strong>{dateTime(state?.lastStartedAt)}</strong></div>
           <div><span>最近完成</span><strong>{dateTime(state?.lastFinishedAt)}</strong></div>
-          <div><span>最近结果</span><strong>{state ? `${state.lastImported}/${state.lastSkipped}/${state.lastUnmatched}` : "-"}</strong></div>
+          <div><span>最近结果</span><strong>{state ? `${state.lastImported}/${state.lastRecovered}/${state.lastSkipped}/${state.lastUnmatched}` : "-"}</strong></div>
           <div><span>最近错误</span><strong>{state?.lastError ?? "-"}</strong></div>
         </div>
         {runs.length > 0 && (
-          <MiniTable headers={["批次", "状态", "导入/跳过/未匹配", "Cursor", "时间"]}>
+          <MiniTable headers={["批次", "状态", "导入/恢复/跳过/未匹配", "Cursor", "时间"]}>
             {runs.slice(0, 5).map((run) => (
               <tr key={run.id}>
                 <td><small>{run.id}</small></td>
                 <td><StatusPill status={run.status} /></td>
-                <td>{run.imported} / {run.skipped} / {run.unmatched}</td>
+                <td>{run.imported} / {run.recovered} / {run.skipped} / {run.unmatched}</td>
                 <td><small>{run.cursorIn ?? "-"} → {run.cursorOut ?? "-"}</small></td>
                 <td>{dateTime(run.finishedAt ?? run.startedAt)}</td>
               </tr>

@@ -1,0 +1,3 @@
+ALTER TABLE "BillingSyncState" ADD COLUMN "lastRecovered" INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE "BillingSyncRun" ADD COLUMN "recovered" INTEGER NOT NULL DEFAULT 0;

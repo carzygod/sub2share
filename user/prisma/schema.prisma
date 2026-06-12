@@ -461,6 +461,7 @@ model BillingSyncState {
   lastStatus     String?
   lastError      String?
   lastImported   Int       @default(0)
+  lastRecovered  Int       @default(0)
   lastSkipped    Int       @default(0)
   lastUnmatched  Int       @default(0)
   lastStartedAt  DateTime?
@@ -476,6 +477,7 @@ model BillingSyncRun {
   cursorOut  String?
   status     String
   imported   Int       @default(0)
+  recovered  Int       @default(0)
   skipped    Int       @default(0)
   unmatched  Int       @default(0)
   error      String?

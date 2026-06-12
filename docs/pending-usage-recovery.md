@@ -16,6 +16,7 @@ Sub2 usage 同步在买家余额不足时会创建 `UsageRecord(status=pending)`
 - 恢复扣费成功后，如果该租赁没有其他 pending usage 且额度未耗尽，会从 `low_balance` 自动恢复为 `active`。
 - 如果额度或请求次数已经耗尽，恢复后租赁进入 `limited`。
 - 管理员手动同步 usage 的返回值新增 `recovered`，用于标识本次恢复入账的 pending usage 数量。
+- `BillingSyncRun.recovered` 和 `BillingSyncState.lastRecovered` 会持久化恢复数量，管理员刷新页面或查看历史批次时仍能区分新导入和 pending 恢复。
 
 ## 幂等约束
 

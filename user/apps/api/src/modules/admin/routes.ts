@@ -5812,6 +5812,7 @@ function billingSyncHealthCheck(
     {
       lastStatus: state.lastStatus ?? null,
       lastImported: state.lastImported,
+      lastRecovered: state.lastRecovered,
       lastSkipped: state.lastSkipped,
       lastUnmatched: state.lastUnmatched,
       lastFinishedAt: state.lastFinishedAt?.toISOString() ?? null,

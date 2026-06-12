@@ -85,6 +85,7 @@ async function syncSub2UsageWithState(cursor?: string) {
         data: {
           status: "success",
           imported: result.imported,
+          recovered: result.recovered,
           skipped: result.skipped,
           unmatched: result.unmatched,
           cursorOut,
@@ -98,6 +99,7 @@ async function syncSub2UsageWithState(cursor?: string) {
           lastStatus: "success",
           lastError: null,
           lastImported: result.imported,
+          lastRecovered: result.recovered,
           lastSkipped: result.skipped,
           lastUnmatched: result.unmatched,
           lastFinishedAt: finishedAt
