@@ -144,3 +144,13 @@
 - 点击“打开共享资源”会带入 `supplierEmail`、`resourceType`、`resourceScope`、`resourceStatus`、`sub2AccountId` 和 `repairAction`，共享资源创建表单会默认继续凭据应用和端到端 smoke 验收。
 
 这样管理员既能从首页确认受影响商品，也能直接进入真正恢复交付能力所需的生产 Codex 共享资源修复入口。
+
+## 2026-06-12 扩展：共享资源修复表单保留商品上下文
+
+从 `productCatalog` 风险进入共享资源修复时，资源创建默认值继续保留商品定位：
+
+- Dashboard 与完整可用性巡检页的“打开共享资源”都会传递 `productId`、`productName` 和 `priceId`。
+- 共享资源创建表单的修复诊断条新增 `Product` 项，显示触发风险的商品名、商品 ID 和价格 ID。
+- 该上下文只作为管理员确认信息，不影响资源筛选、凭据保存或 Sub2 smoke 行为。
+
+管理员在创建或修复生产 Codex 共享资源前，可以直接确认这次修复是为了恢复哪一个可售商品的交付能力。

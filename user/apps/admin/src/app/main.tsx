@@ -266,6 +266,9 @@ interface SystemHealthIssueRow {
   resourceType?: string;
   resourceStatus?: string;
   supplierEmail?: string;
+  productId?: string;
+  productName?: string;
+  priceId?: string;
   proxyRequestLookup?: string;
   requestId?: string;
   proxyRequestLogId?: string;
@@ -337,6 +340,9 @@ interface SystemHealthSampleRow {
   resourceStatus?: string;
   resourceScope?: string;
   supplierEmail?: string;
+  productId?: string;
+  productName?: string;
+  priceId?: string;
   sub2AccountId?: string;
   sub2Status?: boolean;
   apiKeyLookup?: string;
@@ -1883,6 +1889,9 @@ function App() {
       repairAction: filter?.repairAction,
       checkId: filter?.checkId,
       resourceScope,
+      productId: filter?.productId,
+      productName: filter?.productName,
+      priceId: filter?.priceId,
       model: filter?.model,
       responsesOk: filter?.responsesOk,
       localProxyOk: filter?.localProxyOk,
@@ -2901,7 +2910,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   snapshots: SystemHealthSnapshotRow[];
   onRefresh: () => void;
   onRunMaintenance: () => void;
-  onOpenResources: (filter?: { supplierEmail?: string; resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) => void;
+  onOpenResources: (filter?: ResourceCreateDefaults & { status?: string; scope?: string }) => void;
   onOpenResource: (resourceId: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
@@ -2987,7 +2996,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthIssueSub2RepairContext(issue))}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, productId: issue.productId, productName: issue.productName, priceId: issue.priceId })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -3025,7 +3034,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 <div className="row-actions">
                   {sample.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(sample.proxyRequestLookup!)}>打开反代请求</button>}
-                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId })}>打开共享资源</button>}
+                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, productId: sample.productId, productName: sample.productName, priceId: sample.priceId })}>打开共享资源</button>}
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
                   {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
                   {sample.orderId && <button className="secondary mini" onClick={() => onOpenOrder(sample.orderId!)}>打开订单</button>}
@@ -6078,6 +6087,9 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     sub2AccountId: textValue(record?.sub2AccountId),
     repairAction: textValue(record?.repairAction),
     checkId,
+    productId: textValue(record?.productId),
+    productName: textValue(record?.productName),
+    priceId: textValue(record?.priceId),
     model: textValue(record?.model),
     responsesOk: textValue(record?.responsesOk),
     localProxyOk: textValue(record?.localProxyOk),
@@ -6188,6 +6200,9 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       resourceType: textValue(record.resourceType),
       resourceStatus: textValue(record.resourceStatus),
       supplierEmail: textValue(record.supplierEmail),
+      productId: textValue(record.productId),
+      productName: textValue(record.productName),
+      priceId: textValue(record.priceId),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       requestId: textValue(record.requestId),
       proxyRequestLogId: textValue(record.proxyRequestLogId),
@@ -6269,6 +6284,9 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       resourceStatus: textValue(record.resourceStatus),
       resourceScope: textValue(record.resourceScope),
       supplierEmail: textValue(record.supplierEmail),
+      productId: textValue(record.productId),
+      productName: textValue(record.productName),
+      priceId: textValue(record.priceId),
       sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: sub2StatusFlag,
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),

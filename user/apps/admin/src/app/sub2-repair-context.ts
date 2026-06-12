@@ -35,6 +35,9 @@ export interface ResourceCreateDefaults {
   checkId?: string;
   resourceScope?: string;
   resourceStatus?: string;
+  productId?: string;
+  productName?: string;
+  priceId?: string;
   model?: string;
   responsesOk?: string;
   localProxyOk?: string;
@@ -131,10 +134,16 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
     defaults.proxyRequestStatusCode ? `HTTP ${defaults.proxyRequestStatusCode}` : undefined,
     defaults.proxyRequestErrorCode
   ].filter(Boolean).join(" / ");
+  const product = [
+    defaults.productName,
+    defaults.productId,
+    defaults.priceId
+  ].filter(Boolean).join(" / ");
 
   return [
     { label: "Source", value: [defaults.checkId, defaults.resourceScope].filter(Boolean).join(" / ") },
     { label: "Repair action", value: defaults.repairAction },
+    { label: "Product", value: product },
     { label: "Supplier", value: defaults.supplierEmail },
     { label: "Resource", value: resource },
     { label: "Sub2 account", value: defaults.sub2AccountId ? `#${defaults.sub2AccountId}` : undefined },
