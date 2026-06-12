@@ -35,6 +35,10 @@ import {
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import {
+  adminCapabilityOperationTarget,
+  type AdminCapabilityNavigationTarget
+} from "./admin-capability-navigation";
+import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -1958,6 +1962,11 @@ function App() {
       : "Opened Sub2/OpenAI proxy status for the selected health issue");
   }
 
+  async function openCapabilityTarget(target: AdminCapabilityNavigationTarget, operation: AdminCapabilityOperation) {
+    await refresh(target.view);
+    setMessage(`已打开能力项 ${operation.id} 对应入口：${titleFor(target.view)}`);
+  }
+
   async function openDashboardHealthCheck(check: DashboardHealthCheckPreview) {
     const record = dashboardHealthDetailRecord(check);
     if (dashboardHealthShouldOpenResourcesFirst(check, record)) {
@@ -2368,7 +2377,11 @@ function App() {
           />
         )}
         {view === "capabilities" && (
-          <CapabilitiesView capabilities={adminCapabilities} onRefresh={() => refresh("capabilities")} />
+          <CapabilitiesView
+            capabilities={adminCapabilities}
+            onRefresh={() => refresh("capabilities")}
+            onOpenTarget={openCapabilityTarget}
+          />
         )}
         {view === "users" && (
           <UsersView
@@ -3068,9 +3081,10 @@ function SystemHealthHistoryView({ snapshots, query, meta, onDraft, onFilter, on
   );
 }
 
-function CapabilitiesView({ capabilities, onRefresh }: {
+function CapabilitiesView({ capabilities, onRefresh, onOpenTarget }: {
   capabilities: AdminCapabilitiesResult | null;
   onRefresh: () => void;
+  onOpenTarget: (target: AdminCapabilityNavigationTarget, operation: AdminCapabilityOperation) => void;
 }) {
   const coverage = capabilities?.coverage;
   const areas = capabilities?.capabilities ?? [];
@@ -3115,18 +3129,26 @@ function CapabilitiesView({ capabilities, onRefresh }: {
           key={area.id}
           title={`${area.label}${area.required ? " / required" : ""}`}
           count={area.operations.length}
-          headers={["范围", "操作", "方法", "路径", "角色", "级别"]}
+          headers={["范围", "操作", "方法", "路径", "角色", "级别", "入口"]}
         >
-          {area.operations.map((operation) => (
-            <tr key={operation.id}>
-              <td><strong>{area.id}</strong><small>{area.required ? "required" : "optional"}</small></td>
-              <td><strong>{operation.label}</strong><small>{operation.id}</small></td>
-              <td><small>{operation.method}</small></td>
-              <td><small>{operation.path}</small></td>
-              <td><small>{operation.roles.join(", ")}</small></td>
-              <td><StatusPill status={operation.critical ? "warning" : "active"} /></td>
-            </tr>
-          ))}
+          {area.operations.map((operation) => {
+            const target = adminCapabilityOperationTarget(operation.id);
+            return (
+              <tr key={operation.id}>
+                <td><strong>{area.id}</strong><small>{area.required ? "required" : "optional"}</small></td>
+                <td><strong>{operation.label}</strong><small>{operation.id}</small></td>
+                <td><small>{operation.method}</small></td>
+                <td><small>{operation.path}</small></td>
+                <td><small>{operation.roles.join(", ")}</small></td>
+                <td><StatusPill status={operation.critical ? "warning" : "active"} /></td>
+                <td>
+                  {target
+                    ? <button className="secondary mini" onClick={() => onOpenTarget(target, operation)}>{target.label}</button>
+                    : <small>-</small>}
+                </td>
+              </tr>
+            );
+          })}
         </TablePanel>
       ))}
       {!capabilities && (
