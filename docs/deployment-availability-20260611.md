@@ -4160,3 +4160,66 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批次和最近状态中。管理员后续排查余额恢复、售出收入和供应商共享结算时，可以区分新导入 usage 与历史 pending usage 恢复，不再只能依赖当次同步 toast。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 14:20 管理员首页关键巡检项预览发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`7c27560`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=7c27560`
+  - `deployed_at=20260612T062007Z`
+- 本次能力：管理员首页 `GET /api/admin/dashboard` 返回 `latestSystemHealth.criticalChecks`，Admin 首页直接展示最近巡检的关键阻断/证据项，并提供进入完整可用性巡检的入口。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，76/76。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：76/76 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*-7c27560` staging 目录已清理。
+- `/tmp/sub2share-user-7c27560.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/dashboard`：200。
+  - `latestSystemHealth.status=error`
+  - `latestSystemHealth.criticalChecks.length=8`
+  - `criticalChecks`：`sub2,localProxySmoke,resourceCredentials,resources,payments,openAiProxyContract,openAiProxyRuntime,proxy`
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=7c27560`
+  - `sub2.status=error`
+  - `localProxySmoke.status=error`
+
+### 结论
+
+管理员现在进入后台首页即可看到最近巡检中的关键问题预览，不需要先打开完整巡检页才能定位 Sub2/OpenAI 上游、资源凭据、本地反代 smoke、共享资源、支付充值或反代运行态风险。当前生产入口与部署状态正常；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
