@@ -660,6 +660,7 @@ const orderDetailInclude = {
     include: {
       product: true,
       limits: true,
+      supplierResource: { include: { supplier: { include: { user: true } } } },
       apiKeys: { orderBy: { createdAt: "desc" }, take: 20 }
     },
     orderBy: { createdAt: "desc" }
@@ -1770,7 +1771,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       });
       await tx.rental.update({
         where: { id: rental.id },
-        data: { status: "active" }
+        data: {
+          status: "active",
+          supplierResourceId: deliveryReadiness.resource?.id ?? null
+        }
       });
 
       if (before.paidAmount.gt(0)) {
@@ -1847,6 +1851,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
             status: "active",
             sub2UserId: createdSub2Key.sub2UserId,
             sub2KeyId: createdSub2Key.sub2KeyId,
+            supplierResourceId: deliveryReadiness.resource?.id ?? null,
             endpointUrl: createdSub2Key.endpointUrl,
             sub2KeyHash: hashSecret(createdSub2Key.apiKey)
           }
@@ -1997,6 +2002,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { id: containsText(query.q) },
           { orderId: containsText(query.q) },
           { productId: containsText(query.q) },
+          { supplierResourceId: containsText(query.q) },
           { userId: containsText(query.q) },
           { sub2UserId: containsText(query.q) },
           { sub2KeyId: containsText(query.q) },
@@ -2005,6 +2011,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { user: { email: containsText(query.q) } },
           { product: { id: containsText(query.q) } },
           { product: { name: containsText(query.q) } },
+          { supplierResource: { id: containsText(query.q) } },
+          { supplierResource: { sub2AccountId: containsText(query.q) } },
+          { supplierResource: { supplier: { user: { email: containsText(query.q) } } } },
           { order: { items: { some: { priceId: containsText(query.q) } } } },
           { order: { items: { some: { productId: containsText(query.q) } } } },
           ...(oneOf(resourceTypes, query.q) ? [{ resourceType: oneOf(resourceTypes, query.q) }] : [])
@@ -2014,7 +2023,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const [rentals, total] = await Promise.all([
       prisma.rental.findMany({
         where,
-        include: { user: true, product: true, limits: true, order: true, apiKeys: { orderBy: { createdAt: "desc" }, take: 5 } },
+        include: {
+          user: true,
+          product: true,
+          limits: true,
+          order: true,
+          supplierResource: { include: { supplier: { include: { user: true } } } },
+          apiKeys: { orderBy: { createdAt: "desc" }, take: 5 }
+        },
         orderBy: { createdAt: "desc" },
         ...pageArgs(query)
       }),
@@ -2033,6 +2049,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           user: { include: { roles: true, wallet: true } },
           product: true,
           limits: true,
+          supplierResource: { include: { supplier: { include: { user: true } } } },
           order: {
             include: {
               user: true,
@@ -3540,9 +3557,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { user: { displayName: containsText(proxyRequestLookup) } },
           { rental: { orderId: containsText(proxyRequestLookup) } },
           { rental: { productId: containsText(proxyRequestLookup) } },
+          { rental: { supplierResourceId: containsText(proxyRequestLookup) } },
           { rental: { sub2UserId: containsText(proxyRequestLookup) } },
           { rental: { sub2KeyId: containsText(proxyRequestLookup) } },
           { rental: { endpointUrl: containsText(proxyRequestLookup) } },
+          { rental: { supplierResource: { id: containsText(proxyRequestLookup) } } },
+          { rental: { supplierResource: { sub2AccountId: containsText(proxyRequestLookup) } } },
+          { rental: { supplierResource: { supplier: { user: { email: containsText(proxyRequestLookup) } } } } },
           { rental: { product: { id: containsText(proxyRequestLookup) } } },
           { rental: { product: { name: containsText(proxyRequestLookup) } } },
           { rental: { order: { items: { some: { priceId: containsText(proxyRequestLookup) } } } } },
@@ -3562,11 +3583,21 @@ export async function registerAdminRoutes(app: FastifyInstance) {
               id: true,
               orderId: true,
               productId: true,
+              supplierResourceId: true,
               resourceType: true,
               status: true,
               sub2UserId: true,
               sub2KeyId: true,
               endpointUrl: true,
+              supplierResource: {
+                select: {
+                  id: true,
+                  resourceType: true,
+                  status: true,
+                  sub2AccountId: true,
+                  supplier: { select: { id: true, displayName: true, user: { select: { id: true, email: true, displayName: true } } } }
+                }
+              },
               product: { select: { name: true } }
             }
           },

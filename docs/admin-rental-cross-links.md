@@ -20,6 +20,18 @@
 - OpenAI/Codex 交付不可用、Key 停用、限额异常、用量争议和反代失败的定位路径更短。
 - 复用既有管理列表、详情加载和权限边界，不新增绕过后台入口的隐藏操作。
 
+## 2026-06-13 扩展：租赁记录共享资源交付来源
+
+- `Rental` 新增 `supplierResourceId`，关联到平台共享资源。
+- 用户下单、管理员重试开通和租赁 API Key 轮换都会把当前选中的可交付共享资源写入租赁。
+- 迁移会从订单状态历史中的 `supplierResourceId` 尽力回填既有租赁。
+- 租赁列表新增“共享资源”列，展示资源 ID、Sub2 Account ID、资源状态和供给方邮箱，并可直接打开资源详情。
+- 租赁详情顶部与 Delivery 表展示共享资源、Sub2 Account 和供给方邮箱，并提供资源直达操作。
+- 租赁搜索新增覆盖共享资源 ID、Sub2 Account ID 和供给方邮箱。
+- 租赁 CSV 导出新增共享资源、Sub2 Account ID 和供给方邮箱列。
+
+这样管理员可以从已售租赁直接穿透到供给资源和 Sub2/OpenAI 账号，确认一次交付到底使用了哪个共享资源。
+
 ## 验证
 
 - `pnpm.cmd --filter @zyz/admin run typecheck`

@@ -104,12 +104,28 @@ export interface ProxyRequestRepairCandidate {
   sub2UserId?: unknown;
   sub2KeyId?: unknown;
   endpointUrl?: unknown;
+  supplierResourceId?: unknown;
+  supplierResource?: ProxyRequestSupplierResourceCandidate | null;
   rental?: {
     id?: unknown;
+    supplierResourceId?: unknown;
     resourceType?: unknown;
     sub2UserId?: unknown;
     sub2KeyId?: unknown;
     endpointUrl?: unknown;
+    supplierResource?: ProxyRequestSupplierResourceCandidate | null;
+  } | null;
+}
+
+export interface ProxyRequestSupplierResourceCandidate {
+  id?: unknown;
+  resourceType?: unknown;
+  status?: unknown;
+  sub2AccountId?: unknown;
+  supplier?: {
+    user?: {
+      email?: unknown;
+    } | null;
   } | null;
 }
 
@@ -249,13 +265,22 @@ export function proxyRequestRepairContext(candidate: ProxyRequestRepairCandidate
   const proxyRequestStatusCode = upstreamStatusCode || statusCode;
   const proxyRequestPath = repairCandidateText(candidate.path);
   const rental = candidate.rental ?? {};
+  const supplierResource: ProxyRequestSupplierResourceCandidate = candidate.supplierResource ?? rental.supplierResource ?? {};
+  const accountId = repairCandidateText(supplierResource.sub2AccountId);
+  const resourceId = repairCandidateText(candidate.supplierResourceId) || repairCandidateText(rental.supplierResourceId) || repairCandidateText(supplierResource.id);
+  const resourceStatus = repairCandidateText(supplierResource.status);
+  const supplierEmail = repairCandidateText(supplierResource.supplier?.user?.email);
   return {
     checkId: "proxyRequests",
     checkLabel: "反代请求日志",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    ...(accountId ? { accountId } : {}),
+    ...(resourceId ? { resourceId } : {}),
+    ...(resourceStatus ? { resourceStatus } : {}),
+    ...(supplierEmail ? { supplierEmail } : {}),
     rentalId: repairCandidateText(candidate.rentalId) || repairCandidateText(rental.id) || undefined,
-    resourceType: repairCandidateText(candidate.resourceType) || repairCandidateText(rental.resourceType) || undefined,
+    resourceType: repairCandidateText(candidate.resourceType) || repairCandidateText(rental.resourceType) || repairCandidateText(supplierResource.resourceType) || undefined,
     sub2UserId: repairCandidateText(candidate.sub2UserId) || repairCandidateText(rental.sub2UserId) || undefined,
     sub2KeyId: repairCandidateText(candidate.sub2KeyId) || repairCandidateText(rental.sub2KeyId) || undefined,
     endpointUrl: repairCandidateText(candidate.endpointUrl) || repairCandidateText(rental.endpointUrl) || undefined,

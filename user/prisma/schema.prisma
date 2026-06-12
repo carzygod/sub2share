@@ -131,15 +131,15 @@ model User {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  roles      UserRole[]
-  wallet     WalletAccount?
-  orders     Order[]
-  rentals    Rental[]
-  supplier   Supplier?
-  apiKeys    ApiKey[]
-  auditLogs  AuditLog[]
-  identities UserIdentity[]
-  proxyRequestLogs ProxyRequestLog[]
+  roles                 UserRole[]
+  wallet                WalletAccount?
+  orders                Order[]
+  rentals               Rental[]
+  supplier              Supplier?
+  apiKeys               ApiKey[]
+  auditLogs             AuditLog[]
+  identities            UserIdentity[]
+  proxyRequestLogs      ProxyRequestLog[]
   systemHealthSnapshots SystemHealthSnapshot[]
 }
 
@@ -253,23 +253,23 @@ model Order {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  items   OrderItem[]
-  rentals Rental[]
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  rentals       Rental[]
   statusHistory OrderStatusHistory[]
 
   @@unique([userId, idempotencyKey])
 }
 
 model OrderStatusHistory {
-  id          String      @id @default(uuid())
+  id          String       @id @default(uuid())
   orderId     String
   fromStatus  OrderStatus?
   toStatus    OrderStatus
   actorUserId String?
   reason      String?
   meta        Json?
-  createdAt   DateTime    @default(now())
+  createdAt   DateTime     @default(now())
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -291,28 +291,32 @@ model OrderItem {
 }
 
 model Rental {
-  id           String       @id @default(uuid())
-  userId       String
-  orderId      String
-  productId    String
-  resourceType ResourceType
-  status       RentalStatus @default(active)
-  startsAt     DateTime     @default(now())
-  endsAt       DateTime?
-  sub2UserId   String?
-  sub2KeyId    String?
-  sub2KeyHash  String?
-  endpointUrl  String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  userId             String
+  orderId            String
+  productId          String
+  supplierResourceId String?
+  resourceType       ResourceType
+  status             RentalStatus @default(active)
+  startsAt           DateTime     @default(now())
+  endsAt             DateTime?
+  sub2UserId         String?
+  sub2KeyId          String?
+  sub2KeyHash        String?
+  endpointUrl        String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  user    User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  order   Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
-  limits  RentalLimit?
-  apiKeys ApiKey[]
-  usages  UsageRecord[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  product          Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  supplierResource SupplierResource? @relation(fields: [supplierResourceId], references: [id], onDelete: SetNull)
+  limits           RentalLimit?
+  apiKeys          ApiKey[]
+  usages           UsageRecord[]
   proxyRequestLogs ProxyRequestLog[]
+
+  @@index([supplierResourceId, createdAt])
 }
 
 model RentalLimit {
@@ -342,8 +346,8 @@ model ApiKey {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  rental Rental? @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rental           Rental?           @relation(fields: [rentalId], references: [id], onDelete: SetNull)
   proxyRequestLogs ProxyRequestLog[]
 }
 
@@ -411,7 +415,8 @@ model SupplierResource {
   createdAt      DateTime               @default(now())
   updatedAt      DateTime               @updatedAt
 
-  supplier    Supplier           @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplier    Supplier                    @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  rentals     Rental[]
   usages      UsageRecord[]
   settlements SettlementRecord[]
   credential  SupplierResourceCredential?
@@ -502,8 +507,8 @@ model SettlementRecord {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  supplierResource SupplierResource @relation(fields: [supplierResourceId], references: [id], onDelete: Restrict)
-  usageRecord      UsageRecord?     @relation(fields: [usageRecordId], references: [id], onDelete: SetNull)
+  supplierResource SupplierResource       @relation(fields: [supplierResourceId], references: [id], onDelete: Restrict)
+  usageRecord      UsageRecord?           @relation(fields: [usageRecordId], references: [id], onDelete: SetNull)
   withdrawals      WithdrawalSettlement[]
 }
 

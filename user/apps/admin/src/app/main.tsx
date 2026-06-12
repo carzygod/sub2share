@@ -785,6 +785,7 @@ interface RentalRow {
   userId?: string;
   orderId?: string;
   productId?: string;
+  supplierResourceId?: string | null;
   status: string;
   resourceType: string;
   endpointUrl?: string | null;
@@ -797,6 +798,7 @@ interface RentalRow {
   user?: UserRow;
   order?: OrderRow;
   product?: { name: string };
+  supplierResource?: ResourceRow | null;
   apiKeys?: ApiKeyRow[];
   limits?: {
     maxConcurrency: number;
@@ -943,11 +945,23 @@ interface ProxyRequestLogRow {
     id: string;
     orderId?: string | null;
     productId?: string | null;
+    supplierResourceId?: string | null;
     resourceType: string;
     status: string;
     sub2UserId?: string | null;
     sub2KeyId?: string | null;
     endpointUrl?: string | null;
+    supplierResource?: {
+      id: string;
+      resourceType: string;
+      status: string;
+      sub2AccountId?: string | null;
+      supplier?: {
+        id: string;
+        displayName?: string | null;
+        user?: Pick<UserRow, "id" | "email" | "displayName"> | null;
+      } | null;
+    } | null;
     product?: { name: string } | null;
   } | null;
   apiKey?: {
@@ -2706,6 +2720,7 @@ function App() {
             onOpenApiKey={openApiKeyCandidate}
             onOpenProduct={openProductCandidate}
             onOpenUsage={openUsageCandidate}
+            onOpenResource={openResourceCandidate}
             onDraft={(patch) => updateListDraft("sales", patch)}
             onFilter={(event) => submitListFilters("sales", event)}
             onClear={() => clearListFilters("sales")}
@@ -2775,6 +2790,7 @@ function App() {
             onOpenRental={openRentalCandidate}
             onOpenApiKey={openApiKeyCandidate}
             onOpenProduct={openProductCandidate}
+            onOpenResource={openResourceCandidate}
             onDraft={(patch) => updateListDraft("orders", patch)}
             onFilter={(event) => submitListFilters("orders", event)}
             onClear={() => clearListFilters("orders")}
@@ -2802,6 +2818,7 @@ function App() {
             onOpenUsage={openUsageCandidate}
             onOpenSettlement={openSettlementCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
+            onOpenResource={openResourceCandidate}
             onDraft={(patch) => updateListDraft("rentals", patch)}
             onFilter={(event) => submitListFilters("rentals", event)}
             onClear={() => clearListFilters("rentals")}
@@ -2862,6 +2879,7 @@ function App() {
             onOpenProduct={openProductCandidate}
             onOpenUsage={openUsageCandidate}
             onOpenSub2Status={openSub2StatusCandidate}
+            onOpenResource={openResourceCandidate}
           />
         )}
         {view === "suppliers" && (
@@ -4202,7 +4220,7 @@ function ReconciliationView({ reconciliation, onRefresh }: {
   );
 }
 
-function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenSales, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenRentals, onOpenOrders, onOpenApiKey, onOpenProduct, onOpenUsage, onDraft, onFilter, onClear, onPage, onExport }: {
+function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenSales, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenRentals, onOpenOrders, onOpenApiKey, onOpenProduct, onOpenUsage, onOpenResource, onDraft, onFilter, onClear, onPage, onExport }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
@@ -4220,6 +4238,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
   onOpenApiKey: (lookup: string) => void;
   onOpenProduct: (lookup: string) => void;
   onOpenUsage: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
 } & ManagedListProps) {
   const orders = sales?.orders ?? [];
   const breakdown = sales?.breakdown;
@@ -4333,6 +4352,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         onOpenRental={onOpenRental}
         onOpenApiKey={onOpenApiKey}
         onOpenProduct={onOpenProduct}
+        onOpenResource={onOpenResource}
       />
     </section>
   );
@@ -4604,7 +4624,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
   );
 }
 
-function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onDraft, onFilter, onClear, onPage, onExport }: {
+function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onOpenResource, onDraft, onFilter, onClear, onPage, onExport }: {
   orders: OrderRow[];
   title?: string;
   selectedOrder?: OrderDetailRow | null;
@@ -4619,6 +4639,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
   onOpenRental?: (rentalId: string) => void;
   onOpenApiKey?: (lookup: string) => void;
   onOpenProduct?: (lookup: string) => void;
+  onOpenResource?: (resourceId: string) => void;
 } & Partial<ManagedListProps>) {
   return (
     <>
@@ -4667,13 +4688,14 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
           onOpenRental={onOpenRental}
           onOpenApiKey={onOpenApiKey}
           onOpenProduct={onOpenProduct}
+          onOpenResource={onOpenResource}
         />
       )}
     </>
   );
 }
 
-function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct }: {
+function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onOpenResource }: {
   order: OrderDetailRow;
   onCancel?: (orderId: string) => void;
   onRefund?: (orderId: string) => void;
@@ -4685,6 +4707,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
   onOpenRental?: (rentalId: string) => void;
   onOpenApiKey?: (lookup: string) => void;
   onOpenProduct?: (lookup: string) => void;
+  onOpenResource?: (resourceId: string) => void;
 }) {
   const walletTransactions = order.walletTransactions ?? [];
   const proxyRequests = order.proxyRequests ?? [];
@@ -4811,12 +4834,18 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
         </DetailBlock>
 
         <DetailBlock title="租赁交付">
-          <MiniTable headers={["租赁", "状态", "资源", "Endpoint", "Sub2 Key", "到期", "操作"]}>
+          <MiniTable headers={["租赁", "状态", "资源", "共享资源", "Endpoint", "Sub2 Key", "到期", "操作"]}>
             {order.rentals.map((rental) => (
               <tr key={rental.id}>
                 <td><small>{rental.id}</small></td>
                 <td><StatusPill status={rental.status} /></td>
                 <td>{rental.product?.name ?? rental.resourceType}</td>
+                <td>
+                  <small>{supplierResourceSummary(rental.supplierResource) ?? rental.supplierResourceId ?? "-"}</small>
+                  {(rental.supplierResource?.id ?? rental.supplierResourceId) && onOpenResource && (
+                    <button className="secondary mini inline-action" onClick={() => onOpenResource((rental.supplierResource?.id ?? rental.supplierResourceId)!)}>资源</button>
+                  )}
+                </td>
                 <td><small>{rental.endpointUrl ?? "-"}</small></td>
                 <td><small>{rental.sub2KeyId ?? "-"}</small></td>
                 <td>{dateTime(rental.endsAt)}</td>
@@ -4863,7 +4892,7 @@ function OrderDetailPanel({ order, onCancel, onRefund, onRetryProvision, onClose
   );
 }
 
-function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onDraft, onFilter, onClear, onPage, onExport }: {
+function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDetail, onRentalStatus, onUpdateLimits, onApiKeyStatus, onRotateKey, onExpireOverdue, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource, onDraft, onFilter, onClear, onPage, onExport }: {
   rentals: RentalRow[];
   selectedRental: RentalDetailRow | null;
   onDetail: (rentalId: string) => void;
@@ -4880,6 +4909,7 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
   onOpenUsage: (lookup: string) => void;
   onOpenSettlement: (lookup: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -4899,11 +4929,17 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="租赁通道" count={meta.total} headers={["用户", "资源", "状态", "限制", "Endpoint", "API Key", "到期", "操作"]}>
+      <TablePanel title="租赁通道" count={meta.total} headers={["用户", "资源", "共享资源", "状态", "限制", "Endpoint", "API Key", "到期", "操作"]}>
         {rentals.map((rental) => (
           <tr key={rental.id}>
             <td><strong>{rental.user?.email ?? "-"}</strong><small>{rental.id}</small></td>
             <td>{rental.product?.name ?? rental.resourceType}</td>
+            <td>
+              <small>{supplierResourceSummary(rental.supplierResource) ?? rental.supplierResourceId ?? "-"}</small>
+              {(rental.supplierResource?.id ?? rental.supplierResourceId) && (
+                <button type="button" className="secondary mini inline-action" onClick={() => onOpenResource((rental.supplierResource?.id ?? rental.supplierResourceId)!)}>资源</button>
+              )}
+            </td>
             <td><StatusPill status={rental.status} /></td>
             <td>
               <form className="limits-form" onSubmit={(event) => onUpdateLimits(event, rental.id)}>
@@ -4960,6 +4996,7 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
           onOpenUsage={onOpenUsage}
           onOpenSettlement={onOpenSettlement}
           onOpenProxyRequest={onOpenProxyRequest}
+          onOpenResource={onOpenResource}
         />
       )}
     </>
@@ -5051,7 +5088,7 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onOpenUser,
   );
 }
 
-function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest }: {
+function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenProduct, onOpenApiKey, onOpenUsage, onOpenSettlement, onOpenProxyRequest, onOpenResource }: {
   rental: RentalDetailRow;
   onClose: () => void;
   onOpenUser: (userId: string) => void;
@@ -5061,6 +5098,7 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
   onOpenUsage: (lookup: string) => void;
   onOpenSettlement: (lookup: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
 }) {
   const apiKeys = rental.apiKeys ?? [];
   const usages = rental.usages ?? [];
@@ -5081,6 +5119,7 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
           {rental.userId && <button className="secondary mini" onClick={() => onOpenUser(rental.userId!)}>打开用户</button>}
           {(rental.order?.id ?? rental.orderId) && <button className="secondary mini" onClick={() => onOpenOrder((rental.order?.id ?? rental.orderId)!)}>打开订单</button>}
           {rental.productId && <button className="secondary mini" onClick={() => onOpenProduct(rental.productId!)}>打开商品</button>}
+          {(rental.supplierResource?.id ?? rental.supplierResourceId) && <button className="secondary mini" onClick={() => onOpenResource((rental.supplierResource?.id ?? rental.supplierResourceId)!)}>打开资源</button>}
           <button className="secondary mini" onClick={() => onOpenUsage(rental.id)}>打开用量</button>
           <button className="secondary mini" onClick={() => onOpenProxyRequest(rental.id)}>打开反代请求</button>
           <button className="secondary mini" onClick={onClose}>Close</button>
@@ -5091,6 +5130,9 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
         <div><span>User</span><strong>{rental.user?.email ?? rental.userId ?? "-"}</strong></div>
         <div><span>Product</span><strong>{rental.product?.name ?? rental.resourceType}</strong></div>
         <div><span>Order</span><strong>{rental.order?.id ?? "-"}</strong></div>
+        <div><span>Shared resource</span><strong>{supplierResourceSummary(rental.supplierResource) ?? rental.supplierResourceId ?? "-"}</strong></div>
+        <div><span>Sub2 account</span><strong>{rental.supplierResource?.sub2AccountId ?? "-"}</strong></div>
+        <div><span>Supplier</span><strong>{rental.supplierResource?.supplier?.user?.email ?? "-"}</strong></div>
         <div><span>Endpoint</span><strong>{rental.endpointUrl ?? "-"}</strong></div>
         <div><span>Sub2 user</span><strong>{rental.sub2UserId ?? "-"}</strong></div>
         <div><span>Sub2 key</span><strong>{rental.sub2KeyId ?? "-"}</strong></div>
@@ -5108,6 +5150,9 @@ function RentalDetailPanel({ rental, onClose, onOpenUser, onOpenOrder, onOpenPro
             <tr><td>Rental ID</td><td><small>{rental.id}</small></td></tr>
             <tr><td>Status</td><td><StatusPill status={rental.status} /></td></tr>
             <tr><td>Resource type</td><td>{rental.resourceType}</td></tr>
+            <tr><td>Shared resource</td><td><small>{supplierResourceSummary(rental.supplierResource) ?? rental.supplierResourceId ?? "-"}</small></td></tr>
+            <tr><td>Sub2 account</td><td><small>{rental.supplierResource?.sub2AccountId ?? "-"}</small></td></tr>
+            <tr><td>Supplier</td><td><small>{rental.supplierResource?.supplier?.user?.email ?? "-"}</small></td></tr>
             <tr><td>Endpoint</td><td><small>{rental.endpointUrl ?? "-"}</small></td></tr>
             <tr><td>Sub2 user ID</td><td><small>{rental.sub2UserId ?? "-"}</small></td></tr>
             <tr><td>Sub2 key ID</td><td><small>{rental.sub2KeyId ?? "-"}</small></td></tr>
@@ -5406,7 +5451,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
   );
 }
 
-function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId, onOpenUser, onOpenOrder, onOpenRental, onOpenApiKey, onOpenProduct, onOpenUsage, onOpenSub2Status }: {
+function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, onCopyRequestId, onOpenUser, onOpenOrder, onOpenRental, onOpenApiKey, onOpenProduct, onOpenUsage, onOpenSub2Status, onOpenResource }: {
   logs: ProxyRequestLogRow[];
   onCopyRequestId: (requestId: string) => void;
   onOpenUser: (userId: string) => void;
@@ -5416,6 +5461,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
   onOpenProduct: (lookup: string) => void;
   onOpenUsage: (lookup: string) => void;
   onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
+  onOpenResource: (resourceId: string) => void;
 } & ManagedListProps) {
   return (
     <>
@@ -5435,6 +5481,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
         {logs.map((log) => {
           const orderId = log.rental?.orderId;
           const productId = log.rental?.productId;
+          const resourceId = log.rental?.supplierResource?.id ?? log.rental?.supplierResourceId;
           const apiKeyLookup = log.apiKeyId ?? log.apiKey?.id ?? log.apiKeyPrefix ?? log.apiKey?.keyPrefix;
           const usageLookup = log.upstreamRequestId ?? log.requestId;
           const sub2RepairContext = proxyRequestRepairContext(log);
@@ -5450,6 +5497,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
                 <strong>{log.rental?.product?.name ?? log.rentalId ?? "-"}</strong>
                 <small>{log.apiKey?.name ?? log.apiKeyPrefix ?? log.apiKeyId ?? "-"}</small>
                 <small>{log.rental?.sub2KeyId ?? log.rental?.endpointUrl ?? "-"}</small>
+                <small>{proxyRequestSupplierResourceSummary(log) ?? "-"}</small>
               </td>
               <td><strong>{log.method}</strong><small>{log.path}</small><small>{log.model ?? "-"}</small></td>
               <td>
@@ -5468,6 +5516,7 @@ function ProxyRequestsView({ logs, query, meta, onDraft, onFilter, onClear, onPa
                   {log.rentalId && <button className="secondary mini" onClick={() => onOpenRental(log.rentalId!)}>租赁</button>}
                   {apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(apiKeyLookup)}>API Key</button>}
                   {productId && <button className="secondary mini" onClick={() => onOpenProduct(productId)}>商品</button>}
+                  {resourceId && <button className="secondary mini" onClick={() => onOpenResource(resourceId)}>资源</button>}
                   <button className="secondary mini" onClick={() => onOpenUsage(usageLookup)}>用量</button>
                   {sub2RepairContext && <button className="secondary mini" onClick={() => onOpenSub2Status(sub2RepairContext)}>反代状态</button>}
                 </div>
@@ -7402,12 +7451,16 @@ function exportOrdersCsv(rows: OrderRow[], filename = "orders", scope = "current
 }
 
 function exportRentalsCsv(rows: RentalRow[], scope = "current-page") {
-  downloadCsv(`rentals-${scope}`, ["id", "email", "status", "resourceType", "product", "endpointUrl", "sub2KeyId", "apiKeys", "createdAt", "endsAt"], rows.map((rental) => [
+  downloadCsv(`rentals-${scope}`, ["id", "email", "status", "resourceType", "product", "supplierResourceId", "supplierResource", "sub2AccountId", "supplierEmail", "endpointUrl", "sub2KeyId", "apiKeys", "createdAt", "endsAt"], rows.map((rental) => [
     rental.id,
     rental.user?.email,
     rental.status,
     rental.resourceType,
     rental.product?.name,
+    rental.supplierResourceId,
+    supplierResourceSummary(rental.supplierResource),
+    rental.supplierResource?.sub2AccountId,
+    rental.supplierResource?.supplier?.user?.email,
     rental.endpointUrl,
     rental.sub2KeyId,
     (rental.apiKeys ?? []).map((apiKey) => `${apiKey.keyPrefix}:${apiKey.status}`).join("|"),
@@ -7507,12 +7560,15 @@ function exportAuditLogsCsv(rows: AuditLogRow[], scope = "current-page") {
 }
 
 function exportProxyRequestsCsv(rows: ProxyRequestLogRow[], scope = "current-page") {
-  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "upstreamRequestId", "email", "rentalId", "sub2UserId", "sub2KeyId", "endpointUrl", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
+  downloadCsv(`proxy-requests-${scope}`, ["id", "requestId", "upstreamRequestId", "email", "rentalId", "supplierResourceId", "sub2AccountId", "supplierEmail", "sub2UserId", "sub2KeyId", "endpointUrl", "apiKeyPrefix", "method", "path", "model", "statusCode", "upstreamStatusCode", "errorCode", "durationMs", "requestBytes", "estimatedInputTokens", "ipAddress", "userAgent", "createdAt"], rows.map((log) => [
     log.id,
     log.requestId,
     log.upstreamRequestId,
     log.user?.email,
     log.rentalId,
+    log.rental?.supplierResourceId,
+    log.rental?.supplierResource?.sub2AccountId,
+    log.rental?.supplierResource?.supplier?.user?.email,
     log.rental?.sub2UserId,
     log.rental?.sub2KeyId,
     log.rental?.endpointUrl,
@@ -7551,6 +7607,27 @@ function csvCell(value: CsvCell) {
 function money(value?: string | number | null) {
   const numberValue = Number(value ?? 0);
   return `$${numberValue.toFixed(2)}`;
+}
+
+function supplierResourceSummary(resource?: ResourceRow | null) {
+  if (!resource) return undefined;
+  return [
+    resource.id,
+    resource.sub2AccountId ? `Sub2 #${resource.sub2AccountId}` : undefined,
+    resource.status,
+    resource.supplier?.user?.email
+  ].filter(Boolean).join(" / ");
+}
+
+function proxyRequestSupplierResourceSummary(log: ProxyRequestLogRow) {
+  const resource = log.rental?.supplierResource;
+  if (!resource && !log.rental?.supplierResourceId) return undefined;
+  return [
+    resource?.id ?? log.rental?.supplierResourceId,
+    resource?.sub2AccountId ? `Sub2 #${resource.sub2AccountId}` : undefined,
+    resource?.status,
+    resource?.supplier?.user?.email
+  ].filter(Boolean).join(" / ");
 }
 
 function priceAmountLabel(value?: string | number | null) {

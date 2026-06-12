@@ -51,6 +51,16 @@
 
 这样管理员可以从一条 `/v1/responses` 失败日志直接确认“本地 request id / 上游 request id / 租赁 / Sub2 Key / endpoint”，再进入 OpenAI refresh token 修复和 smoke 验收。
 
+## 2026-06-13 扩展：失败日志直达共享资源
+
+- 租赁新增 `supplierResourceId` 后，`反代请求` 列表行可以读取关联共享资源。
+- 搜索支持共享资源 ID、Sub2 Account ID 和供给方邮箱。
+- 列表行操作新增 `资源`，可直接打开关联共享资源。
+- 上游失败日志打开 `反代状态` 时，会带入共享资源 ID、Sub2 Account ID、资源状态和供给方邮箱。
+- CSV 导出新增共享资源、Sub2 Account ID 和供给方邮箱列。
+
+这样管理员从反代失败请求可以继续追溯到具体供给资源与 Sub2/OpenAI 上游账号，而不是只停留在租赁和 Key 层面。
+
 ## 验证
 
 - `pnpm.cmd --filter @zyz/api run typecheck`

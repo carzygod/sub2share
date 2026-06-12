@@ -42,7 +42,7 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
     throw new AppError("spend_limit_exhausted", "Rental spend limit has been exhausted", 402);
   }
 
-  await requireReadySupplierResourceForDelivery(rental.resourceType);
+  const deliveryReadiness = await requireReadySupplierResourceForDelivery(rental.resourceType);
 
   const previousSub2KeyId = rental.sub2KeyId;
   const previousApiKeyIds = rental.apiKeys.map((apiKey) => apiKey.id);
@@ -68,6 +68,7 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
         data: {
           sub2UserId: sub2Key.sub2UserId,
           sub2KeyId: sub2Key.sub2KeyId,
+          supplierResourceId: deliveryReadiness.resource?.id ?? null,
           sub2KeyHash: hashSecret(sub2Key.apiKey),
           endpointUrl: sub2Key.endpointUrl
         }
@@ -106,6 +107,7 @@ export async function rotateRentalApiKey(input: RotateRentalKeyInput) {
           product: true,
           limits: true,
           order: true,
+          supplierResource: { include: { supplier: { include: { user: true } } } },
           apiKeys: { orderBy: { createdAt: "desc" }, take: 20 }
         }
       });

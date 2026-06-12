@@ -125,6 +125,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
             userId: user.id,
             orderId: order.id,
             productId: price.productId,
+            supplierResourceId: deliveryReadiness.resource?.id ?? null,
             resourceType: price.product.resourceType,
             status: "active",
             endsAt,
@@ -185,6 +186,7 @@ export async function registerOrderRoutes(app: FastifyInstance) {
           data: {
             sub2UserId: sub2Key.sub2UserId,
             sub2KeyId: sub2Key.sub2KeyId,
+            supplierResourceId: deliveryReadiness.resource?.id ?? null,
             endpointUrl: sub2Key.endpointUrl,
             sub2KeyHash: hashSecret(sub2Key.apiKey)
           }

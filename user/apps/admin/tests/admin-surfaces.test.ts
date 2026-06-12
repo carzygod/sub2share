@@ -261,7 +261,15 @@ test("proxy request rows expose Sub2 repair context for upstream failures", () =
       resourceType: "codex",
       sub2UserId: "sub2-user-1",
       sub2KeyId: "sub2-key-1",
-      endpointUrl: "https://proxy.example.com/v1"
+      endpointUrl: "https://proxy.example.com/v1",
+      supplierResourceId: "resource-1",
+      supplierResource: {
+        id: "resource-1",
+        resourceType: "codex",
+        status: "online",
+        sub2AccountId: "2",
+        supplier: { user: { email: "supplier@example.com" } }
+      }
     }
   };
 
@@ -272,6 +280,10 @@ test("proxy request rows expose Sub2 repair context for upstream failures", () =
     checkLabel: "反代请求日志",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     actionHint: "Review Sub2/OpenAI upstream status, apply a fresh credential if needed, then rerun the proxy smoke test.",
+    accountId: "2",
+    resourceId: "resource-1",
+    resourceStatus: "online",
+    supplierEmail: "supplier@example.com",
     rentalId: "rental-1",
     resourceType: "codex",
     sub2UserId: "sub2-user-1",
@@ -287,6 +299,9 @@ test("proxy request rows expose Sub2 repair context for upstream failures", () =
     responsesOk: "false",
     localProxyOk: "false"
   });
+  assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "目标账号")?.value, "#2");
+  assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "资源")?.value, "resource-1 / codex / online");
+  assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "供给方")?.value, "supplier@example.com");
   assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "租赁通道")?.value, "rental-1 / codex / https://proxy.example.com/v1");
   assert.equal(sub2RepairContextItems(repairContext!).find((item) => item.label === "Sub2 Key")?.value, "user sub2-user-1 / key sub2-key-1");
 
