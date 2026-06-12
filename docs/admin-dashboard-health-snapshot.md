@@ -369,3 +369,28 @@
 - API 单元测试锁定这些字段不会在 Dashboard preview 中被过滤掉。
 
 这样管理员在系统巡检或首页关键证据中，不只知道“反代契约 ok”，还可以看到支撑完整 OpenAI/Codex 反代的路径、header、body、stream、CORS、限流和错误兼容性证据。
+
+## 2026-06-13 扩展：首页稳定展示 Codex 交付阻断
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth` 新增 `deliveryBlocker`。
+- `deliveryBlocker` 从最近巡检快照中的 `salesDelivery`、`productCatalog` 和 `resources` 中提炼当前最影响售出/交付闭环的问题。
+- 同级别下优先展示可操作详情，保留：
+  - `productId`
+  - `productName`
+  - `priceId`
+  - `supplierEmail`
+  - `resourceList`
+  - `resourceType`
+  - `resourceStatus`
+  - `resourceScope`
+  - `sub2AccountId`
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `accountMessage`
+  - `repairAction`
+  - `actionHint`
+- Admin 首页系统状态表新增“交付阻断”行，并在关键巡检列表前展示一条可点击的交付问题摘要。
+
+这样当线上出现“Codex 商品可购买但没有 ready production Codex shared resource”时，管理员首屏即可看到受影响商品、价格、供给方、资源修复入口和目标 Sub2 账号，不需要在商品、共享资源和售出交付多个页面之间来回定位。

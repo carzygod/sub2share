@@ -318,6 +318,34 @@ interface DashboardUpstreamCredentialReadinessPreview {
   metrics?: DashboardHealthMetricPreview;
 }
 
+interface DashboardDeliveryBlockerPreview {
+  blocked: boolean;
+  status: SystemHealthStatus;
+  checkId: string;
+  label: string;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  actionHint?: string | null;
+  repairAction?: string | null;
+  productId?: string | null;
+  productName?: string | null;
+  priceId?: string | null;
+  supplierEmail?: string | null;
+  resourceId?: string | number | boolean | null;
+  resourceList?: string | number | boolean | null;
+  resourceType?: string | number | boolean | null;
+  resourceStatus?: string | null;
+  resourceScope?: string | number | boolean | null;
+  sub2AccountId?: string | number | boolean | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  accountMessage?: string | null;
+  check: DashboardHealthCheckPreview;
+}
+
 const dashboardHealthDetailPreviewFields = [
   "id",
   "type",
@@ -5648,6 +5676,7 @@ export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSyst
     stale: ageMinutes >= staleThresholdMinutes,
     staleThresholdMinutes,
     upstreamBlocker: dashboardUpstreamBlockerPreview(snapshot.checks),
+    deliveryBlocker: dashboardDeliveryBlockerPreview(snapshot.checks),
     adminEntryCoverage: dashboardAdminEntryCoveragePreview(snapshot.checks),
     criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
   };
@@ -5792,8 +5821,62 @@ function dashboardUpstreamCredentialReadinessPreview(previews: DashboardHealthCh
   };
 }
 
+function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBlockerPreview | null {
+  if (!Array.isArray(checks)) return null;
+  const previews = checks
+    .map(dashboardHealthCheckPreview)
+    .filter((item): item is DashboardHealthCheckPreview => Boolean(item));
+  const check = previews
+    .filter((item) => ["salesDelivery", "productCatalog", "resources"].includes(item.id))
+    .filter((item) => item.status !== "ok")
+    .sort((left, right) => {
+      const statusDelta = systemHealthStatusRank(right.status) - systemHealthStatusRank(left.status);
+      if (statusDelta !== 0) return statusDelta;
+      const actionableDelta = dashboardDeliveryBlockerActionRank(left) - dashboardDeliveryBlockerActionRank(right);
+      if (actionableDelta !== 0) return actionableDelta;
+      return dashboardDeliveryCheckRank(left.id) - dashboardDeliveryCheckRank(right.id);
+    })[0];
+  if (!check) return null;
+
+  const detail = dashboardDeliveryBlockerDetail(check);
+  return {
+    blocked: true,
+    status: check.status,
+    checkId: check.id,
+    label: check.label,
+    summary: check.summary,
+    issueCount: check.issueCount,
+    sampleCount: check.sampleCount,
+    actionHint: textJsonValue(detail.actionHint) ?? null,
+    repairAction: textJsonValue(detail.repairAction) ?? null,
+    productId: textJsonValue(detail.productId) ?? null,
+    productName: textJsonValue(detail.productName) ?? null,
+    priceId: textJsonValue(detail.priceId) ?? null,
+    supplierEmail: textJsonValue(detail.supplierEmail) ?? null,
+    resourceId: dashboardHealthScalarValue(detail.resourceId) ?? null,
+    resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,
+    resourceType: dashboardHealthScalarValue(detail.resourceType) ?? null,
+    resourceStatus: textJsonValue(detail.resourceStatus) ?? null,
+    resourceScope: dashboardHealthScalarValue(detail.resourceScope) ?? null,
+    sub2AccountId: dashboardHealthScalarValue(detail.sub2AccountId) ?? null,
+    sub2AccountName: textJsonValue(detail.sub2AccountName) ?? null,
+    accountStatus: textJsonValue(detail.accountStatus) ?? null,
+    credentialsStatus: textJsonValue(detail.credentialsStatus) ?? null,
+    schedulable: dashboardDetailBoolean(detail, "schedulable"),
+    accountMessage: textJsonValue(detail.accountMessage) ?? null,
+    check
+  };
+}
+
 function dashboardUpstreamBlockerDetail(check: DashboardHealthCheckPreview): DashboardHealthDetailPreview {
   return [check.primaryIssue, check.primarySample].find(dashboardUpstreamBlockerDetailIsActionable)
+    ?? check.primaryIssue
+    ?? check.primarySample
+    ?? {};
+}
+
+function dashboardDeliveryBlockerDetail(check: DashboardHealthCheckPreview): DashboardHealthDetailPreview {
+  return [check.primaryIssue, check.primarySample].find(dashboardDeliveryBlockerDetailIsActionable)
     ?? check.primaryIssue
     ?? check.primarySample
     ?? {};
@@ -5803,6 +5886,17 @@ function dashboardUpstreamBlockerActionRank(check: DashboardHealthCheckPreview) 
   return dashboardUpstreamBlockerDetailIsActionable(dashboardUpstreamBlockerDetail(check)) ? 0 : 1;
 }
 
+function dashboardDeliveryBlockerActionRank(check: DashboardHealthCheckPreview) {
+  return dashboardDeliveryBlockerDetailIsActionable(dashboardDeliveryBlockerDetail(check)) ? 0 : 1;
+}
+
+function dashboardDeliveryCheckRank(id: string) {
+  if (id === "salesDelivery") return 0;
+  if (id === "productCatalog") return 1;
+  if (id === "resources") return 2;
+  return 3;
+}
+
 function dashboardUpstreamBlockerDetailIsActionable(detail: DashboardHealthDetailPreview | undefined) {
   return Boolean(
     detail?.actionHint
@@ -5810,6 +5904,17 @@ function dashboardUpstreamBlockerDetailIsActionable(detail: DashboardHealthDetai
     || detail?.sub2AccountId
     || detail?.resourceId
     || detail?.resourceList
+  );
+}
+
+function dashboardDeliveryBlockerDetailIsActionable(detail: DashboardHealthDetailPreview | undefined) {
+  return Boolean(
+    detail?.actionHint
+    || detail?.repairAction
+    || detail?.productId
+    || detail?.priceId
+    || detail?.resourceList
+    || detail?.resourceId
   );
 }
 

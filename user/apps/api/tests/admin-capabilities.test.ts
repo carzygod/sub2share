@@ -446,6 +446,92 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.check.primaryIssue?.actionHint, "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.");
 });
 
+test("dashboard latest system health preview exposes actionable delivery blocker", () => {
+  const snapshot = {
+    id: "snapshot-delivery-blocker",
+    status: "warning",
+    source: "manual",
+    summary: { totalChecks: 3, ok: 1, warning: 2, error: 0 },
+    checks: [
+      {
+        id: "resources",
+        label: "共享资源",
+        status: "warning",
+        summary: "No online production Codex shared resource",
+        detail: {
+          issues: [{
+            id: "resource:codex-online-missing",
+            type: "codex_online_resource_missing",
+            resourceList: true,
+            resourceType: "codex",
+            resourceScope: "production",
+            supplierEmail: "admin@zhisuan.local",
+            repairAction: "apply_openai_refresh_token_to_sub2_account"
+          }]
+        }
+      },
+      {
+        id: "productCatalog",
+        label: "商品目录",
+        status: "warning",
+        summary: "1 个商品目录可购买性问题",
+        detail: {
+          issues: [{
+            id: "active_codex_product_without_ready_delivery_resource:product-1:price-1",
+            type: "active_codex_product_without_ready_delivery_resource",
+            productId: "product-1",
+            productName: "Codex 标准租赁",
+            priceId: "price-1",
+            resourceList: true,
+            resourceType: "codex",
+            resourceStatus: "online",
+            resourceScope: "production",
+            supplierEmail: "admin@zhisuan.local",
+            sub2AccountId: 2,
+            sub2AccountName: "main",
+            accountStatus: "error",
+            credentialsStatus: "configured(3)",
+            schedulable: false,
+            accountMessage: "token_invalidated",
+            repairAction: "apply_openai_refresh_token_to_sub2_account",
+            actionHint: "Create or repair a production Codex shared resource before selling Codex access."
+          }]
+        }
+      },
+      {
+        id: "salesDelivery",
+        label: "售出交付",
+        status: "ok",
+        summary: "应交付订单未发现交付阻断"
+      }
+    ],
+    createdAt: new Date("2026-06-12T10:00:00.000Z")
+  };
+
+  const preview = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T10:01:00.000Z"));
+
+  assert.equal(preview.deliveryBlocker?.blocked, true);
+  assert.equal(preview.deliveryBlocker?.status, "warning");
+  assert.equal(preview.deliveryBlocker?.checkId, "productCatalog");
+  assert.equal(preview.deliveryBlocker?.label, "商品目录");
+  assert.equal(preview.deliveryBlocker?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(preview.deliveryBlocker?.productId, "product-1");
+  assert.equal(preview.deliveryBlocker?.productName, "Codex 标准租赁");
+  assert.equal(preview.deliveryBlocker?.priceId, "price-1");
+  assert.equal(preview.deliveryBlocker?.resourceList, true);
+  assert.equal(preview.deliveryBlocker?.resourceType, "codex");
+  assert.equal(preview.deliveryBlocker?.resourceStatus, "online");
+  assert.equal(preview.deliveryBlocker?.resourceScope, "production");
+  assert.equal(preview.deliveryBlocker?.supplierEmail, "admin@zhisuan.local");
+  assert.equal(preview.deliveryBlocker?.sub2AccountId, 2);
+  assert.equal(preview.deliveryBlocker?.sub2AccountName, "main");
+  assert.equal(preview.deliveryBlocker?.accountStatus, "error");
+  assert.equal(preview.deliveryBlocker?.credentialsStatus, "configured(3)");
+  assert.equal(preview.deliveryBlocker?.schedulable, false);
+  assert.equal(preview.deliveryBlocker?.accountMessage, "token_invalidated");
+  assert.equal(preview.deliveryBlocker?.check.primaryIssue?.productName, "Codex 标准租赁");
+});
+
 test("dashboard latest system health preview always exposes admin entry coverage", () => {
   const snapshot = {
     id: "snapshot-admin-entry",

@@ -220,6 +220,45 @@ interface DashboardUpstreamCredentialReadiness {
   metrics?: Record<string, string | number | boolean | null>;
 }
 
+interface DashboardDeliveryBlocker {
+  blocked: boolean;
+  status: "ok" | "warning" | "error";
+  checkId: string;
+  label: string;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  actionHint?: string | null;
+  repairAction?: string | null;
+  productId?: string | null;
+  productName?: string | null;
+  priceId?: string | null;
+  supplierEmail?: string | null;
+  resourceId?: string | number | boolean | null;
+  resourceList?: string | number | boolean | null;
+  resourceType?: string | number | boolean | null;
+  resourceStatus?: string | null;
+  resourceScope?: string | number | boolean | null;
+  sub2AccountId?: string | number | boolean | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  accountMessage?: string | null;
+  check: DashboardHealthCheckPreview;
+}
+
+interface DashboardAccountDiagnosisSource {
+  sub2AccountId?: string | number | boolean | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
+  accountMessage?: string | null;
+  accountUpdatedAt?: string | null;
+}
+
 interface Dashboard {
   users: number;
   activeRentals: number;
@@ -250,6 +289,7 @@ interface Dashboard {
     stale?: boolean;
     staleThresholdMinutes?: number;
     upstreamBlocker?: DashboardUpstreamBlocker | null;
+    deliveryBlocker?: DashboardDeliveryBlocker | null;
     adminEntryCoverage?: DashboardAdminEntryCoverage | null;
   } | null;
 }
@@ -2921,6 +2961,9 @@ function DashboardView({
   const upstreamBlockerEvidence = upstreamBlocker ? dashboardUpstreamBlockerEvidenceText(upstreamBlocker) : "";
   const upstreamAccountDiagnosis = upstreamBlocker ? dashboardUpstreamAccountDiagnosisText(upstreamBlocker) : "";
   const upstreamCredentialReadiness = upstreamBlocker ? dashboardUpstreamCredentialReadinessText(upstreamBlocker.credentialReadiness) : "";
+  const deliveryBlocker = latestHealth?.deliveryBlocker ?? null;
+  const deliveryBlockerContext = deliveryBlocker ? dashboardDeliveryBlockerContextText(deliveryBlocker) : "";
+  const deliveryAccountDiagnosis = deliveryBlocker ? dashboardUpstreamAccountDiagnosisText(deliveryBlocker) : "";
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -2977,6 +3020,12 @@ function DashboardView({
                       <td>{dashboardUpstreamBlockerText(upstreamBlocker)}</td>
                     </tr>
                   )}
+                  {deliveryBlocker && (
+                    <tr>
+                      <td>交付阻断</td>
+                      <td>{dashboardDeliveryBlockerText(deliveryBlocker)}</td>
+                    </tr>
+                  )}
                   {latestHealth.adminEntryCoverage && (
                     <tr>
                       <td>管理员入口</td>
@@ -3002,6 +3051,26 @@ function DashboardView({
                     )}
                     <button className="secondary mini" onClick={() => onOpenHealthCheck(upstreamBlocker.check)}>
                       <ChevronRight size={14} />{dashboardUpstreamBlockerActionLabel(upstreamBlocker)}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {deliveryBlocker && (
+                <div className="dashboard-health-item">
+                  <div className={healthRowClass(deliveryBlocker.status)}>
+                    {deliveryBlocker.status === "ok" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    <strong>{deliveryBlocker.label}</strong>
+                  </div>
+                  <p>{deliveryBlocker.summary}</p>
+                  {deliveryBlocker.actionHint && <small>{deliveryBlocker.actionHint}</small>}
+                  {deliveryBlockerContext && <small>{deliveryBlockerContext}</small>}
+                  {deliveryAccountDiagnosis && <small>{deliveryAccountDiagnosis}</small>}
+                  <div className="health-preview-actions">
+                    {(deliveryBlocker.issueCount > 0 || deliveryBlocker.sampleCount > 0) && (
+                      <small>{deliveryBlocker.issueCount} issue / {deliveryBlocker.sampleCount} sample</small>
+                    )}
+                    <button className="secondary mini" onClick={() => onOpenHealthCheck(deliveryBlocker.check)}>
+                      <ChevronRight size={14} />{dashboardDeliveryBlockerActionLabel(deliveryBlocker)}
                     </button>
                   </div>
                 </div>
@@ -6176,6 +6245,32 @@ function dashboardUpstreamBlockerActionLabel(blocker: DashboardUpstreamBlocker) 
   return dashboardHealthCheckTarget(blocker.check)?.label ?? "打开巡检详情";
 }
 
+function dashboardDeliveryBlockerText(blocker: DashboardDeliveryBlocker) {
+  const status = blocker.blocked ? "阻断" : "警告";
+  const context = dashboardDeliveryBlockerContextText(blocker);
+  const account = dashboardUpstreamAccountDiagnosisText(blocker);
+  return `${status} / ${blocker.label} / ${blocker.summary}${context ? ` / ${context}` : ""}${account ? ` / ${account}` : ""}`;
+}
+
+function dashboardDeliveryBlockerActionLabel(blocker: DashboardDeliveryBlocker) {
+  return dashboardHealthCheckTarget(blocker.check)?.label ?? "打开巡检详情";
+}
+
+function dashboardDeliveryBlockerContextText(blocker: DashboardDeliveryBlocker) {
+  const product = blocker.productName || blocker.productId
+    ? `商品 ${[blocker.productName, blocker.productId].filter(Boolean).join(" / ")}`
+    : "";
+  const price = blocker.priceId ? `价格 ${blocker.priceId}` : "";
+  const resource = [
+    blocker.resourceType ? `资源 ${blocker.resourceType}` : "",
+    blocker.resourceScope ? `范围 ${blocker.resourceScope}` : "",
+    blocker.resourceStatus ? `状态 ${blocker.resourceStatus}` : ""
+  ].filter(Boolean).join(" / ");
+  const supplier = blocker.supplierEmail ? `供给方 ${blocker.supplierEmail}` : "";
+  const repair = blocker.repairAction ? `维修 ${blocker.repairAction}` : "";
+  return [product, price, resource, supplier, repair].filter(Boolean).join(" / ");
+}
+
 function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker) {
   if (
     !blocker.evidencePath
@@ -6206,7 +6301,7 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
   ].filter(Boolean).join(" / ");
 }
 
-function dashboardUpstreamAccountDiagnosisText(blocker: DashboardUpstreamBlocker) {
+function dashboardUpstreamAccountDiagnosisText(blocker: DashboardAccountDiagnosisSource) {
   if (
     blocker.sub2AccountId === undefined
     && !blocker.sub2AccountName
