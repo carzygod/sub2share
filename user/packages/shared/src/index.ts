@@ -172,6 +172,7 @@ export const adminSystemHealthIssueRefFields = [
   "smokeTestSkippedReason",
   "ageMinutes",
   "stale",
+  "staleThresholdMinutes",
   "usageId",
   "userId",
   "userEmail",
@@ -256,6 +257,9 @@ export const adminSystemHealthSampleSummaryFields = [
   "keyFingerprint",
   "lastRotatedAt",
   "updatedAt",
+  "ageMinutes",
+  "stale",
+  "staleThresholdMinutes",
   "message"
 ] as const;
 

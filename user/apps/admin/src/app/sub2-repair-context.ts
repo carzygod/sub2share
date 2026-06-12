@@ -25,6 +25,7 @@ export interface Sub2RepairContext {
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
   stale?: string;
+  staleThresholdMinutes?: string;
 }
 
 export interface ResourceCreateDefaults {
@@ -73,6 +74,7 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     context.proxyRequestErrorCode,
     context.smokeTestSkippedReason ? `skip ${context.smokeTestSkippedReason}` : undefined,
     context.ageMinutes ? `${context.ageMinutes} 分钟前` : undefined,
+    context.staleThresholdMinutes ? `阈值 ${context.staleThresholdMinutes} 分钟` : undefined,
     context.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   return [

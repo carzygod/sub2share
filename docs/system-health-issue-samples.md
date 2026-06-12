@@ -74,7 +74,7 @@
 - 支持 `refType/refId` 后备映射：`order`、`usage`、`wallet_transaction`、`settlement`、`withdrawal` 会自动变成可点击入口。
 - 支持 `resourceList=true` 的候选样本打开共享资源列表，并带入 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 和 `sub2AccountId` 筛选/创建上下文。
 - 支持字符串形式的布尔字段，例如 `walletList="true"`、`walletTransactionList="true"`、`salesList="true"` 和 `resourceList="true"`。
-- 候选样本进入 `反代状态` 时会携带 `actionHint`、请求定位、smoke 分段结果、模型、失败路径、HTTP 状态码、代理错误码、`ageMinutes` 和 `stale`，避免 Sub2 修复页丢失证据上下文。
+- 候选样本进入 `反代状态` 时会携带 `actionHint`、请求定位、smoke 分段结果、模型、失败路径、HTTP 状态码、代理错误码、`ageMinutes`、`stale` 和 `staleThresholdMinutes`，避免 Sub2 修复页丢失证据上下文。
 
 管理价值：
 

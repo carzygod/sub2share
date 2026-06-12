@@ -5,6 +5,7 @@ import {
   latestLocalProxySmokeEvidence,
   localProxySmokeEvidenceCandidates,
   localProxySmokeEvidenceIssue,
+  localProxySmokeEvidenceSummary,
   localProxySmokeFailureIssueActionHint,
   localProxySmokeFailureIssueMessage,
   localProxySmokeFailureSummary,
@@ -406,10 +407,14 @@ test("stale failed smoke evidence asks operators to refresh live proof", () => {
     1_500,
     message,
     actionHint,
-    true
+    true,
+    1_440
   );
+  const summary = localProxySmokeEvidenceSummary(direct, 1_500, true, 1_440);
 
   assert.equal(issue.stale, true);
+  assert.equal(issue.staleThresholdMinutes, 1_440);
+  assert.equal(summary.staleThresholdMinutes, 1_440);
   assert.match(issue.message, /Evidence is 1500 minutes old/);
   assert.match(issue.message, /current \/v1\/responses availability/);
   assert.match(issue.actionHint, /refresh stale \/v1\/responses evidence/);

@@ -288,6 +288,7 @@ interface SystemHealthIssueRow {
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
   stale?: string;
+  staleThresholdMinutes?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -330,6 +331,7 @@ interface SystemHealthSampleRow {
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
   stale?: string;
+  staleThresholdMinutes?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -5260,7 +5262,8 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     localProxyOk: issue.localProxyOk,
     smokeTestSkippedReason: issue.smokeTestSkippedReason,
     ageMinutes: issue.ageMinutes,
-    stale: issue.stale
+    stale: issue.stale,
+    staleThresholdMinutes: issue.staleThresholdMinutes
   };
 }
 
@@ -5288,7 +5291,8 @@ function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub
     localProxyOk: sample.localProxyOk,
     smokeTestSkippedReason: sample.smokeTestSkippedReason,
     ageMinutes: sample.ageMinutes,
-    stale: sample.stale
+    stale: sample.stale,
+    staleThresholdMinutes: sample.staleThresholdMinutes
   };
 }
 
@@ -6090,7 +6094,8 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     localProxyOk: textValue(record?.localProxyOk),
     smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
     ageMinutes: textValue(record?.ageMinutes),
-    stale: textValue(record?.stale)
+    stale: textValue(record?.stale),
+    staleThresholdMinutes: textValue(record?.staleThresholdMinutes)
   };
 }
 
@@ -6182,6 +6187,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "smokeTestSkippedReason",
     "ageMinutes",
     "stale",
+    "staleThresholdMinutes",
     "walletTransactionType",
     "walletTransactionId",
     "walletLookup",
@@ -6248,6 +6254,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
       ageMinutes: textValue(record.ageMinutes),
       stale: textValue(record.stale),
+      staleThresholdMinutes: textValue(record.staleThresholdMinutes),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
@@ -6300,6 +6307,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
       ageMinutes: textValue(record.ageMinutes),
       stale: textValue(record.stale),
+      staleThresholdMinutes: textValue(record.staleThresholdMinutes),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),

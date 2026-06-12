@@ -60,10 +60,12 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("resourceScope"));
   assert.ok(adminSystemHealthIssueRefFields.includes("productName"));
   assert.ok(adminSystemHealthIssueRefFields.includes("stale"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("staleThresholdMinutes"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("productName"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("proxyRequestLogId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("staleThresholdMinutes"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("orderId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("rentalId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("apiKeyId"));
@@ -115,6 +117,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     responsesOk: "false",
     localProxyOk: "false",
     ageMinutes: "12",
+    staleThresholdMinutes: "1440",
     stale: "true"
   });
 
@@ -126,7 +129,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
-  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前 / 证据已过期");
+  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前 / 阈值 1440 分钟 / 证据已过期");
   assert.ok(items.every((item) => item.value.trim().length > 0));
 });
 

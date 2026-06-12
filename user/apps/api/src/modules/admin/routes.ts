@@ -224,6 +224,7 @@ const dashboardHealthDetailPreviewFields = [
   "smokeTestSkippedReason",
   "ageMinutes",
   "stale",
+  "staleThresholdMinutes",
   "auditLogId",
   "walletTransactionList",
   "walletTransactionType",
@@ -6329,6 +6330,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
         latestAt: null,
         ageMinutes: null,
         stale: null,
+        staleThresholdMinutes: Math.floor(systemHealthLocalSmokeFreshMs / 60_000),
         ok: false,
         model: null,
         modelsOk: null,
@@ -6349,6 +6351,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
   const ageMs = Math.max(0, checkedAt.getTime() - latest.createdAt.getTime());
   const ageMinutes = Math.floor(ageMs / 60_000);
   const stale = ageMs > systemHealthLocalSmokeFreshMs;
+  const staleThresholdMinutes = Math.floor(systemHealthLocalSmokeFreshMs / 60_000);
   if (!latest.ok) {
     issues.push(localProxySmokeEvidenceIssue(
       latest,
@@ -6357,10 +6360,20 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       ageMinutes,
       localProxySmokeFailureIssueMessage(latest, ageMinutes, stale),
       localProxySmokeFailureIssueActionHint(stale),
-      stale
+      stale,
+      staleThresholdMinutes
     ));
   } else if (stale) {
-    issues.push(localProxySmokeEvidenceIssue(latest, "local_proxy_smoke_stale", "warning", ageMinutes, `Latest local OpenAI/Codex smoke test passed but is ${ageMinutes} minutes old.`, "Rerun the smoke test to refresh live /v1/responses evidence.", true));
+    issues.push(localProxySmokeEvidenceIssue(
+      latest,
+      "local_proxy_smoke_stale",
+      "warning",
+      ageMinutes,
+      `Latest local OpenAI/Codex smoke test passed but is ${ageMinutes} minutes old.`,
+      "Rerun the smoke test to refresh live /v1/responses evidence.",
+      true,
+      staleThresholdMinutes
+    ));
   }
 
   return {
@@ -6383,9 +6396,10 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       proxyRequestLogCount: latest.proxyRequestLogCount,
       checkedAuditLogs,
       evidenceCandidates: candidates.length,
-      freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000
+      freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000,
+      staleThresholdMinutes
     },
-    latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale),
+    latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale, staleThresholdMinutes),
     issues
   };
 }

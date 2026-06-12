@@ -152,7 +152,8 @@ test("dashboard health previews prioritize blocking checks and retain critical o
           responsesOk: false,
           localProxyOk: false,
           ageMinutes: 12,
-          stale: true
+          stale: true,
+          staleThresholdMinutes: 1440
         }, { id: "account-3" }]
       }
     }
@@ -170,6 +171,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[0].primaryIssue?.responsesOk, false);
   assert.equal(previews[0].primaryIssue?.ageMinutes, 12);
   assert.equal(previews[0].primaryIssue?.stale, true);
+  assert.equal(previews[0].primaryIssue?.staleThresholdMinutes, 1440);
   assert.equal(previews[2].primaryIssue?.walletTransactionList, true);
   assert.equal(previews[2].primaryIssue?.walletTransactionType, "recharge");
   assert.equal(previews[2].primaryIssue?.salesList, true);
