@@ -121,3 +121,14 @@
 - 点击 `resources` 关键巡检项会进入 `共享资源` 列表，并带入 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 和 `sub2AccountId` 作为筛选与创建默认值。
 - `sub2`、`resourceCredentials` 和 `localProxySmoke` 仍保持反代维修优先，继续打开 `反代状态` 并预填目标 Sub2/OpenAI 账号。
 - 独立说明见 `docs/admin-dashboard-resource-health-routing.md`。
+
+## 2026-06-12 扩展：商品目录巡检直达商品
+
+首页关键巡检项继续细化 `productCatalog` 的跳转口径：
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.criticalChecks[].primaryIssue` 会保留 `productId`、`productName` 和 `priceId`。
+- 当 `productCatalog` 问题携带商品定位字段时，首页按钮显示为“打开商品”，并按 `productId`、`priceId`、`productName` 的优先级打开商品管理列表。
+- 首页上下文摘要会展示商品 ID、商品名和价格 ID，管理员可以在总览页确认是哪一个可售商品受 ready Codex 交付资源缺失影响。
+- 若商品目录问题没有具体定位字段，按钮仍回退到商品配置页。
+
+该能力让“商品可售但交付资源未 ready”的风险可以从首页直接落到商品管理入口，不再需要管理员先进入完整可用性巡检页再复制商品 ID。

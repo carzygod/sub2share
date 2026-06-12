@@ -177,3 +177,38 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[3].primarySample?.sampleType, "scheduler_state");
   assert.equal(previews[3].primarySample?.repairAction, "enable_billing_sync");
 });
+
+test("dashboard health previews retain product catalog drilldown fields", () => {
+  const previews = dashboardHealthCheckPreviews([
+    {
+      id: "productCatalog",
+      label: "商品目录",
+      status: "warning",
+      summary: "1 个商品目录可购买性问题",
+      detail: {
+        issues: [{
+          id: "active_codex_product_without_ready_delivery_resource:prod-codex:product",
+          type: "active_codex_product_without_ready_delivery_resource",
+          severity: "warning",
+          productId: "prod-codex",
+          productName: "Codex Pro",
+          priceId: "price-monthly",
+          resourceType: "codex",
+          resourceList: true,
+          resourceScope: "production",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          message: "Active Codex product is purchasable but no ready production Codex shared resource is available."
+        }]
+      }
+    }
+  ]);
+
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].id, "productCatalog");
+  assert.equal(previews[0].primaryIssue?.productId, "prod-codex");
+  assert.equal(previews[0].primaryIssue?.productName, "Codex Pro");
+  assert.equal(previews[0].primaryIssue?.priceId, "price-monthly");
+  assert.equal(previews[0].primaryIssue?.resourceType, "codex");
+  assert.equal(previews[0].primaryIssue?.resourceScope, "production");
+  assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+});

@@ -1999,6 +1999,14 @@ function App() {
       return;
     }
 
+    if (check.id === "productCatalog") {
+      const productLookup = dashboardHealthProductLookup(check);
+      if (productLookup) {
+        await openProductCandidate(productLookup);
+        return;
+      }
+    }
+
     if (check.id === "payments") {
       const transactionLookup = dashboardHealthWalletTransactionLookup(record);
       if (transactionLookup) {
@@ -5952,6 +5960,10 @@ function healthRowClass(status: SystemHealthResult["status"]) {
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {
   const checkId = check.id;
+  if (checkId === "productCatalog" && dashboardHealthProductLookup(check)) {
+    return { view: "products", label: "打开商品" };
+  }
+
   if (dashboardHealthShouldOpenResourcesFirst(check, dashboardHealthDetailRecord(check))) {
     return { view: "resources", label: "打开共享资源" };
   }
@@ -6078,6 +6090,11 @@ function dashboardHealthHasWalletLookup(record: DashboardHealthDetailPreview | u
   return Boolean(textValue(record?.walletLookup) ?? textValue(record?.walletId));
 }
 
+function dashboardHealthProductLookup(check: DashboardHealthCheckPreview) {
+  const record = dashboardHealthDetailRecord(check);
+  return textValue(record?.productId) ?? textValue(record?.priceId) ?? textValue(record?.productName);
+}
+
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
   if (!record) return "";
@@ -6092,6 +6109,9 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "resourceStatus",
     "resourceScope",
     "supplierEmail",
+    "productId",
+    "productName",
+    "priceId",
     "requestId",
     "proxyRequestLogId",
     "upstreamRequestId",
