@@ -222,12 +222,23 @@ select option { color: #111; }
   background: var(--line-soft);
 }
 .metric-card {
+  width: 100%;
   min-width: 0;
   min-height: 156px;
+  border: 1px solid transparent;
+  border-radius: 0;
   padding: 22px;
   display: grid;
   align-content: space-between;
+  justify-items: start;
+  text-align: left;
+  color: var(--text);
   background: var(--surface);
+}
+.metric-card:hover { background: var(--surface-2); }
+.metric-card:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.42);
+  outline-offset: -2px;
 }
 .metric-icon {
   width: 34px;

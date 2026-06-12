@@ -2574,26 +2574,26 @@ function DashboardView({ dashboard, onOpenSystemHealth, onOpenView }: {
 }) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
-  const cards = [
-    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} /> },
-    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} /> },
-    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} /> },
-    { label: "售出金额", value: money(dashboard?.paidOrderAmount), icon: <TrendingUp size={20} /> },
-    { label: "可用余额", value: money(dashboard?.walletAvailable), icon: <WalletCards size={20} /> },
-    { label: "累计充值", value: money(dashboard?.totalRecharged), icon: <CircleDollarSign size={20} /> },
-    { label: "累计消费", value: money(dashboard?.totalSpent), icon: <BarChart3 size={20} /> },
-    { label: "供给收益", value: money(dashboard?.supplierIncome), icon: <ShieldCheck size={20} /> }
+  const cards: Array<{ label: string; value: string | number; icon: ReactElement; view: View }> = [
+    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, view: "users" },
+    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, view: "rentals" },
+    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} />, view: "resources" },
+    { label: "售出金额", value: money(dashboard?.paidOrderAmount), icon: <TrendingUp size={20} />, view: "sales" },
+    { label: "可用余额", value: money(dashboard?.walletAvailable), icon: <WalletCards size={20} />, view: "wallets" },
+    { label: "累计充值", value: money(dashboard?.totalRecharged), icon: <CircleDollarSign size={20} />, view: "walletTransactions" },
+    { label: "累计消费", value: money(dashboard?.totalSpent), icon: <BarChart3 size={20} />, view: "walletTransactions" },
+    { label: "供给收益", value: money(dashboard?.supplierIncome), icon: <ShieldCheck size={20} />, view: "settlements" }
   ];
 
   return (
     <>
       <section className="cards">
         {cards.map((card) => (
-          <div className="metric-card" key={card.label}>
+          <button className="metric-card" key={card.label} onClick={() => onOpenView(card.view)}>
             <div className="metric-icon">{card.icon}</div>
             <span>{card.label}</span>
             <strong>{card.value}</strong>
-          </div>
+          </button>
         ))}
       </section>
       <section className="content-grid">
@@ -2602,10 +2602,10 @@ function DashboardView({ dashboard, onOpenSystemHealth, onOpenView }: {
           <h2>经营摘要</h2>
           <table>
             <tbody>
-              <tr><td>待提现</td><td>{dashboard?.pendingWithdrawals ?? 0}</td></tr>
-              <tr><td>订单数</td><td>{dashboard?.paidOrderCount ?? 0}</td></tr>
-              <tr><td>用量记录</td><td>{dashboard?.usageCount ?? 0}</td></tr>
-              <tr><td>按量 GMV</td><td>{money(dashboard?.gmv)}</td></tr>
+              <tr><td>待提现</td><td><button className="secondary mini" onClick={() => onOpenView("withdrawals")}>{dashboard?.pendingWithdrawals ?? 0}</button></td></tr>
+              <tr><td>订单数</td><td><button className="secondary mini" onClick={() => onOpenView("orders")}>{dashboard?.paidOrderCount ?? 0}</button></td></tr>
+              <tr><td>用量记录</td><td><button className="secondary mini" onClick={() => onOpenView("usages")}>{dashboard?.usageCount ?? 0}</button></td></tr>
+              <tr><td>按量 GMV</td><td><button className="secondary mini" onClick={() => onOpenView("sales")}>{money(dashboard?.gmv)}</button></td></tr>
             </tbody>
           </table>
         </div>
