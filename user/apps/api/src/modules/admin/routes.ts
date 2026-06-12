@@ -106,6 +106,34 @@ const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelle
 const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
+export const proxyClientRejectionErrorCodes = [
+  "missing_api_key",
+  "invalid_api_key",
+  "user_not_active",
+  "insufficient_balance",
+  "rental_not_active",
+  "rental_expired",
+  "key_rental_mismatch",
+  "unsupported_resource_type",
+  "spend_limit_exhausted",
+  "request_limit_exceeded",
+  "rpm_limit_exceeded",
+  "tpm_limit_exceeded",
+  "concurrency_limit_exceeded"
+] as const;
+const proxyLocalAvailabilityErrorCodes = [
+  "proxy_limiter_unavailable",
+  "upstream_timeout",
+  "upstream_unavailable"
+] as const;
+const proxyStreamErrorCodes = [
+  "upstream_stream_error",
+  "upstream_stream_closed",
+  "upstream_stream_idle_timeout"
+] as const;
+const proxyClientRejectionErrorCodeSet = new Set<string>(proxyClientRejectionErrorCodes);
+const proxyLocalAvailabilityErrorCodeSet = new Set<string>(proxyLocalAvailabilityErrorCodes);
+const proxyStreamErrorCodeSet = new Set<string>(proxyStreamErrorCodes);
 const systemHealthBillingSyncStaleMs = 24 * 60 * 60 * 1000;
 const systemHealthApiKeyScanLimit = 500;
 const systemHealthApiKeyIssueLimit = 50;
@@ -175,6 +203,45 @@ interface SystemHealthCheck {
   summary: string;
   metrics?: Record<string, string | number | boolean | null>;
   detail?: unknown;
+}
+
+export interface ProxyRequestHealthMetrics {
+  proxyRecentTotal: number;
+  proxyRecentClientErrors: number;
+  proxyRecentClientRejections: number;
+  proxyRecentActionableClientErrors: number;
+  proxyRecentServerErrors: number;
+  proxyRecentLocalErrors: number;
+  proxyRecentClientDisconnects: number;
+  proxyRecentStreamErrors: number;
+}
+
+export function isProxyClientRejectionErrorCode(errorCode: string | null | undefined) {
+  return Boolean(errorCode && proxyClientRejectionErrorCodeSet.has(errorCode));
+}
+
+export function proxyRequestHealthStatus(metrics: ProxyRequestHealthMetrics): SystemHealthStatus {
+  if (metrics.proxyRecentServerErrors > 0 || metrics.proxyRecentLocalErrors > 0 || metrics.proxyRecentStreamErrors > 0) return "error";
+  if (metrics.proxyRecentActionableClientErrors > 0 || metrics.proxyRecentClientDisconnects > 0) return "warning";
+  return "ok";
+}
+
+export function proxyRequestHealthSummary(metrics: ProxyRequestHealthMetrics) {
+  if (metrics.proxyRecentTotal === 0) return "最近 1 小时无反代请求";
+  return `${metrics.proxyRecentTotal} 次请求，${metrics.proxyRecentServerErrors} 次 5xx，${metrics.proxyRecentClientErrors} 次 4xx，${metrics.proxyRecentClientRejections} 次本地准入拒绝，${metrics.proxyRecentActionableClientErrors} 次需复查 4xx，${metrics.proxyRecentClientDisconnects} 次客户端断开，${metrics.proxyRecentStreamErrors} 次上游流异常`;
+}
+
+function isProxyLocalAvailabilityErrorCode(errorCode: string | null | undefined) {
+  return Boolean(errorCode && proxyLocalAvailabilityErrorCodeSet.has(errorCode));
+}
+
+function isProxyStreamErrorCode(errorCode: string | null | undefined) {
+  return Boolean(errorCode && proxyStreamErrorCodeSet.has(errorCode));
+}
+
+function proxyRequestIssueSeverity(log: { statusCode: number | null; errorCode: string | null }) {
+  if ((log.statusCode ?? 0) >= 500 || isProxyLocalAvailabilityErrorCode(log.errorCode) || isProxyStreamErrorCode(log.errorCode)) return "error";
+  return "warning";
 }
 
 interface DashboardHealthCheckPreview {
@@ -3591,6 +3658,8 @@ async function buildSystemHealthReport() {
     pendingSettlements,
     proxyRecentTotal,
     proxyRecentClientErrors,
+    proxyRecentClientRejections,
+    proxyRecentActionableClientErrors,
     proxyRecentServerErrors,
     proxyRecentLocalErrors,
     proxyRecentClientDisconnects,
@@ -3633,18 +3702,44 @@ async function buildSystemHealthReport() {
     prisma.settlementRecord.count({ where: { status: "pending", availableAt: { lte: checkedAt } } }),
     prisma.proxyRequestLog.count({ where: proxyRequestWhere }),
     prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, statusCode: { gte: 400, lt: 500 } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { in: [...proxyClientRejectionErrorCodes] } } }),
+    prisma.proxyRequestLog.count({
+      where: {
+        AND: [
+          proxyRequestWhere,
+          { statusCode: { gte: 400, lt: 500 } },
+          {
+            OR: [
+              { errorCode: null },
+              { NOT: { errorCode: { in: [...proxyClientRejectionErrorCodes] } } }
+            ]
+          }
+        ]
+      }
+    }),
     prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, statusCode: { gte: 500 } } }),
-    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { not: null } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { in: [...proxyLocalAvailabilityErrorCodes] } } }),
     prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: "client_disconnected" } }),
-    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] } } }),
+    prisma.proxyRequestLog.count({ where: { ...proxyRequestWhere, errorCode: { in: [...proxyStreamErrorCodes] } } }),
     prisma.proxyRequestLog.findMany({
       where: {
         AND: [
           proxyRequestWhere,
           {
             OR: [
-              { statusCode: { gte: 400 } },
-              { errorCode: { not: null } }
+              { statusCode: { gte: 500 } },
+              { errorCode: { in: [...proxyLocalAvailabilityErrorCodes, ...proxyStreamErrorCodes, "client_disconnected"] } },
+              {
+                AND: [
+                  { statusCode: { gte: 400, lt: 500 } },
+                  {
+                    OR: [
+                      { errorCode: null },
+                      { NOT: { errorCode: { in: [...proxyClientRejectionErrorCodes] } } }
+                    ]
+                  }
+                ]
+              }
             ]
           }
         ]
@@ -3699,6 +3794,16 @@ async function buildSystemHealthReport() {
   const adminCapabilityCoverage = inspectRegisteredAdminCapabilityRoutes();
   const adminSurfaceCoverage = inspectAdminSurfaceCoverage();
   const deploymentRuntime = deploymentRuntimeHealthCheck();
+  const proxyRequestHealthMetrics = {
+    proxyRecentTotal,
+    proxyRecentClientErrors,
+    proxyRecentClientRejections,
+    proxyRecentActionableClientErrors,
+    proxyRecentServerErrors,
+    proxyRecentLocalErrors,
+    proxyRecentClientDisconnects,
+    proxyRecentStreamErrors
+  };
 
   const checks: SystemHealthCheck[] = [
     systemHealthCheck("database", "数据库", "ok", "Prisma 查询正常", {
@@ -3827,16 +3932,14 @@ async function buildSystemHealthReport() {
     systemHealthCheck(
       "proxy",
       "反代请求",
-      proxyRecentServerErrors > 0 || proxyRecentStreamErrors > 0 ? "error" : proxyRecentClientErrors > 0 || proxyRecentLocalErrors > 0 || proxyRecentClientDisconnects > 0 ? "warning" : "ok",
-      proxyRecentTotal === 0
-        ? "最近 1 小时无反代请求"
-        : `${proxyRecentTotal} 次请求，${proxyRecentServerErrors} 次 5xx，${proxyRecentClientErrors} 次 4xx，${proxyRecentClientDisconnects} 次客户端断开，${proxyRecentStreamErrors} 次上游流异常`,
-      { proxyRecentTotal, proxyRecentClientErrors, proxyRecentServerErrors, proxyRecentLocalErrors, proxyRecentClientDisconnects, proxyRecentStreamErrors },
+      proxyRequestHealthStatus(proxyRequestHealthMetrics),
+      proxyRequestHealthSummary(proxyRequestHealthMetrics),
+      proxyRequestHealthMetrics,
       proxyRecentErrorSamples.length > 0 ? {
         issues: proxyRecentErrorSamples.map((log) => ({
           id: `proxy_request:${log.id}`,
           type: log.errorCode ?? `http_${log.statusCode ?? "unknown"}`,
-          severity: (log.statusCode ?? 0) >= 500 || ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"].includes(log.errorCode ?? "") ? "error" : "warning",
+          severity: proxyRequestIssueSeverity(log),
           proxyRequestLogId: log.id,
           requestId: log.requestId,
           rentalId: log.rentalId,

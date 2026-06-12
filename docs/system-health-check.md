@@ -43,7 +43,7 @@
 - OpenAI 反代契约：检查公开 endpoint 是否指向 `/v1`、CORS 是否暴露本地/上游 request id、本地错误类型是否符合 OpenAI 风格分类。
 - OpenAI 反代运行态：统计当前 limiter store、共享作用域、Redis 可达性、活跃并发租约和 RPM/TPM 速率窗口；生产环境显式使用 memory 限流器标记 warning，Redis 不可达标记 error。
 - 本地反代自检：读取最近审计日志中的 OpenAI/Codex 端到端 smoke test 结果，包括直接 smoke、资源凭据应用 smoke 和 Sub2 直接应用 refresh token smoke；证据包含主代理请求日志和可选上游 request id；最近失败标记 error，超过 24 小时或缺少证据标记 warning，不会在巡检时主动发起真实 OpenAI 请求。
-- 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地/上游错误码、客户端中途断开、上游流异常和上游流空闲超时，并返回最近异常反代请求样本；上游 HTTP `>=400` 会以 `upstream_http_<status>` 进入错误码，样本会携带请求模型。
+- 反代请求：统计最近 1 小时 `/v1/*` 请求、4xx、5xx、本地准入拒绝、需复查 4xx、本地可用性错误、客户端中途断开和上游流异常；缺少/无效 Key、余额不足、租赁不可用、限流等本地准入拒绝只进入指标，不单独触发 warning；异常样本只返回 5xx、上游/本地可用性错误、客户端断开和需复查 4xx。
 - 用量同步：检查 Sub2 usage 同步状态，超过 24 小时未成功同步会标记 warning，失败会标记 error，并展示最近导入、恢复、跳过和未匹配数量。
 - 用量同步调度：检查 `SUB2_USAGE_SYNC_INTERVAL_MS` 与 `SUB2_USAGE_SYNC_ON_START`，生产环境禁用定时同步会标记 error。
 - Pending 用量账务：统计 `pending` usage 数量、待扣金额、待结算金额、最早发生时间和问题样本；若 pending usage 仍位于 active 租赁，标记 error。
@@ -80,7 +80,7 @@
 - 管理后台问题样本表默认只展示后端返回的 issue 样本，候选样本表只展示后端返回的 samples 样本，前端每类最多聚合 100 条，避免巡检页因大量问题产生过重渲染。
 - 巡检问题样本的操作按钮只使用后端返回的定位字段做列表筛选、详情打开或跳转到反代状态页，不会绕过对应管理页面的权限、分页和脱敏边界。
 - 订单状态巡检默认返回最近 50 条 failed/refunding 订单问题样本，只做定位和重试可行性提示，不自动执行订单重试、退款或账务调整。
-- 反代请求巡检默认只返回最近 20 条异常样本，且只包含 request id、上游 request id、日志 id、租赁、Key 元数据、模型、HTTP 状态、错误码、路径、耗时和时间，不返回请求体或明文 Key；上游 HTTP 错误样本可通过 `upstream_http_<status>` 区分。
+- 反代请求巡检默认只返回最近 20 条需排查异常样本，且只包含 request id、上游 request id、日志 id、租赁、Key 元数据、模型、HTTP 状态、错误码、路径、耗时和时间，不返回请求体或明文 Key；缺少/无效 Key、余额不足、租赁不可用、限流等本地准入拒绝会进入 `proxyRecentClientRejections` 指标，但不进入问题样本。
 - 用量同步调度巡检只读环境配置，不会启动或停止后台同步任务。
 - Pending 用量账务巡检只读，不自动扣费；真正的恢复扣费仍由 Sub2 usage 同步任务执行。
 - OAuth State 巡检只判断 state 存储模式和 Redis 连通性，不会发起真实第三方 OAuth 登录。
