@@ -1685,6 +1685,13 @@ function App() {
     setMessage(message);
   }
 
+  async function openStatusListCandidate(listView: ManagedListView, status: string, message: string) {
+    const query = { ...defaultListQuery, status };
+    setListQueries((current) => ({ ...current, [listView]: query }));
+    await refresh(listView, query);
+    setMessage(message);
+  }
+
   async function openUserCandidate(userId: string) {
     await openFilteredListCandidate("users", userId, "已打开巡检关联用户");
     await openUserDetail(userId);
@@ -2156,6 +2163,11 @@ function App() {
             dashboard={dashboard}
             onOpenSystemHealth={() => refresh("systemHealth")}
             onOpenView={(nextView) => { void refresh(nextView); }}
+            onOpenActiveRentals={() => { void openStatusListCandidate("rentals", "active", "已打开 active 租赁通道"); }}
+            onOpenOnlineResources={() => { void openResourcesCandidate({ status: "online" }); }}
+            onOpenRechargeTransactions={() => { void openWalletTransactionsCandidate({ type: "recharge" }); }}
+            onOpenConsumeTransactions={() => { void openWalletTransactionsCandidate({ type: "consume" }); }}
+            onOpenPendingWithdrawals={() => { void openStatusListCandidate("withdrawals", "pending", "已打开待处理提现"); }}
           />
         )}
         {view === "systemHealth" && (
@@ -2567,29 +2579,43 @@ interface ManagedListProps {
   onExport?: () => void;
 }
 
-function DashboardView({ dashboard, onOpenSystemHealth, onOpenView }: {
+function DashboardView({
+  dashboard,
+  onOpenSystemHealth,
+  onOpenView,
+  onOpenActiveRentals,
+  onOpenOnlineResources,
+  onOpenRechargeTransactions,
+  onOpenConsumeTransactions,
+  onOpenPendingWithdrawals
+}: {
   dashboard: Dashboard | null;
   onOpenSystemHealth: () => void;
   onOpenView: (view: View) => void;
+  onOpenActiveRentals: () => void;
+  onOpenOnlineResources: () => void;
+  onOpenRechargeTransactions: () => void;
+  onOpenConsumeTransactions: () => void;
+  onOpenPendingWithdrawals: () => void;
 }) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
-  const cards: Array<{ label: string; value: string | number; icon: ReactElement; view: View }> = [
-    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, view: "users" },
-    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, view: "rentals" },
-    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} />, view: "resources" },
-    { label: "售出金额", value: money(dashboard?.paidOrderAmount), icon: <TrendingUp size={20} />, view: "sales" },
-    { label: "可用余额", value: money(dashboard?.walletAvailable), icon: <WalletCards size={20} />, view: "wallets" },
-    { label: "累计充值", value: money(dashboard?.totalRecharged), icon: <CircleDollarSign size={20} />, view: "walletTransactions" },
-    { label: "累计消费", value: money(dashboard?.totalSpent), icon: <BarChart3 size={20} />, view: "walletTransactions" },
-    { label: "供给收益", value: money(dashboard?.supplierIncome), icon: <ShieldCheck size={20} />, view: "settlements" }
+  const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
+    { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
+    { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
+    { label: "在线资源", value: dashboard?.onlineResources ?? 0, icon: <Boxes size={20} />, onClick: onOpenOnlineResources },
+    { label: "售出金额", value: money(dashboard?.paidOrderAmount), icon: <TrendingUp size={20} />, onClick: () => onOpenView("sales") },
+    { label: "可用余额", value: money(dashboard?.walletAvailable), icon: <WalletCards size={20} />, onClick: () => onOpenView("wallets") },
+    { label: "累计充值", value: money(dashboard?.totalRecharged), icon: <CircleDollarSign size={20} />, onClick: onOpenRechargeTransactions },
+    { label: "累计消费", value: money(dashboard?.totalSpent), icon: <BarChart3 size={20} />, onClick: onOpenConsumeTransactions },
+    { label: "供给收益", value: money(dashboard?.supplierIncome), icon: <ShieldCheck size={20} />, onClick: () => onOpenView("settlements") }
   ];
 
   return (
     <>
       <section className="cards">
         {cards.map((card) => (
-          <button className="metric-card" key={card.label} onClick={() => onOpenView(card.view)}>
+          <button className="metric-card" key={card.label} onClick={card.onClick}>
             <div className="metric-icon">{card.icon}</div>
             <span>{card.label}</span>
             <strong>{card.value}</strong>
@@ -2602,7 +2628,7 @@ function DashboardView({ dashboard, onOpenSystemHealth, onOpenView }: {
           <h2>经营摘要</h2>
           <table>
             <tbody>
-              <tr><td>待提现</td><td><button className="secondary mini" onClick={() => onOpenView("withdrawals")}>{dashboard?.pendingWithdrawals ?? 0}</button></td></tr>
+              <tr><td>待提现</td><td><button className="secondary mini" onClick={onOpenPendingWithdrawals}>{dashboard?.pendingWithdrawals ?? 0}</button></td></tr>
               <tr><td>订单数</td><td><button className="secondary mini" onClick={() => onOpenView("orders")}>{dashboard?.paidOrderCount ?? 0}</button></td></tr>
               <tr><td>用量记录</td><td><button className="secondary mini" onClick={() => onOpenView("usages")}>{dashboard?.usageCount ?? 0}</button></td></tr>
               <tr><td>按量 GMV</td><td><button className="secondary mini" onClick={() => onOpenView("sales")}>{money(dashboard?.gmv)}</button></td></tr>
