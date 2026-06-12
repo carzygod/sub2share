@@ -111,3 +111,12 @@
 - `npm.cmd --prefix user/apps/admin run typecheck`
 - `npm.cmd --prefix user/apps/api run build`
 - `npm.cmd --prefix user/apps/admin run build`
+
+## 2026-06-12 扩展：共享资源巡检入口优先
+
+首页关键巡检项继续细化 `resources` 的跳转口径：
+
+- `resources` 巡检项表示共享资源池本身缺失或不可用时，即使 issue 同时携带 `repairAction` 或 `sub2AccountId`，首页按钮也优先显示 `打开共享资源`。
+- 点击 `resources` 关键巡检项会进入 `共享资源` 列表，并带入 `supplierEmail`、`resourceType`、`resourceStatus`、`resourceScope` 和 `sub2AccountId` 作为筛选与创建默认值。
+- `sub2`、`resourceCredentials` 和 `localProxySmoke` 仍保持反代维修优先，继续打开 `反代状态` 并预填目标 Sub2/OpenAI 账号。
+- 独立说明见 `docs/admin-dashboard-resource-health-routing.md`。

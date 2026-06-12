@@ -1872,6 +1872,11 @@ function App() {
 
   async function openDashboardHealthCheck(check: DashboardHealthCheckPreview) {
     const record = dashboardHealthDetailRecord(check);
+    if (dashboardHealthShouldOpenResourcesFirst(check, record)) {
+      await openResourcesCandidate(dashboardHealthResourceFilter(record));
+      return;
+    }
+
     if (dashboardHealthCheckHasSub2Repair(check)) {
       await openSub2StatusCandidate(dashboardHealthSub2RepairContext(check));
       return;
@@ -5712,6 +5717,10 @@ function healthRowClass(status: SystemHealthResult["status"]) {
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {
   const checkId = check.id;
+  if (dashboardHealthShouldOpenResourcesFirst(check, dashboardHealthDetailRecord(check))) {
+    return { view: "resources", label: "打开共享资源" };
+  }
+
   if (dashboardHealthCheckHasSub2Repair(check)) {
     return { view: "sub2", label: "打开反代状态" };
   }
@@ -5751,6 +5760,10 @@ function dashboardHealthCheckHasSub2Repair(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
   if (!["sub2", "localProxySmoke", "resourceCredentials", "resources"].includes(check.id)) return false;
   return textValue(record?.repairAction) === "apply_openai_refresh_token_to_sub2_account" || Boolean(textValue(record?.sub2AccountId));
+}
+
+function dashboardHealthShouldOpenResourcesFirst(check: DashboardHealthCheckPreview, record: DashboardHealthDetailPreview | undefined) {
+  return check.id === "resources" && dashboardHealthHasResourceFilter(record);
 }
 
 function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): Sub2RepairContext {
