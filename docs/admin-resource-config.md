@@ -73,3 +73,15 @@
 4. 确认详情和列表刷新后展示新值。
 5. 查看审计日志中是否出现 `admin.resource.update`。
 6. 若清空或更换 Sub2 账号，确认 `lastCheckedAt` 被清空，需要重新执行资源测试。
+
+## 2026-06-12 扩展：资源巡检创建默认值
+
+- 管理员从首页 `resources` 巡检 warning 进入共享资源页时，创建表单会继续沿用巡检上下文：
+  - 供应方邮箱。
+  - 资源类型。
+  - Sub2 账号 ID。
+  - `repairAction`。
+  - smoke 模型与失败阶段字段。
+- 当 `repairAction=apply_openai_refresh_token_to_sub2_account` 且存在 Sub2 账号时，创建表单默认勾选 `创建后应用到 Sub2`。
+- 对生产 Codex 资源修复路径，创建表单默认勾选 `应用后端到端自检`。
+- 管理员仍可手动取消上述 checkbox；系统不会在没有提交表单时自动写入凭据、应用到 Sub2 或触发 smoke test。

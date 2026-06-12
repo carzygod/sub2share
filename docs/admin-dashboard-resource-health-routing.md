@@ -14,12 +14,17 @@
   - 点击后进入 `共享资源` 列表。
   - 自动带入资源筛选条件。
   - 自动填充创建共享资源时可复用的供应方邮箱、资源类型和 Sub2 账号默认值。
+- 当同一上下文携带 `repairAction=apply_openai_refresh_token_to_sub2_account` 且存在 Sub2 账号时：
+  - 创建共享资源表单默认勾选 `创建后应用到 Sub2`。
+  - 对生产 Codex 资源修复路径默认勾选 `应用后端到端自检`。
+  - 如果巡检上下文携带 smoke 模型，自动填入 `自检模型`；没有模型时仍由后端使用默认 smoke 模型。
 - `sub2`、`resourceCredentials`、`localProxySmoke` 仍保持反代维修优先，继续打开 `反代状态` 并预填目标 Sub2/OpenAI 账号。
 
 ## 价值
 
 - “共享资源缺失”与“上游账号失效”在首页进入各自更贴近的管理入口，减少管理员在反代状态和共享资源之间来回切换。
 - 管理员可以从当前线上 `No online production Codex shared resource` warning 直接进入共享资源创建/筛选路径。
+- 管理员粘贴有效 OpenAI refresh token 后，可以在同一个创建提交中完成“保存凭据 -> 应用到 Sub2 -> 账号测试 -> 端到端 smoke”的闭环，减少只创建资源但忘记验证 `/v1/responses` 的空窗。
 - 该改动只影响 Admin 导航和默认筛选，不会自动写入 refresh token、不会修改 Sub2 账号，也不会触发真实 OpenAI/Codex smoke test。
 
 ## 验证

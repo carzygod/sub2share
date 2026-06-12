@@ -9,6 +9,9 @@ import {
   requiredAdminSurfaceAreas
 } from "@zyz/shared";
 import {
+  resourceCreateDefaultsShouldApplyCredential,
+  resourceCreateDefaultsShouldRunSmokeTest,
+  resourceCreateDefaultsSmokeModel,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
   sub2RepairContextSmokeModel
@@ -108,4 +111,21 @@ test("sub2 repair context prefills smoke verification after failed proxy evidenc
   assert.equal(sub2RepairContextSmokeModel(failedSmokeContext), "gpt-5.3-codex");
   assert.equal(sub2RepairContextShouldRunSmokeTest({ checkId: "sub2", accountId: "2" }), false);
   assert.equal(sub2RepairContextSmokeModel({ model: "  " }), "");
+});
+
+test("resource create defaults continue the OpenAI credential repair flow", () => {
+  const repairDefaults = {
+    checkId: "resources",
+    resourceType: "codex",
+    resourceScope: "production",
+    sub2AccountId: "2",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    model: " gpt-5.3-codex "
+  };
+
+  assert.equal(resourceCreateDefaultsShouldApplyCredential(repairDefaults), true);
+  assert.equal(resourceCreateDefaultsShouldRunSmokeTest(repairDefaults), true);
+  assert.equal(resourceCreateDefaultsSmokeModel(repairDefaults), "gpt-5.3-codex");
+  assert.equal(resourceCreateDefaultsShouldApplyCredential({ resourceType: "codex", sub2AccountId: "2" }), false);
+  assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
 });

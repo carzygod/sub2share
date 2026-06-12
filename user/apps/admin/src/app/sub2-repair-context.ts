@@ -26,6 +26,22 @@ export interface Sub2RepairContext {
   ageMinutes?: string;
 }
 
+export interface ResourceCreateDefaults {
+  supplierEmail?: string;
+  resourceType?: string;
+  sub2AccountId?: string;
+  repairAction?: string;
+  checkId?: string;
+  resourceScope?: string;
+  resourceStatus?: string;
+  model?: string;
+  responsesOk?: string;
+  localProxyOk?: string;
+  proxyRequestPath?: string;
+  proxyRequestStatusCode?: string;
+  proxyRequestErrorCode?: string;
+}
+
 export interface Sub2RepairContextItem {
   label: string;
   value: string;
@@ -77,6 +93,24 @@ export function sub2RepairContextShouldRunSmokeTest(context: Sub2RepairContext) 
 
 export function sub2RepairContextSmokeModel(context: Sub2RepairContext) {
   return context.model?.trim() || "";
+}
+
+export function resourceCreateDefaultsShouldApplyCredential(defaults: ResourceCreateDefaults) {
+  return defaults.repairAction === "apply_openai_refresh_token_to_sub2_account" && Boolean(defaults.sub2AccountId?.trim());
+}
+
+export function resourceCreateDefaultsShouldRunSmokeTest(defaults: ResourceCreateDefaults) {
+  if (!resourceCreateDefaultsShouldApplyCredential(defaults)) return false;
+  return defaults.resourceType === "codex"
+    || defaults.checkId === "resources"
+    || defaults.resourceScope === "production"
+    || defaults.responsesOk === "false"
+    || defaults.localProxyOk === "false"
+    || Boolean(defaults.proxyRequestPath || defaults.proxyRequestStatusCode || defaults.proxyRequestErrorCode);
+}
+
+export function resourceCreateDefaultsSmokeModel(defaults: ResourceCreateDefaults) {
+  return defaults.model?.trim() || "";
 }
 
 function healthFlag(label: string, value?: string) {

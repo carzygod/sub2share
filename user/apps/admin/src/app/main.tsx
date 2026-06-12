@@ -35,9 +35,13 @@ import {
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import {
+  resourceCreateDefaultsShouldApplyCredential,
+  resourceCreateDefaultsShouldRunSmokeTest,
+  resourceCreateDefaultsSmokeModel,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
   sub2RepairContextSmokeModel,
+  type ResourceCreateDefaults,
   type Sub2RepairContext
 } from "./sub2-repair-context";
 import logoUrl from "../assets/zyz-logo.png";
@@ -1009,7 +1013,7 @@ function App() {
   const [usageSyncState, setUsageSyncState] = useState<UsageSyncStateResult | null>(null);
   const [resources, setResources] = useState<ResourceRow[]>([]);
   const [selectedResource, setSelectedResource] = useState<ResourceDetailRow | null>(null);
-  const [resourceCreateDefaults, setResourceCreateDefaults] = useState<{ supplierEmail?: string; resourceType?: string; sub2AccountId?: string }>({});
+  const [resourceCreateDefaults, setResourceCreateDefaults] = useState<ResourceCreateDefaults>({});
   const [suppliers, setSuppliers] = useState<SupplierDetailRow[]>([]);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRow[]>([]);
@@ -1774,20 +1778,30 @@ function App() {
     await openFilteredListCandidate("products", lookup, "已打开巡检关联商品");
   }
 
-  async function openResourcesCandidate(filter?: { supplierEmail?: string; resourceType?: string; status?: string; scope?: string; sub2AccountId?: string }) {
-    const hasFilter = Boolean(filter?.supplierEmail || filter?.resourceType || filter?.status || filter?.scope || filter?.sub2AccountId);
+  async function openResourcesCandidate(filter?: ResourceCreateDefaults & { status?: string; scope?: string }) {
+    const hasFilter = Boolean(filter?.supplierEmail || filter?.resourceType || filter?.status || filter?.resourceStatus || filter?.scope || filter?.resourceScope || filter?.sub2AccountId);
     const resourceType = resourceTypeOptions.includes(filter?.resourceType ?? "") ? filter!.resourceType! : "";
+    const resourceScope = filter?.resourceScope ?? filter?.scope;
     const query = {
       ...defaultListQuery,
       q: filter?.supplierEmail ?? "",
-      action: filter?.scope === "production" ? "production" : "",
+      action: resourceScope === "production" ? "production" : "",
       resourceType,
-      status: filter?.status ?? ""
+      status: filter?.status ?? filter?.resourceStatus ?? ""
     };
     setResourceCreateDefaults({
       supplierEmail: filter?.supplierEmail,
       resourceType: resourceType || undefined,
-      sub2AccountId: filter?.sub2AccountId
+      sub2AccountId: filter?.sub2AccountId,
+      repairAction: filter?.repairAction,
+      checkId: filter?.checkId,
+      resourceScope,
+      model: filter?.model,
+      responsesOk: filter?.responsesOk,
+      localProxyOk: filter?.localProxyOk,
+      proxyRequestPath: filter?.proxyRequestPath,
+      proxyRequestStatusCode: filter?.proxyRequestStatusCode,
+      proxyRequestErrorCode: filter?.proxyRequestErrorCode
     });
     setSelectedResource(null);
     setListQueries((current) => ({ ...current, resources: query }));
@@ -4844,7 +4858,7 @@ function SuppliersView({ suppliers, query, meta, onUpdate, onOpenUser, onOpenRes
 function ResourcesView({ resources, selectedResource, createDefaults, query, meta, onCreate, onUpdate, onCredential, onDeleteCredential, onApplyCredentialToSub2, onStatus, onTest, onDetail, onCloseDetail, onOpenUser, onOpenSub2Status, onOpenUsage, onOpenSettlement, onOpenWithdrawal, onOpenRental, onOpenProxyRequest, onDraft, onFilter, onClear, onPage, onExport }: {
   resources: ResourceRow[];
   selectedResource: ResourceDetailRow | null;
-  createDefaults: { supplierEmail?: string; resourceType?: string; sub2AccountId?: string };
+  createDefaults: ResourceCreateDefaults;
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
   onCredential: (event: FormEvent<HTMLFormElement>, resourceId: string) => void;
@@ -4865,9 +4879,12 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
   const createResourceType = resourceTypeOptions.includes(createDefaults.resourceType ?? "") ? createDefaults.resourceType! : "codex";
   const createSub2AccountId = createDefaults.sub2AccountId ?? "";
   const createSupplierEmail = createDefaults.supplierEmail ?? "";
+  const createApplyCredentialToSub2 = resourceCreateDefaultsShouldApplyCredential(createDefaults);
+  const createRunSmokeTest = resourceCreateDefaultsShouldRunSmokeTest(createDefaults);
+  const createSmokeModel = resourceCreateDefaultsSmokeModel(createDefaults);
   return (
     <>
-      <form key={`${createSupplierEmail}:${createResourceType}:${createSub2AccountId}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
+      <form key={`${createSupplierEmail}:${createResourceType}:${createSub2AccountId}:${createApplyCredentialToSub2 ? "apply" : "manual"}:${createRunSmokeTest ? "smoke" : "no-smoke"}:${createSmokeModel}`} className="panel glass-panel inline-form resource-form" onSubmit={onCreate}>
         <span className="eyebrow">Create resource</span>
         <input name="supplierEmail" type="email" defaultValue={createSupplierEmail} placeholder="供给方邮箱" required />
         <input name="displayName" placeholder="供给方显示名，可选" />
@@ -4892,11 +4909,11 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
           {resourceCredentialStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
         <input name="credentialSecret" type="password" minLength={8} placeholder="初始凭据，可选" autoComplete="off" />
-        <label className="checkbox-line"><input name="applyCredentialToSub2" type="checkbox" /><span>创建后应用到 Sub2</span></label>
+        <label className="checkbox-line"><input name="applyCredentialToSub2" type="checkbox" defaultChecked={createApplyCredentialToSub2} /><span>创建后应用到 Sub2</span></label>
         <input name="credentialClientId" placeholder="client_id，可选" autoComplete="off" />
         <input name="credentialProxyId" type="number" min={1} placeholder="proxy_id，可选" />
-        <label className="checkbox-line"><input name="credentialRunSmokeTest" type="checkbox" /><span>应用后端到端自检</span></label>
-        <input name="credentialSmokeModel" placeholder="自检模型，可选" autoComplete="off" />
+        <label className="checkbox-line"><input name="credentialRunSmokeTest" type="checkbox" defaultChecked={createRunSmokeTest} /><span>应用后端到端自检</span></label>
+        <input name="credentialSmokeModel" defaultValue={createSmokeModel} placeholder="自检模型，可选" autoComplete="off" />
         <button>创建共享资源</button>
       </form>
       <ListControls
@@ -5818,7 +5835,15 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     resourceType: textValue(record?.resourceType),
     status: textValue(record?.resourceStatus),
     scope: textValue(record?.resourceScope),
-    sub2AccountId: textValue(record?.sub2AccountId)
+    sub2AccountId: textValue(record?.sub2AccountId),
+    repairAction: textValue(record?.repairAction),
+    checkId: "resources",
+    model: textValue(record?.model),
+    responsesOk: textValue(record?.responsesOk),
+    localProxyOk: textValue(record?.localProxyOk),
+    proxyRequestPath: textValue(record?.proxyRequestPath),
+    proxyRequestStatusCode: textValue(record?.proxyRequestStatusCode),
+    proxyRequestErrorCode: textValue(record?.proxyRequestErrorCode)
   };
 }
 
