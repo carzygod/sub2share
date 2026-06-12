@@ -300,3 +300,69 @@ test("sub2 repair context enrichment fills product catalog repair candidates", (
   assert.equal(issue.schedulable, false);
   assert.equal(issue.productId, "prod-codex");
 });
+
+test("sub2 repair context enrichment shares product context with resource repairs", () => {
+  const checks = enrichSub2RepairContextChecks([
+    {
+      id: "productCatalog",
+      label: "商品目录",
+      status: "warning",
+      summary: "1 个商品目录可购买性问题",
+      detail: {
+        issues: [{
+          id: "product-risk",
+          type: "active_codex_product_without_ready_delivery_resource",
+          productId: "prod-codex",
+          productName: "Codex Pro",
+          priceId: "price-monthly",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          resourceType: "codex"
+        }]
+      }
+    },
+    {
+      id: "resources",
+      label: "共享资源",
+      status: "warning",
+      summary: "No online production Codex shared resource",
+      detail: {
+        issues: [{
+          id: "resource:codex-online-missing",
+          type: "codex_online_resource_missing",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          resourceType: "codex"
+        }]
+      }
+    },
+    {
+      id: "resourceCredentials",
+      label: "资源凭据",
+      status: "error",
+      summary: "No applicable credential",
+      detail: {
+        issues: [{
+          id: "openai-refresh-token-candidate-missing",
+          type: "openai_refresh_token_candidate_missing",
+          repairAction: "apply_openai_refresh_token_to_sub2_account"
+        }]
+      }
+    }
+  ], "admin@zhisuan.local", [{
+    sub2AccountId: 2,
+    sub2AccountName: "codex-primary"
+  }]);
+
+  const resourceIssue = (checks[1].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  assert.equal(resourceIssue.productId, "prod-codex");
+  assert.equal(resourceIssue.productName, "Codex Pro");
+  assert.equal(resourceIssue.priceId, "price-monthly");
+  assert.equal(resourceIssue.supplierEmail, "admin@zhisuan.local");
+  assert.equal(resourceIssue.sub2AccountId, 2);
+
+  const credentialIssue = (checks[2].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  assert.equal(credentialIssue.productId, "prod-codex");
+  assert.equal(credentialIssue.productName, "Codex Pro");
+  assert.equal(credentialIssue.priceId, "price-monthly");
+  assert.equal(credentialIssue.resourceType, "codex");
+  assert.equal(credentialIssue.sub2AccountId, 2);
+});

@@ -3908,7 +3908,8 @@ export function enrichSub2RepairContextChecks(
   supplierEmail: string | null,
   sub2AccountCandidates: ResourceCredentialSub2AccountCandidate[] = []
 ) {
-  if (!supplierEmail && sub2AccountCandidates.length === 0) return checks;
+  const productContext = productCatalogRepairContextFields(checks);
+  if (!supplierEmail && sub2AccountCandidates.length === 0 && !productContext) return checks;
   const repairCandidateFields = resourceCredentialRepairCandidateFields(sub2AccountCandidates);
 
   return checks.map((check) => {
@@ -3926,6 +3927,11 @@ export function enrichSub2RepairContextChecks(
         const additions: Record<string, unknown> = {};
         if (supplierEmail && !record.supplierEmail) additions.supplierEmail = supplierEmail;
         if (!record.resourceType) additions.resourceType = "codex";
+        if (productContext && (!record.resourceType || record.resourceType === "codex")) {
+          if (productContext.productId && !record.productId) additions.productId = productContext.productId;
+          if (productContext.productName && !record.productName) additions.productName = productContext.productName;
+          if (productContext.priceId && !record.priceId) additions.priceId = productContext.priceId;
+        }
         if (record.sub2AccountId === undefined || record.sub2AccountId === null) {
           for (const [field, value] of Object.entries(repairCandidateFields)) {
             if (value !== undefined && (record[field] === undefined || record[field] === null)) additions[field] = value;
@@ -3943,6 +3949,29 @@ export function enrichSub2RepairContextChecks(
 
     return changed ? { ...check, detail: nextDetail } : check;
   });
+}
+
+function productCatalogRepairContextFields(checks: SystemHealthCheck[]) {
+  for (const check of checks) {
+    if (check.id !== "productCatalog") continue;
+    const detail = jsonObject(check.detail);
+    const rows = detail?.issues;
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      const record = jsonObject(row);
+      if (!record || record.type !== "active_codex_product_without_ready_delivery_resource") continue;
+      const productId = textJsonValue(record.productId);
+      const productName = textJsonValue(record.productName);
+      const priceId = textJsonValue(record.priceId);
+      if (!productId && !productName && !priceId) continue;
+      return {
+        productId: productId ?? undefined,
+        productName: productName ?? undefined,
+        priceId: priceId ?? undefined
+      };
+    }
+  }
+  return null;
 }
 
 function jsonObject(value: unknown): Record<string, unknown> | null {

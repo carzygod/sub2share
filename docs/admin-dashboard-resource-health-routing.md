@@ -43,6 +43,13 @@
 - 如果修复上下文没有商品字段，普通共享资源创建确认不展示该行。
 - 该能力只增强高风险提交前的上下文确认，不改变资源创建、凭据保存、Sub2 应用或端到端 smoke 的执行条件。
 
+## 2026-06-13 扩展：Sub2 修复问题继承商品价格上下文
+
+- 系统健康会从 `productCatalog` 的 Codex ready delivery 风险中提取 `productId`、`productName` 和 `priceId`。
+- 对 `apply_openai_refresh_token_to_sub2_account` 修复动作，`resources`、`resourceCredentials`、`sub2` 和 `localProxySmoke` 等巡检问题会在缺少商品字段时继承同一商品价格上下文。
+- 已存在的商品字段不会被覆盖，非 Codex 资源类型不会被强行注入。
+- 这样管理员从任意相关巡检项打开共享资源修复时，都能看到同一商品价格定位。
+
 ## 价值
 
 - “共享资源缺失”与“上游账号失效”在首页进入各自更贴近的管理入口，减少管理员在反代状态和共享资源之间来回切换。
@@ -50,6 +57,7 @@
 - 管理员粘贴有效 OpenAI refresh token 后，可以在同一个创建提交中完成“保存凭据 -> 应用到 Sub2 -> 账号测试 -> 端到端 smoke”的闭环，减少只创建资源但忘记验证 `/v1/responses` 的空窗。
 - 管理员在创建前可以直接确认这次表单默认值来自哪条巡检问题、绑定哪个 Sub2 账号、是否会自动应用凭据和运行 smoke，降低误把巡检上下文当成普通资源创建的风险。
 - 管理员在最终确认应用凭据前也能看到受影响商品，降低多个 Codex 商品并存时误修复的风险。
+- 管理员不必只从 `productCatalog` 入口进入，`resources` 或 `resourceCredentials` 等更高优先级问题同样保留商品价格定位。
 - 该改动只影响 Admin 导航和默认筛选，不会自动写入 refresh token、不会修改 Sub2 账号，也不会触发真实 OpenAI/Codex smoke test。
 
 ## 验证
