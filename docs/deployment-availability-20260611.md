@@ -3905,3 +3905,96 @@ OpenAI/Codex 反代现在能在本地日志、Admin 列表、CSV 和系统健康
 ### 结论
 
 管理员现在可以从审计日志直接串联操作者、用户、余额、售出订单、租赁、API Key、共享资源、Sub2 状态、反代请求、用量、结算和提现上下文，`系统健康/审计 -> 具体对象 -> 修复入口` 的排障路径更完整。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 09:06 管理员商品售出横向钻取发布与线上复查
+
+### 发布版本
+
+- `d45d57f feat: add admin product sales cross links`
+
+### 本轮修复
+
+- `GET /api/admin/orders` 支持按订单项商品 ID、价格 ID、嵌套商品 ID 和商品名搜索。
+- `GET /api/admin/sales` 支持按订单项商品 ID、价格 ID、嵌套商品 ID 和租赁商品 ID 搜索。
+- `GET /api/admin/rentals` 支持按租赁商品 ID、嵌套商品 ID、订单项商品 ID 和价格 ID 搜索。
+- `GET /api/admin/usages` 支持按租赁商品 ID、嵌套商品 ID、订单项商品 ID 和价格 ID 搜索。
+- `GET /api/admin/proxy-requests` 支持按租赁订单 ID、租赁商品 ID、嵌套商品 ID、订单项商品 ID 和价格 ID 搜索。
+- 管理后台 `商品与价格` 页在商品和价格行增加售出、订单、租赁、用量、反代横向入口。
+- 管理后台 `销售概览` 的商品排行增加商品、售出、订单、租赁、用量入口。
+- 新增文档：`docs/admin-product-sales-cross-links.md`。
+- `docs/需求文档.md` 新增 `18.153 管理员商品售出支持横向钻取`。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，74/74。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=d45d57f`
+  - `deployed_at=20260612T010616Z`
+- 发布脚本使用 `git -c core.autocrlf=false archive HEAD:user` 打包，避免 shell 脚本 CRLF 行尾问题。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：无待应用迁移。
+  - Shared build：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：74/74 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- 生产 Admin 静态产物已更新：
+  - `/assets/index-C8YdECXV.js`
+  - `/assets/index-Dwk4HozA.css`
+- `/tmp/sub2share-user-d45d57f.tar` 与提取目录已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/system-health`：
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=d45d57f`
+- 样本商品：
+  - productId：`00000000-0000-0000-0000-000000000101`
+  - name：`Codex 标准租赁`
+  - priceId：`d231fcef-2dc6-4317-b44e-a93cad3ab0ea`
+  - orderCount：`9`
+  - rentalCount：`9`
+- 按商品 ID 搜索：
+  - `GET /api/admin/sales?...q=00000000-0000-0000-0000-000000000101`：200，total `1`。
+  - `GET /api/admin/orders?...q=00000000-0000-0000-0000-000000000101`：200，total `1`。
+  - `GET /api/admin/rentals?...q=00000000-0000-0000-0000-000000000101`：200，total `1`。
+  - `GET /api/admin/usages?...q=00000000-0000-0000-0000-000000000101`：200，total `0`。
+  - `GET /api/admin/proxy-requests?...q=00000000-0000-0000-0000-000000000101`：200，total `0`。
+- 按价格 ID 搜索：
+  - `GET /api/admin/sales?...q=d231fcef-2dc6-4317-b44e-a93cad3ab0ea`：200，total `1`。
+  - `GET /api/admin/orders?...q=d231fcef-2dc6-4317-b44e-a93cad3ab0ea`：200，total `1`。
+  - `GET /api/admin/rentals?...q=d231fcef-2dc6-4317-b44e-a93cad3ab0ea`：200，total `1`。
+  - `GET /api/admin/usages?...q=d231fcef-2dc6-4317-b44e-a93cad3ab0ea`：200，total `0`。
+  - `GET /api/admin/proxy-requests?...q=d231fcef-2dc6-4317-b44e-a93cad3ab0ea`：200，total `0`。
+- 仍非 OK 检查：
+  - `payments` warning：生产环境仍启用 mock 充值。
+  - `resources` warning：没有 online production Codex shared resource。
+  - `resourceCredentials` error：Sub2 上游无 active 账号，且没有可应用的资源凭据。
+  - `sub2` error：`openai_group_has_no_active_accounts`。
+  - `localProxySmoke` error：最新 `/v1/responses` smoke 仍失败。
+
+### 结论
+
+管理员现在可以从商品和价格配置直接进入售出、订单、租赁、用量和反代证据，也可以从销售概览的商品排行反向进入对应上下文。商品 ID 与价格 ID 已经能在线上命中售出、订单和租赁列表；用量和反代请求当前样本为 0，但接口和过滤路径返回正常。生产服务发布成功，外部入口可用；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
