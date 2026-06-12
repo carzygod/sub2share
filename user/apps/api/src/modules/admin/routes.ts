@@ -3640,13 +3640,7 @@ async function buildSystemHealthReport() {
       pendingUsageBilling.summary,
       pendingUsageBilling.issues.length > 0 ? { issues: pendingUsageBilling.issues } : undefined
     ),
-    systemHealthCheck(
-      "reconciliation",
-      "账务对账",
-      reconciliation.ok ? "ok" : "error",
-      reconciliation.ok ? "账务对账未发现问题" : `${reconciliation.summary.totalIssues} 个账务一致性问题`,
-      reconciliation.summary
-    ),
+    reconciliationHealthCheck(reconciliation),
     systemHealthCheck(
       "settlements",
       "结算提现",
@@ -4933,6 +4927,21 @@ export function sub2BindingHealthCheck(sub2Bindings: {
     sub2Bindings.ok ? "Sub2Binding 与本地租赁一致" : `${sub2Bindings.summary.totalIssues} 个 Sub2 绑定问题`,
     sub2Bindings.summary,
     sub2Bindings.issues.length > 0 ? { issues: sub2Bindings.issues } : undefined
+  );
+}
+
+export function reconciliationHealthCheck(reconciliation: {
+  ok: boolean;
+  summary: { totalIssues: number } & Record<string, string | number | boolean | null>;
+  issues: unknown[];
+}) {
+  return systemHealthCheck(
+    "reconciliation",
+    "账务对账",
+    reconciliation.ok ? "ok" : "error",
+    reconciliation.ok ? "账务对账未发现问题" : `${reconciliation.summary.totalIssues} 个账务一致性问题`,
+    reconciliation.summary,
+    reconciliation.issues.length > 0 ? { issues: reconciliation.issues } : undefined
   );
 }
 

@@ -200,6 +200,7 @@ interface SystemHealthIssueRow {
   walletList?: boolean;
   walletTransactionList?: boolean;
   walletTransactionType?: string;
+  walletTransactionLookup?: string;
   salesList?: boolean;
   walletLookup?: string;
   apiKeyLookup?: string;
@@ -2182,6 +2183,7 @@ function App() {
             onOpenProxyRequest={openProxyRequestCandidate}
             onOpenWallets={() => { void refresh("wallets"); }}
             onOpenWalletTransactions={openWalletTransactionsCandidate}
+            onOpenWalletTransaction={openWalletTransactionCandidate}
             onOpenSales={openSalesCandidate}
             onOpenUser={openUserCandidate}
             onOpenWallet={openWalletCandidate}
@@ -2690,7 +2692,7 @@ function DashboardView({
   );
 }
 
-function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenWallets, onOpenWalletTransactions, onOpenSales, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
+function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMaintenance, onOpenResources, onOpenResource, onOpenProxyRequest, onOpenWallets, onOpenWalletTransactions, onOpenWalletTransaction, onOpenSales, onOpenUser, onOpenWallet, onOpenOrder, onOpenRental, onOpenApiKey, onOpenUsage, onOpenProduct, onOpenSettlement, onOpenWithdrawal, onOpenSub2Status, onOpenAuditLog }: {
   health: SystemHealthResult | null;
   maintenance: SystemMaintenanceResult | null;
   snapshots: SystemHealthSnapshotRow[];
@@ -2701,6 +2703,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
   onOpenProxyRequest: (lookup: string) => void;
   onOpenWallets: () => void;
   onOpenWalletTransactions: (filter?: { type?: string }) => void;
+  onOpenWalletTransaction: (lookup: string) => void;
   onOpenSales: () => void;
   onOpenUser: (userId: string) => void;
   onOpenWallet: (lookup: string) => void;
@@ -2788,6 +2791,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
                 {issue.userId && <button className="secondary mini" onClick={() => onOpenUser(issue.userId!)}>打开用户</button>}
                 {issue.walletList && <button className="secondary mini" onClick={onOpenWallets}>打开余额列表</button>}
                 {issue.walletTransactionList && <button className="secondary mini" onClick={() => onOpenWalletTransactions({ type: issue.walletTransactionType })}>打开余额流水</button>}
+                {issue.walletTransactionLookup && <button className="secondary mini" onClick={() => onOpenWalletTransaction(issue.walletTransactionLookup!)}>打开流水</button>}
                 {issue.salesList && <button className="secondary mini" onClick={onOpenSales}>打开售出情况</button>}
                 {issue.walletLookup && <button className="secondary mini" onClick={() => onOpenWallet(issue.walletLookup!)}>打开余额</button>}
                 {issue.apiKeyLookup && <button className="secondary mini" onClick={() => onOpenApiKey(issue.apiKeyLookup!)}>打开 Key</button>}
@@ -5621,6 +5625,8 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
   return check.detail.issues.slice(0, 100).map((issue, index): SystemHealthIssueRow => {
     const record = isPlainRecord(issue) ? issue : {};
     const sub2StatusFlag = record.sub2Status === true || textValue(record.sub2Status)?.toLowerCase() === "true";
+    const refType = textValue(record.refType)?.toLowerCase();
+    const refId = textValue(record.refId);
     return {
       id: textValue(record.id) ?? String(index),
       checkId: check.id,
@@ -5637,18 +5643,19 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       supplierEmail: textValue(record.supplierEmail),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       userId: textValue(record.userId),
-      orderId: textValue(record.orderId),
+      orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
       walletList: record.walletList === true || textValue(record.walletList)?.toLowerCase() === "true",
       walletTransactionList: record.walletTransactionList === true || textValue(record.walletTransactionList)?.toLowerCase() === "true",
       walletTransactionType: textValue(record.walletTransactionType),
+      walletTransactionLookup: textValue(record.walletTransactionId) ?? refTypeLookup(refType, refId, "wallet_transaction"),
       salesList: record.salesList === true || textValue(record.salesList)?.toLowerCase() === "true",
       walletLookup: textValue(record.walletId) ?? textValue(record.walletAccountId),
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
-      usageLookup: textValue(record.usageId),
+      usageLookup: textValue(record.usageId) ?? refTypeLookup(refType, refId, "usage"),
       productLookup: textValue(record.productId) ?? textValue(record.priceId),
-      settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId),
-      withdrawalLookup: textValue(record.withdrawalId),
+      settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId) ?? refTypeLookup(refType, refId, "settlement"),
+      withdrawalLookup: textValue(record.withdrawalId) ?? refTypeLookup(refType, refId, "withdrawal"),
       sub2AccountId: textValue(record.sub2AccountId),
       sub2Status: check.id === "sub2" || sub2StatusFlag || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
       auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
@@ -5685,7 +5692,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "upstreamRequestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refId", "expected", "actual"];
+  const fields = ["requestId", "upstreamRequestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refType", "refId", "expected", "actual"];
   const parts = fields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
@@ -5705,6 +5712,10 @@ function proxyRequestIssueLookup(issue: Record<string, unknown>, checkId: string
   return textValue(issue.rentalId) ?? textValue(issue.apiKeyId) ?? textValue(issue.apiKeyPrefix);
 }
 
+function refTypeLookup(refType: string | undefined, refId: string | undefined, expectedRefType: string) {
+  return refType === expectedRefType ? refId : undefined;
+}
+
 function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
   return Boolean(
     issue.proxyRequestLookup
@@ -5715,6 +5726,7 @@ function systemHealthIssueHasAction(issue: SystemHealthIssueRow) {
     || issue.userId
     || issue.walletList
     || issue.walletTransactionList
+    || issue.walletTransactionLookup
     || issue.salesList
     || issue.walletLookup
     || issue.apiKeyLookup

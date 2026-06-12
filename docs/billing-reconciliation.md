@@ -56,6 +56,16 @@
   - 说明。
   - 时间。
 
+## 系统健康联动
+
+- `GET /api/admin/system-health` 的 `reconciliation` 检查项现在会在存在问题时返回 `detail.issues`。
+- Admin `可用性巡检` 页会把账务问题纳入统一 `巡检问题样本`：
+  - `refType=usage`：打开用量记录。
+  - `refType=wallet_transaction`：打开余额流水并按流水 ID 搜索。
+  - `refType=settlement`：打开供给方结算。
+  - `refType=withdrawal`：打开提现管理。
+- 该联动只提供证据和跳转入口，不自动改账。
+
 ## 设计边界
 
 - 本功能只读，不自动改账。
