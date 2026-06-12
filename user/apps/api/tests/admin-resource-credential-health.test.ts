@@ -23,7 +23,10 @@ test("resource credential health exposes the first Sub2 account repair candidate
       sub2AccountName: "main",
       accountStatus: "error",
       credentialsStatus: "configured(3)",
-      schedulable: false
+      schedulable: false,
+      tempUnschedulableReason: "token_invalidated",
+      message: "token invalidated",
+      updatedAt: "2026-06-12T14:53:59.925Z"
     }
   ]);
 
@@ -33,6 +36,9 @@ test("resource credential health exposes the first Sub2 account repair candidate
     accountStatus: "error",
     credentialsStatus: "configured(3)",
     schedulable: false,
+    tempUnschedulableReason: "token_invalidated",
+    accountMessage: "token invalidated",
+    updatedAt: "2026-06-12T14:53:59.925Z",
     repairAction: "apply_openai_refresh_token_to_sub2_account"
   });
 });

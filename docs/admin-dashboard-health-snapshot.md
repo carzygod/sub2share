@@ -188,3 +188,13 @@
 - 如果线上巡检证据只保留了 `productName`，仍然可以通过商品名打开商品管理列表。
 
 这样在 `productCatalog`、`resources`、`resourceCredentials`、`sub2` 或 `localProxySmoke` 问题只携带商品名时，管理员不需要复制可读名称再手动搜索，行内“打开商品”仍然能落到对应商品筛选入口。
+
+## 2026-06-13 扩展：首页 Sub2 诊断保留账号消息
+
+首页关键巡检预览继续补齐 Sub2 修复上下文：
+
+- `GET /api/admin/dashboard` 的关键巡检预览保留 `accountMessage`。
+- `sub2` 主问题可以在保留通用阻断 `message` 的同时，把首个可修复账号的失败摘要写入 `accountMessage`。
+- Admin 首页打开 `反代状态` 时优先使用 `accountMessage` 作为账号诊断；旧快照没有该字段时仍回退到 `message`。
+
+这样管理员从首页 `sub2` 检查进入维修页时，可以直接看到 `token_invalidated` 等账号级失败原因，不必先打开完整巡检候选样本。

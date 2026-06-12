@@ -34,7 +34,8 @@
   - `schedulable`
   - `tempUnschedulableReason`
   - `updatedAt`
-  - `message`
+  - `accountMessage`
+  - `message`（仅作为旧数据回退）
 - 当某条 Sub2 修复问题缺少 `supplierEmail`，但系统内恰好只有一个 active 供给方时，健康报告会把该供给方邮箱作为修复候选补入问题上下文。
 - Admin “反代状态”页会使用该上下文：
   - 在页面中展示“修复定位”诊断块，显示来源检查项、推荐维修动作、维修建议、目标账号、账号/凭据状态、账号诊断、资源、供给方、请求定位、Smoke 分段结果和失败请求。

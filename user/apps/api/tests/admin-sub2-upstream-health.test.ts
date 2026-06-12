@@ -32,6 +32,8 @@ test("sub2 upstream samples expose failed OpenAI account repair candidates", () 
       groupNames: ["oai"],
       currentConcurrency: 0,
       concurrency: 1,
+      tempUnschedulableReason: "token_invalidated",
+      updatedAt: "2026-06-12T14:53:59.925Z",
       errorMessage: "token invalidated"
     }
   ]);
@@ -41,6 +43,8 @@ test("sub2 upstream samples expose failed OpenAI account repair candidates", () 
   assert.equal(samples[0].sub2AccountName, "revoked");
   assert.equal(samples[0].accountStatus, "error");
   assert.equal(samples[0].schedulable, false);
+  assert.equal(samples[0].tempUnschedulableReason, "token_invalidated");
+  assert.equal(samples[0].updatedAt, "2026-06-12T14:53:59.925Z");
   assert.equal(samples[0].message, "token invalidated");
 });
 
@@ -61,7 +65,10 @@ test("sub2 upstream issues point no-active-account repairs to the first account 
         sub2AccountName: "revoked",
         accountStatus: "error",
         credentialsStatus: "configured(3)",
-        schedulable: false
+        schedulable: false,
+        tempUnschedulableReason: "token_invalidated",
+        message: "token invalidated",
+        updatedAt: "2026-06-12T14:53:59.925Z"
       }
     ]
   });
@@ -73,6 +80,9 @@ test("sub2 upstream issues point no-active-account repairs to the first account 
   assert.equal(issues[0].accountStatus, "error");
   assert.equal(issues[0].credentialsStatus, "configured(3)");
   assert.equal(issues[0].schedulable, false);
+  assert.equal(issues[0].tempUnschedulableReason, "token_invalidated");
+  assert.equal(issues[0].accountMessage, "token invalidated");
+  assert.equal(issues[0].updatedAt, "2026-06-12T14:53:59.925Z");
   assert.equal(issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(issues[0].message, "oai #2 has 2 OpenAI account(s), but 0 active account(s).");
 });

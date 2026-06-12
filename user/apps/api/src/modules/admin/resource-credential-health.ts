@@ -5,10 +5,23 @@ export interface ResourceCredentialSub2AccountCandidate {
   accountStatus?: string | null;
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
   groupIds?: string | null;
   groupNames?: string | null;
   message?: string | null;
   updatedAt?: string | null;
+}
+
+export interface ResourceCredentialRepairCandidateFields {
+  sub2AccountId?: number | string | null;
+  sub2AccountName?: string | null;
+  accountStatus?: string | null;
+  credentialsStatus?: string | null;
+  schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
+  accountMessage?: string | null;
+  updatedAt?: string | null;
+  repairAction?: "apply_openai_refresh_token_to_sub2_account";
 }
 
 export function resourceCredentialCodexResourceListFields() {
@@ -20,7 +33,7 @@ export function resourceCredentialCodexResourceListFields() {
   };
 }
 
-export function resourceCredentialRepairCandidateFields(candidates: ResourceCredentialSub2AccountCandidate[]) {
+export function resourceCredentialRepairCandidateFields(candidates: ResourceCredentialSub2AccountCandidate[]): ResourceCredentialRepairCandidateFields {
   const candidate = candidates.find((item) => item.sub2AccountId !== undefined && item.sub2AccountId !== null);
   if (!candidate) return {};
 
@@ -30,6 +43,9 @@ export function resourceCredentialRepairCandidateFields(candidates: ResourceCred
     accountStatus: candidate.accountStatus ?? null,
     credentialsStatus: candidate.credentialsStatus ?? null,
     schedulable: candidate.schedulable ?? null,
+    ...(candidate.tempUnschedulableReason !== undefined ? { tempUnschedulableReason: candidate.tempUnschedulableReason } : {}),
+    ...(candidate.message !== undefined ? { accountMessage: candidate.message } : {}),
+    ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
     repairAction: "apply_openai_refresh_token_to_sub2_account"
   };
 }

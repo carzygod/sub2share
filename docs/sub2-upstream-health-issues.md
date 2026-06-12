@@ -20,6 +20,7 @@
   - `gatewayReachable`
   - `sub2Status`
   - `sub2AccountId` / `sub2AccountName` / `accountStatus` / `credentialsStatus` / `schedulable`（当存在可优先修复的账号样本时）
+  - `tempUnschedulableReason` / `updatedAt` / `accountMessage`（从首个可修复账号样本继承，主 issue 的 `message` 仍保留阻断摘要）
   - `repairAction`
   - `error`
   - `actionHint`

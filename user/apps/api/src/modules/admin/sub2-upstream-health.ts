@@ -55,6 +55,9 @@ export interface Sub2UpstreamIssue {
   accountStatus?: string | null;
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
+  tempUnschedulableReason?: string | null;
+  accountMessage?: string | null;
+  updatedAt?: string | null;
   repairAction?: string;
   sub2AccountCount: number;
   openAiAccountCount: number;
