@@ -28,6 +28,8 @@ test("separates resource health issues from concrete resource samples", () => {
     resourcesByStatus: { disabled: 1 },
     totalCodexResources: 0,
     onlineCodexResources: 0,
+    readyOnlineCodexResources: 0,
+    incompleteOnlineCodexResources: 0,
     ignoredInternalResources: 1,
     issueCount: 1,
     resourceSampleCount: 0
@@ -35,9 +37,33 @@ test("separates resource health issues from concrete resource samples", () => {
     disabled: 1,
     totalCodexResources: 0,
     onlineCodexResources: 0,
+    readyOnlineCodexResources: 0,
+    incompleteOnlineCodexResources: 0,
     ignoredInternalResources: 1,
     issueSamples: 1,
     resourceSamples: 0
+  });
+});
+
+test("reports ready and incomplete online Codex resource metrics", () => {
+  assert.deepEqual(supplierResourceAvailabilityMetrics({
+    resourcesByStatus: { online: 3 },
+    totalCodexResources: 4,
+    onlineCodexResources: 3,
+    readyOnlineCodexResources: 1,
+    incompleteOnlineCodexResources: 2,
+    ignoredInternalResources: 0,
+    issueCount: 1,
+    resourceSampleCount: 2
+  }), {
+    online: 3,
+    totalCodexResources: 4,
+    onlineCodexResources: 3,
+    readyOnlineCodexResources: 1,
+    incompleteOnlineCodexResources: 2,
+    ignoredInternalResources: 0,
+    issueSamples: 1,
+    resourceSamples: 2
   });
 });
 

@@ -177,3 +177,19 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 生产已阻断 mock 充值但仍发现最近充值流水时，巡检标记为 `warning`，issue type 为 `production_mock_recharge_recent_ledger`，并继续提供充值流水样本和后台跳转字段。
 
 该检查仍然不等同于真实支付全链路验收；它只证明 mock 充值是否被生产默认阻断，以及历史或近期 mock 充值是否仍需要管理员复核。
+
+## 2026-06-12 Update: Ready Online Codex Resource
+
+`resources` / `共享资源` 巡检不再只把 `status=online` 当作生产 Codex 资源可交付证据。巡检现在同时返回：
+
+- `onlineCodexResources`：生产 Codex 资源中被标记为 `online` 的数量。
+- `readyOnlineCodexResources`：同时满足 `status=online`、已绑定 `sub2AccountId`、并拥有 `active openai_refresh_token` 凭据的生产 Codex 资源数量。
+- `incompleteOnlineCodexResources`：被标记为 `online`，但缺少 Sub2 账号或 active OpenAI refresh token 凭据的生产 Codex 资源数量。
+
+当没有 ready online Codex 资源时，巡检会保持 `warning`：
+
+- 如果没有任何 online Codex 资源，继续返回 `codex_online_resource_missing`。
+- 如果存在 online Codex 资源但都不可交付，返回 `codex_ready_resource_missing`。
+- 如果已有 ready 资源但仍存在不完整 online 资源，返回 `codex_online_resource_incomplete`。
+
+候选样本现在会展示 `credentialType` 与 `credentialStatus`，便于管理员判断资源是缺少 Sub2 绑定、缺少凭据，还是凭据状态不正确。该检查仍然不直接调用 OpenAI；真实 `/v1/responses` 成功仍由 `sub2`、`localProxySmoke` 和反代请求日志共同证明。

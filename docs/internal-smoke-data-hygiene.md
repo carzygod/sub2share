@@ -96,6 +96,10 @@ Affected health metrics:
 
 - `resources.metrics.totalCodexResources` counts production Codex resources only.
 - `resources.metrics.onlineCodexResources` counts production online Codex resources only.
+- `resources.metrics.readyOnlineCodexResources` counts production online Codex resources that also have a Sub2 account id and an active `openai_refresh_token` resource credential.
+- `resources.metrics.incompleteOnlineCodexResources` counts production online Codex resources that are missing the Sub2 binding or active OpenAI refresh token credential required for delivery.
 - `resources.metrics.ignoredInternalResources` reports how many internal supplier resources were ignored.
 - `resources.metrics.issueSamples` counts structured resource health issues, while `resources.metrics.resourceSamples` counts concrete resource rows returned as candidates.
 - `resourceCredentials` only treats credentials on production Codex resources as applicable repair candidates.
+
+If a production Codex resource is manually switched to `online` without a Sub2 account id or active OpenAI refresh token credential, `resources` remains `warning`. This prevents an operator from clearing the shared-resource check by changing only the status flag while `/v1/responses` would still be unable to reach a valid Sub2/OpenAI upstream.

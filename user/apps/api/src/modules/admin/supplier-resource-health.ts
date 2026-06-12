@@ -10,6 +10,8 @@ export interface SupplierResourceAvailabilityMetricsInput {
   resourcesByStatus: Record<string, number>;
   totalCodexResources: number;
   onlineCodexResources: number;
+  readyOnlineCodexResources: number;
+  incompleteOnlineCodexResources: number;
   ignoredInternalResources: number;
   issueCount: number;
   resourceSampleCount: number;
@@ -40,6 +42,8 @@ export function supplierResourceAvailabilityMetrics(input: SupplierResourceAvail
     ...input.resourcesByStatus,
     totalCodexResources: input.totalCodexResources,
     onlineCodexResources: input.onlineCodexResources,
+    readyOnlineCodexResources: input.readyOnlineCodexResources,
+    incompleteOnlineCodexResources: input.incompleteOnlineCodexResources,
     ignoredInternalResources: input.ignoredInternalResources,
     issueSamples: input.issueCount,
     resourceSamples: input.resourceSampleCount

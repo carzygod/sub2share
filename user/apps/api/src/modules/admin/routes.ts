@@ -5464,9 +5464,26 @@ async function resourceAvailabilityHealthCheck(
     resourceType: "codex",
     ...nonSmokeSupplierResourceWhere()
   };
-  const [onlineCodexResources, totalCodexResources, ignoredInternalResources, samples, supplierCandidates] = await Promise.all([
+  const readyOnlineCodexResourceWhere: Prisma.SupplierResourceWhereInput = {
+    ...codexResourceWhere,
+    status: "online",
+    sub2AccountId: { not: null },
+    credential: { is: { credentialType: "openai_refresh_token", status: "active" } }
+  };
+  const [
+    onlineCodexResources,
+    readyOnlineCodexResources,
+    totalCodexResources,
+    ignoredInternalResources,
+    samples,
+    onlineCodexSamples,
+    supplierCandidates
+  ] = await Promise.all([
     prisma.supplierResource.count({
       where: { ...codexResourceWhere, status: "online" }
+    }),
+    prisma.supplierResource.count({
+      where: readyOnlineCodexResourceWhere
     }),
     prisma.supplierResource.count({
       where: codexResourceWhere
@@ -5495,7 +5512,32 @@ async function resourceAvailabilityHealthCheck(
           select: {
             user: { select: { email: true } }
           }
-        }
+        },
+        credential: { select: resourceCredentialSummarySelect }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10
+    }),
+    prisma.supplierResource.findMany({
+      where: {
+        ...codexResourceWhere,
+        status: "online"
+      },
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        level: true,
+        maxConcurrency: true,
+        sub2AccountId: true,
+        lastCheckedAt: true,
+        updatedAt: true,
+        supplier: {
+          select: {
+            user: { select: { email: true } }
+          }
+        },
+        credential: { select: resourceCredentialSummarySelect }
       },
       orderBy: { updatedAt: "desc" },
       take: 10
@@ -5509,10 +5551,22 @@ async function resourceAvailabilityHealthCheck(
       take: 2
     })
   ]);
+  const incompleteOnlineCodexSamples = onlineCodexSamples.filter((resource) => {
+    return !resource.sub2AccountId
+      || resource.credential?.credentialType !== "openai_refresh_token"
+      || resource.credential.status !== "active";
+  });
+  const incompleteOnlineCodexResources = Math.max(onlineCodexResources - readyOnlineCodexResources, 0);
+  const resourceSamplesById = new Map<string, (typeof samples)[number] | (typeof onlineCodexSamples)[number]>();
+  for (const resource of [...samples, ...incompleteOnlineCodexSamples]) {
+    resourceSamplesById.set(resource.id, resource);
+  }
+  const resourceSamples = [...resourceSamplesById.values()];
   const abnormalResources = resourcesByStatus.abnormal ?? 0;
   const issues: ResourceAvailabilityIssue[] = [];
-  const abnormalSample = samples.find((resource) => resource.status === "abnormal");
-  const nonOnlineCodexSample = samples.find((resource) => resource.resourceType === "codex" && resource.status !== "online");
+  const abnormalSample = resourceSamples.find((resource) => resource.status === "abnormal");
+  const nonOnlineCodexSample = resourceSamples.find((resource) => resource.resourceType === "codex" && resource.status !== "online");
+  const incompleteOnlineCodexSample = incompleteOnlineCodexSamples[0];
   const supplierEmailCandidate = supplierCandidates.length === 1 ? supplierCandidates[0].user.email : null;
 
   if (abnormalResources > 0) {
@@ -5551,13 +5605,48 @@ async function resourceAvailabilityHealthCheck(
         : "No production Codex shared resource exists for OpenAI/Codex rental delivery."
     });
   }
+  if (onlineCodexResources > 0 && readyOnlineCodexResources === 0) {
+    issues.push({
+      id: "resource:codex-ready-missing",
+      type: "codex_ready_resource_missing",
+      severity: "warning",
+      resourceId: incompleteOnlineCodexSample?.id,
+      ...supplierResourceMissingCodexIssueFields({
+        supplierEmail: incompleteOnlineCodexSample?.supplier.user.email ?? supplierEmailCandidate,
+        resourceStatus: incompleteOnlineCodexSample?.status ?? "online",
+        resourceType: "codex",
+        sub2AccountId: incompleteOnlineCodexSample?.sub2AccountId ?? null,
+        sub2AccountCandidates
+      }),
+      actionHint: "Open an online Codex resource, bind its Sub2 account and active OpenAI refresh token credential, apply it to Sub2, then rerun smoke.",
+      message: `${onlineCodexResources} production Codex shared resource(s) are marked online, but none have both a Sub2 account id and an active OpenAI refresh token credential.`
+    });
+  } else if (incompleteOnlineCodexResources > 0) {
+    issues.push({
+      id: "resource:codex-online-incomplete",
+      type: "codex_online_resource_incomplete",
+      severity: "warning",
+      resourceId: incompleteOnlineCodexSample?.id,
+      ...supplierResourceMissingCodexIssueFields({
+        supplierEmail: incompleteOnlineCodexSample?.supplier.user.email ?? null,
+        resourceStatus: incompleteOnlineCodexSample?.status ?? "online",
+        resourceType: "codex",
+        sub2AccountId: incompleteOnlineCodexSample?.sub2AccountId ?? null,
+        sub2AccountCandidates
+      }),
+      actionHint: "Open the incomplete online Codex resource, bind a Sub2 account and active OpenAI refresh token credential, apply it to Sub2, then retest it.",
+      message: `${incompleteOnlineCodexResources} online production Codex resource(s) are missing a Sub2 account id or active OpenAI refresh token credential.`
+    });
+  }
 
   const status: SystemHealthStatus = issues.length > 0 ? "warning" : "ok";
-  const summary = abnormalResources > 0 && onlineCodexResources === 0
-    ? `${abnormalResources} abnormal production resource(s), and no online production Codex shared resource`
+  const summary = abnormalResources > 0 && readyOnlineCodexResources === 0
+    ? `${abnormalResources} abnormal production resource(s), and no ready online production Codex shared resource`
     : abnormalResources > 0
       ? `${abnormalResources} abnormal production resource(s)`
-      : onlineCodexResources === 0 ? "No online production Codex shared resource" : "Production shared resources are healthy";
+      : readyOnlineCodexResources === 0
+        ? onlineCodexResources === 0 ? "No online production Codex shared resource" : "No ready online production Codex shared resource"
+        : incompleteOnlineCodexResources > 0 ? `${incompleteOnlineCodexResources} online production Codex resource(s) need credential repair` : "Production shared resources are healthy";
 
   return systemHealthCheck(
     "resources",
@@ -5568,13 +5657,15 @@ async function resourceAvailabilityHealthCheck(
       resourcesByStatus,
       totalCodexResources,
       onlineCodexResources,
+      readyOnlineCodexResources,
+      incompleteOnlineCodexResources,
       ignoredInternalResources,
       issueCount: issues.length,
-      resourceSampleCount: samples.length
+      resourceSampleCount: resourceSamples.length
     }),
-    issues.length > 0 || samples.length > 0 ? {
+    issues.length > 0 || resourceSamples.length > 0 ? {
       issues,
-      samples: samples.map((resource) => ({
+      samples: resourceSamples.map((resource) => ({
         id: resource.id,
         resourceId: resource.id,
         resourceType: resource.resourceType,
@@ -5583,9 +5674,11 @@ async function resourceAvailabilityHealthCheck(
         maxConcurrency: resource.maxConcurrency,
         sub2AccountId: resource.sub2AccountId,
         supplierEmail: resource.supplier.user.email,
+        credentialType: resource.credential?.credentialType ?? null,
+        credentialStatus: resource.credential?.status ?? null,
         lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null,
         updatedAt: resource.updatedAt.toISOString(),
-        message: `${resource.resourceType} resource is ${resource.status}; Sub2 account ${resource.sub2AccountId ?? "-"}`
+        message: `${resource.resourceType} resource is ${resource.status}; Sub2 account ${resource.sub2AccountId ?? "-"}; credential ${resource.credential?.credentialType ?? "-"}/${resource.credential?.status ?? "-"}`
       }))
     } : undefined
   );
