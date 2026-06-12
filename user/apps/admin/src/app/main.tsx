@@ -2498,6 +2498,18 @@ function App() {
             logs={auditLogs}
             query={listQueries.audit}
             meta={listMeta.audit}
+            onOpenUser={openUserCandidate}
+            onOpenWallet={openWalletCandidate}
+            onOpenOrder={openOrderCandidate}
+            onOpenRental={openRentalCandidate}
+            onOpenApiKey={openApiKeyCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenProduct={openProductCandidate}
+            onOpenResource={openResourceCandidate}
+            onOpenSettlement={openSettlementCandidate}
+            onOpenWithdrawal={openWithdrawalCandidate}
+            onOpenSub2Status={openSub2StatusCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
             onDraft={(patch) => updateListDraft("audit", patch)}
             onFilter={(event) => submitListFilters("audit", event)}
             onClear={() => clearListFilters("audit")}
@@ -5126,7 +5138,30 @@ function WithdrawalsView({ withdrawals, summary, query, meta, onCreate, onStatus
   );
 }
 
-function AuditLogsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport }: { logs: AuditLogRow[] } & ManagedListProps) {
+interface AuditLogOpenHandlers {
+  onOpenUser: (userId: string) => void;
+  onOpenWallet: (lookup: string) => void;
+  onOpenOrder: (orderId: string) => void;
+  onOpenRental: (rentalId: string) => void;
+  onOpenApiKey: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenProduct: (lookup: string) => void;
+  onOpenResource: (resourceId: string) => void;
+  onOpenSettlement: (lookup: string) => void;
+  onOpenWithdrawal: (lookup: string) => void;
+  onOpenSub2Status: (context?: string | Sub2RepairContext) => void;
+  onOpenProxyRequest: (lookup: string) => void;
+}
+
+interface AuditLogTargetAction {
+  key: string;
+  label: string;
+  onClick: () => void;
+}
+
+function AuditLogsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, onExport, ...openHandlers }: {
+  logs: AuditLogRow[];
+} & ManagedListProps & AuditLogOpenHandlers) {
   return (
     <>
       <ListControls
@@ -5140,20 +5175,154 @@ function AuditLogsView({ logs, query, meta, onDraft, onFilter, onClear, onPage, 
         onPage={onPage}
         onExport={onExport}
       />
-      <TablePanel title="操作审计" count={meta.total} headers={["操作者", "动作", "对象", "结果摘要", "来源", "时间"]}>
-        {logs.map((log) => (
-          <tr key={log.id}>
-            <td><strong>{log.actor?.email ?? "-"}</strong><small>{log.actor?.displayName ?? log.actor?.id ?? "-"}</small></td>
-            <td>{log.action}</td>
-            <td><strong>{log.objectType}</strong><small>{log.objectId ?? "-"}</small></td>
-            <td><small>{auditSummary(log.after)}</small></td>
-            <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
-            <td>{dateTime(log.createdAt)}</td>
-          </tr>
-        ))}
+      <TablePanel title="操作审计" count={meta.total} headers={["操作者", "动作", "对象", "结果摘要", "来源", "时间", "操作"]}>
+        {logs.map((log) => {
+          const actions = auditLogTargetActions(log, openHandlers);
+          return (
+            <tr key={log.id}>
+              <td><strong>{log.actor?.email ?? "-"}</strong><small>{log.actor?.displayName ?? log.actor?.id ?? "-"}</small></td>
+              <td>{log.action}</td>
+              <td><strong>{log.objectType}</strong><small>{log.objectId ?? "-"}</small></td>
+              <td><small>{auditSummary(log.after)}</small></td>
+              <td><small>{log.ipAddress ?? "-"}</small><small>{log.userAgent ?? "-"}</small></td>
+              <td>{dateTime(log.createdAt)}</td>
+              <td>
+                <div className="row-actions">
+                  {actions.map((action) => (
+                    <button key={action.key} type="button" className="secondary mini" onClick={action.onClick}>{action.label}</button>
+                  ))}
+                  {actions.length === 0 && <small>-</small>}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </TablePanel>
     </>
   );
+}
+
+function auditLogTargetActions(log: AuditLogRow, handlers: AuditLogOpenHandlers) {
+  const actions: AuditLogTargetAction[] = [];
+  const seen = new Set<string>();
+  const records = [log.after, log.before].filter(isPlainRecord);
+
+  function add(label: string, target: string, lookup: unknown, open: (value: string) => void) {
+    const value = textValue(lookup);
+    if (!value) return;
+    const key = `${target}:${value}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    actions.push({ key, label, onClick: () => open(value) });
+  }
+
+  add("操作者", "user", log.actor?.id, handlers.onOpenUser);
+
+  const objectId = textValue(log.objectId);
+  switch (log.objectType) {
+    case "auth":
+    case "user":
+      add("对象用户", "user", objectId, handlers.onOpenUser);
+      break;
+    case "wallet":
+      add("余额", "wallet", objectId, handlers.onOpenWallet);
+      break;
+    case "order":
+      add("订单", "order", objectId, handlers.onOpenOrder);
+      break;
+    case "rental":
+      add("租赁", "rental", objectId, handlers.onOpenRental);
+      break;
+    case "api_key":
+      add("API Key", "apiKey", objectId, handlers.onOpenApiKey);
+      break;
+    case "product":
+      add("商品", "product", objectId, handlers.onOpenProduct);
+      break;
+    case "product_price":
+      add("商品", "product", auditLogRecordText(records, "productId"), handlers.onOpenProduct);
+      break;
+    case "supplier":
+      add("供给方用户", "user", auditLogRecordText(records, "userId"), handlers.onOpenUser);
+      break;
+    case "supplier_resource":
+      add("资源", "resource", objectId, handlers.onOpenResource);
+      break;
+    case "settlement":
+      add("结算", "settlement", objectId, handlers.onOpenSettlement);
+      break;
+    case "withdrawal":
+      add("提现", "withdrawal", objectId, handlers.onOpenWithdrawal);
+      break;
+    case "sub2_account":
+      add("反代状态", "sub2", objectId, handlers.onOpenSub2Status);
+      break;
+    case "sub2_proxy":
+      add("API Key", "apiKey", objectId, handlers.onOpenApiKey);
+      break;
+    default:
+      break;
+  }
+
+  add("用户", "user", auditLogRecordText(records, "userId"), handlers.onOpenUser);
+  add("余额", "wallet", auditLogRecordText(records, "walletId"), handlers.onOpenWallet);
+  add("订单", "order", auditLogRecordText(records, "orderId"), handlers.onOpenOrder);
+  add("租赁", "rental", auditLogRecordText(records, "rentalId") ?? auditLogNestedText(records, ["localProxy", "rentalId"]) ?? auditLogNestedText(records, ["smokeTest", "localProxy", "rentalId"]), handlers.onOpenRental);
+  add("API Key", "apiKey", auditLogRecordText(records, "apiKeyId") ?? auditLogRecordText(records, "apiKeyPrefix") ?? auditLogNestedText(records, ["localProxy", "apiKeyPrefix"]) ?? auditLogNestedText(records, ["smokeTest", "localProxy", "apiKeyPrefix"]), handlers.onOpenApiKey);
+  add("商品", "product", auditLogRecordText(records, "productId"), handlers.onOpenProduct);
+  add("资源", "resource", auditLogRecordText(records, "resourceId") ?? auditLogRecordText(records, "supplierResourceId") ?? auditLogNestedText(records, ["resourceCredentialSync", "resource", "id"]), handlers.onOpenResource);
+  add("用量", "usage", auditLogRecordText(records, "usageRecordId") ?? auditLogRecordText(records, "usageId") ?? auditLogRecordText(records, "sub2RequestId") ?? auditLogRecordText(records, "upstreamRequestId"), handlers.onOpenUsage);
+  add("结算", "settlement", auditLogRecordText(records, "settlementId"), handlers.onOpenSettlement);
+  add("提现", "withdrawal", auditLogRecordText(records, "withdrawalId"), handlers.onOpenWithdrawal);
+  add("反代状态", "sub2", auditLogRecordText(records, "sub2AccountId") ?? auditLogRecordText(records, "accountId") ?? auditLogNestedText(records, ["resourceCredentialSync", "resource", "sub2AccountId"]), handlers.onOpenSub2Status);
+  add("反代请求", "proxyRequest", auditLogRecordText(records, "requestId") ?? auditLogProxyRequestLookup(records), handlers.onOpenProxyRequest);
+
+  return actions;
+}
+
+function auditLogRecordText(records: Record<string, unknown>[], key: string) {
+  for (const record of records) {
+    const value = textValue(record[key]);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function auditLogNestedText(records: Record<string, unknown>[], path: string[]) {
+  for (const record of records) {
+    let current: unknown = record;
+    for (const segment of path) {
+      if (!isPlainRecord(current)) {
+        current = undefined;
+        break;
+      }
+      current = current[segment];
+    }
+    const value = textValue(current);
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function auditLogProxyRequestLookup(records: Record<string, unknown>[]) {
+  for (const record of records) {
+    const direct = auditLogProxyRequestFromLocalProxy(nestedRecord(record, "localProxy"));
+    if (direct) return direct;
+    const smokeTest = nestedRecord(record, "smokeTest");
+    const smoke = smokeTest ? auditLogProxyRequestFromLocalProxy(nestedRecord(smokeTest, "localProxy")) : undefined;
+    if (smoke) return smoke;
+  }
+  return undefined;
+}
+
+function auditLogProxyRequestFromLocalProxy(localProxy: Record<string, unknown> | null) {
+  const logsValue = localProxy?.proxyRequestLogs;
+  const logs = Array.isArray(logsValue) ? logsValue.filter(isPlainRecord) : [];
+  const failed = logs.find((log) => {
+    const status = Number(textValue(log.statusCode) ?? 0);
+    return status >= 400 || Boolean(textValue(log.errorCode));
+  }) ?? logs[0];
+  return failed ? textValue(failed.requestId) ?? textValue(failed.id) : undefined;
 }
 
 function ListControls({ query, meta, searchPlaceholder, statusOptions = [], resourceTypeOptions = [], actionPlaceholder, onDraft, onFilter, onClear, onPage, onExport }: {
