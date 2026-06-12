@@ -142,7 +142,7 @@
 - 带 `repairAction=apply_openai_refresh_token_to_sub2_account` 的商品目录问题会继承当前 Sub2 修复候选账号字段，包括 `sub2AccountId`、`sub2AccountName`、`accountStatus`、`credentialsStatus` 和 `schedulable`。
 - `GET /api/admin/dashboard` 的关键巡检预览保留 `resourceList`，首页摘要可以显示这条商品风险同时关联共享资源修复。
 - Admin 首页在 `productCatalog` 问题具备资源修复上下文时，除“打开商品”外，还会显示“打开共享资源”按钮。
-- 点击“打开共享资源”会带入 `supplierEmail`、`resourceType`、`resourceScope`、`resourceStatus`、`sub2AccountId` 和 `repairAction`，共享资源创建表单会默认继续凭据应用和端到端 smoke 验收。
+- 点击“打开共享资源”会带入 `supplierEmail`、`resourceType`、`resourceScope`、`resourceStatus`、`sub2AccountId`、账号诊断、失败 smoke 证据和 `repairAction`，共享资源创建表单会默认继续凭据应用和端到端 smoke 验收。
 
 这样管理员既能从首页确认受影响商品，也能直接进入真正恢复交付能力所需的生产 Codex 共享资源修复入口。
 
@@ -155,6 +155,16 @@
 - 该上下文只作为管理员确认信息，不影响资源筛选、凭据保存或 Sub2 smoke 行为。
 
 管理员在创建或修复生产 Codex 共享资源前，可以直接确认这次修复是为了恢复哪一个可售商品的交付能力。
+
+## 2026-06-13 扩展：共享资源修复表单保留账号诊断
+
+从 `resources`、`productCatalog` 或完整巡检页进入共享资源修复时，资源创建默认值继续保留账号诊断：
+
+- Dashboard 与完整可用性巡检页的“打开共享资源”都会传递 `sub2AccountName`、`accountStatus`、`credentialsStatus`、`schedulable`、`tempUnschedulableReason`、`accountMessage` 和 `updatedAt`。
+- 共享资源创建表单的修复诊断条新增 `Account status` 与 `Account diagnostics`。
+- 失败请求诊断继续保留 `ageMinutes`、`staleThresholdMinutes` 和 `freshMinutesRemaining`。
+
+管理员在创建生产 Codex 共享资源前，可以在同一表单确认目标 Sub2 账号是否因 token invalidated 等原因不可调度。
 
 ## 2026-06-12 扩展：首页巡检快照新鲜度
 

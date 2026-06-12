@@ -1909,6 +1909,13 @@ function App() {
       supplierEmail: filter?.supplierEmail,
       resourceType: resourceType || undefined,
       sub2AccountId: filter?.sub2AccountId,
+      sub2AccountName: filter?.sub2AccountName,
+      accountStatus: filter?.accountStatus,
+      credentialsStatus: filter?.credentialsStatus,
+      schedulable: filter?.schedulable,
+      tempUnschedulableReason: filter?.tempUnschedulableReason,
+      accountMessage: filter?.accountMessage,
+      accountUpdatedAt: filter?.accountUpdatedAt,
       repairAction: filter?.repairAction,
       checkId: filter?.checkId,
       resourceScope,
@@ -1918,9 +1925,14 @@ function App() {
       model: filter?.model,
       responsesOk: filter?.responsesOk,
       localProxyOk: filter?.localProxyOk,
+      smokeTestSkippedReason: filter?.smokeTestSkippedReason,
       proxyRequestPath: filter?.proxyRequestPath,
       proxyRequestStatusCode: filter?.proxyRequestStatusCode,
-      proxyRequestErrorCode: filter?.proxyRequestErrorCode
+      proxyRequestErrorCode: filter?.proxyRequestErrorCode,
+      ageMinutes: filter?.ageMinutes,
+      stale: filter?.stale,
+      staleThresholdMinutes: filter?.staleThresholdMinutes,
+      freshMinutesRemaining: filter?.freshMinutesRemaining
     });
     setSelectedResource(null);
     setListQueries((current) => ({ ...current, resources: query }));
@@ -3031,7 +3043,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthIssueSub2RepairContext(issue))}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, productId: issue.productId, productName: issue.productName, priceId: issue.priceId })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, sub2AccountName: issue.sub2AccountName, accountStatus: issue.accountStatus, credentialsStatus: issue.credentialsStatus, schedulable: issue.schedulable, tempUnschedulableReason: issue.tempUnschedulableReason, accountMessage: issue.accountMessage, accountUpdatedAt: issue.accountUpdatedAt, repairAction: issue.repairAction, productId: issue.productId, productName: issue.productName, priceId: issue.priceId, model: issue.model, responsesOk: issue.responsesOk, localProxyOk: issue.localProxyOk, smokeTestSkippedReason: issue.smokeTestSkippedReason, proxyRequestPath: issue.proxyRequestPath, proxyRequestStatusCode: issue.proxyRequestStatusCode, proxyRequestErrorCode: issue.proxyRequestErrorCode, ageMinutes: issue.ageMinutes, stale: issue.stale, staleThresholdMinutes: issue.staleThresholdMinutes, freshMinutesRemaining: issue.freshMinutesRemaining })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -3069,7 +3081,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 <div className="row-actions">
                   {sample.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(sample.proxyRequestLookup!)}>打开反代请求</button>}
-                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, productId: sample.productId, productName: sample.productName, priceId: sample.priceId })}>打开共享资源</button>}
+                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, sub2AccountName: sample.sub2AccountName, accountStatus: sample.accountStatus, credentialsStatus: sample.credentialsStatus, schedulable: sample.schedulable, tempUnschedulableReason: sample.tempUnschedulableReason, accountMessage: sample.accountMessage, accountUpdatedAt: sample.accountUpdatedAt, repairAction: sample.repairAction, productId: sample.productId, productName: sample.productName, priceId: sample.priceId, model: sample.model, responsesOk: sample.responsesOk, localProxyOk: sample.localProxyOk, smokeTestSkippedReason: sample.smokeTestSkippedReason, proxyRequestPath: sample.proxyRequestPath, proxyRequestStatusCode: sample.proxyRequestStatusCode, proxyRequestErrorCode: sample.proxyRequestErrorCode, ageMinutes: sample.ageMinutes, stale: sample.stale, staleThresholdMinutes: sample.staleThresholdMinutes, freshMinutesRemaining: sample.freshMinutesRemaining })}>打开共享资源</button>}
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
                   {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
                   {sample.orderId && <button className="secondary mini" onClick={() => onOpenOrder(sample.orderId!)}>打开订单</button>}
@@ -6158,6 +6170,13 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     status: textValue(record?.resourceStatus),
     scope: textValue(record?.resourceScope),
     sub2AccountId: textValue(record?.sub2AccountId),
+    sub2AccountName: textValue(record?.sub2AccountName),
+    accountStatus: textValue(record?.accountStatus),
+    credentialsStatus: textValue(record?.credentialsStatus),
+    schedulable: textValue(record?.schedulable),
+    tempUnschedulableReason: textValue(record?.tempUnschedulableReason),
+    accountMessage: textValue(record?.accountMessage) ?? textValue(record?.message),
+    accountUpdatedAt: textValue(record?.updatedAt),
     repairAction: textValue(record?.repairAction),
     checkId,
     productId: textValue(record?.productId),
@@ -6166,9 +6185,14 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     model: textValue(record?.model),
     responsesOk: textValue(record?.responsesOk),
     localProxyOk: textValue(record?.localProxyOk),
+    smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
     proxyRequestPath: textValue(record?.proxyRequestPath),
     proxyRequestStatusCode: textValue(record?.proxyRequestStatusCode),
-    proxyRequestErrorCode: textValue(record?.proxyRequestErrorCode)
+    proxyRequestErrorCode: textValue(record?.proxyRequestErrorCode),
+    ageMinutes: textValue(record?.ageMinutes),
+    stale: textValue(record?.stale),
+    staleThresholdMinutes: textValue(record?.staleThresholdMinutes),
+    freshMinutesRemaining: textValue(record?.freshMinutesRemaining)
   };
 }
 

@@ -50,12 +50,29 @@
 - 已存在的商品字段不会被覆盖，非 Codex 资源类型不会被强行注入。
 - 这样管理员从任意相关巡检项打开共享资源修复时，都能看到同一商品价格定位。
 
+## 2026-06-13 扩展：共享资源创建诊断继承账号状态
+
+- 从首页或完整 `可用性巡检` 的 `resources` / `productCatalog` 问题打开共享资源时，会继续传递 Sub2 账号诊断：
+  - `sub2AccountName`
+  - `accountStatus`
+  - `credentialsStatus`
+  - `schedulable`
+  - `tempUnschedulableReason`
+  - `accountMessage`
+  - `updatedAt`
+- 共享资源创建表单诊断条新增：
+  - `Account status`
+  - `Account diagnostics`
+- 同一诊断条的 `Failure` 项也会保留 smoke 证据年龄、过期阈值和剩余新鲜时间。
+- 该上下文只用于管理员确认，不改变共享资源创建、凭据保存、Sub2 应用或 smoke test 的执行条件。
+
 ## 价值
 
 - “共享资源缺失”与“上游账号失效”在首页进入各自更贴近的管理入口，减少管理员在反代状态和共享资源之间来回切换。
 - 管理员可以从当前线上 `No online production Codex shared resource` warning 直接进入共享资源创建/筛选路径。
 - 管理员粘贴有效 OpenAI refresh token 后，可以在同一个创建提交中完成“保存凭据 -> 应用到 Sub2 -> 账号测试 -> 端到端 smoke”的闭环，减少只创建资源但忘记验证 `/v1/responses` 的空窗。
 - 管理员在创建前可以直接确认这次表单默认值来自哪条巡检问题、绑定哪个 Sub2 账号、是否会自动应用凭据和运行 smoke，降低误把巡检上下文当成普通资源创建的风险。
+- 管理员在共享资源创建入口也能看到目标 Sub2 账号的状态、凭据状态和 token invalidated/token revoked 摘要，不必切回 `反代状态` 页面确认账号根因。
 - 管理员在最终确认应用凭据前也能看到受影响商品，降低多个 Codex 商品并存时误修复的风险。
 - 管理员不必只从 `productCatalog` 入口进入，`resources` 或 `resourceCredentials` 等更高优先级问题同样保留商品价格定位。
 - 该改动只影响 Admin 导航和默认筛选，不会自动写入 refresh token、不会修改 Sub2 账号，也不会触发真实 OpenAI/Codex smoke test。

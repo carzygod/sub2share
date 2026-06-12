@@ -44,12 +44,24 @@ export interface ResourceCreateDefaults {
   productId?: string;
   productName?: string;
   priceId?: string;
+  sub2AccountName?: string;
+  accountStatus?: string;
+  credentialsStatus?: string;
+  schedulable?: string;
+  tempUnschedulableReason?: string;
+  accountMessage?: string;
+  accountUpdatedAt?: string;
   model?: string;
   responsesOk?: string;
   localProxyOk?: string;
+  smokeTestSkippedReason?: string;
   proxyRequestPath?: string;
   proxyRequestStatusCode?: string;
   proxyRequestErrorCode?: string;
+  ageMinutes?: string;
+  stale?: string;
+  staleThresholdMinutes?: string;
+  freshMinutesRemaining?: string;
 }
 
 export interface Sub2RepairContextItem {
@@ -155,9 +167,23 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
   const failure = [
     defaults.proxyRequestPath,
     defaults.proxyRequestStatusCode ? `HTTP ${defaults.proxyRequestStatusCode}` : undefined,
-    defaults.proxyRequestErrorCode
+    defaults.proxyRequestErrorCode,
+    defaults.smokeTestSkippedReason ? `skip ${defaults.smokeTestSkippedReason}` : undefined,
+    defaults.ageMinutes ? `${defaults.ageMinutes} 分钟前` : undefined,
+    defaults.staleThresholdMinutes ? `阈值 ${defaults.staleThresholdMinutes} 分钟` : undefined,
+    defaults.freshMinutesRemaining && defaults.stale !== "true" ? `剩余 ${defaults.freshMinutesRemaining} 分钟过期` : undefined,
+    defaults.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   const product = resourceCreateDefaultsProductText(defaults);
+  const sub2Account = defaults.sub2AccountId
+    ? `#${defaults.sub2AccountId}${defaults.sub2AccountName ? ` / ${defaults.sub2AccountName}` : ""}`
+    : defaults.sub2AccountName;
+  const accountDiagnostics = [
+    defaults.schedulable ? `schedulable ${defaults.schedulable}` : undefined,
+    defaults.tempUnschedulableReason ? `temp ${defaults.tempUnschedulableReason}` : undefined,
+    defaults.accountUpdatedAt ? `updated ${defaults.accountUpdatedAt}` : undefined,
+    defaults.accountMessage ? defaults.accountMessage.slice(0, 240) : undefined
+  ].filter(Boolean).join(" / ");
 
   return [
     { label: "Source", value: [defaults.checkId, defaults.resourceScope].filter(Boolean).join(" / ") },
@@ -165,7 +191,9 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
     { label: "Product", value: product },
     { label: "Supplier", value: defaults.supplierEmail },
     { label: "Resource", value: resource },
-    { label: "Sub2 account", value: defaults.sub2AccountId ? `#${defaults.sub2AccountId}` : undefined },
+    { label: "Sub2 account", value: sub2Account },
+    { label: "Account status", value: [defaults.accountStatus, defaults.credentialsStatus].filter(Boolean).join(" / ") },
+    { label: "Account diagnostics", value: accountDiagnostics },
     { label: "Credential apply", value: resourceCreateDefaultsShouldApplyCredential(defaults) ? "enabled after create" : undefined },
     { label: "Smoke", value: resourceCreateDefaultsShouldRunSmokeTest(defaults) ? smoke || "enabled after apply" : undefined },
     { label: "Failure", value: failure }

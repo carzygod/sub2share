@@ -208,13 +208,24 @@ test("resource create defaults expose repair context for operators", () => {
     resourceType: "codex",
     resourceScope: "production",
     sub2AccountId: "2",
+    sub2AccountName: "codex-primary",
+    accountStatus: "error",
+    credentialsStatus: "configured(3)",
+    schedulable: "false",
+    tempUnschedulableReason: "token_invalidated",
+    accountMessage: "Authentication failed: token_invalidated",
+    accountUpdatedAt: "2026-06-12T22:53:59.925286+08:00",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     model: "gpt-5.3-codex",
     responsesOk: "false",
     localProxyOk: "false",
     proxyRequestPath: "/v1/responses",
     proxyRequestStatusCode: "503",
-    proxyRequestErrorCode: "upstream_http_503"
+    proxyRequestErrorCode: "upstream_http_503",
+    ageMinutes: "1341",
+    staleThresholdMinutes: "1440",
+    freshMinutesRemaining: "99",
+    stale: "false"
   });
 
   assert.deepEqual(items.map((item) => item.label), [
@@ -223,6 +234,8 @@ test("resource create defaults expose repair context for operators", () => {
     "Supplier",
     "Resource",
     "Sub2 account",
+    "Account status",
+    "Account diagnostics",
     "Credential apply",
     "Smoke",
     "Failure"
@@ -230,10 +243,12 @@ test("resource create defaults expose repair context for operators", () => {
   assert.equal(items.find((item) => item.label === "Source")?.value, "resources / production");
   assert.equal(items.find((item) => item.label === "Supplier")?.value, "admin@zhisuan.local");
   assert.equal(items.find((item) => item.label === "Resource")?.value, "codex / production");
-  assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2");
+  assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2 / codex-primary");
+  assert.equal(items.find((item) => item.label === "Account status")?.value, "error / configured(3)");
+  assert.equal(items.find((item) => item.label === "Account diagnostics")?.value, "schedulable false / temp token_invalidated / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
   assert.match(items.find((item) => item.label === "Smoke")?.value ?? "", /model gpt-5.3-codex/);
-  assert.equal(items.find((item) => item.label === "Failure")?.value, "/v1/responses / HTTP 503 / upstream_http_503");
+  assert.equal(items.find((item) => item.label === "Failure")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 1341 分钟前 / 阈值 1440 分钟 / 剩余 99 分钟过期");
 });
 
 test("resource create defaults expose product catalog repair context", () => {
