@@ -175,6 +175,24 @@ interface DashboardAdminEntryCoverage {
   frontend?: DashboardAdminEntryCoverageSide;
 }
 
+interface DashboardUpstreamBlocker {
+  blocked: boolean;
+  status: "ok" | "warning" | "error";
+  checkId: string;
+  label: string;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  actionHint?: string | null;
+  repairAction?: string | null;
+  sub2AccountId?: string | number | boolean | null;
+  resourceId?: string | number | boolean | null;
+  resourceList?: string | number | boolean | null;
+  resourceType?: string | number | boolean | null;
+  resourceScope?: string | number | boolean | null;
+  check: DashboardHealthCheckPreview;
+}
+
 interface Dashboard {
   users: number;
   activeRentals: number;
@@ -204,6 +222,7 @@ interface Dashboard {
     ageMinutes?: number;
     stale?: boolean;
     staleThresholdMinutes?: number;
+    upstreamBlocker?: DashboardUpstreamBlocker | null;
     adminEntryCoverage?: DashboardAdminEntryCoverage | null;
   } | null;
 }
@@ -2871,6 +2890,7 @@ function DashboardView({
 }) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
+  const upstreamBlocker = latestHealth?.upstreamBlocker ?? null;
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -2921,6 +2941,12 @@ function DashboardView({
                   <tr><td>快照状态</td><td>{dashboardSnapshotFreshnessText(latestHealth)}</td></tr>
                   <tr><td>来源</td><td>{latestHealth.source}</td></tr>
                   <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
+                  {upstreamBlocker && (
+                    <tr>
+                      <td>上游阻断</td>
+                      <td>{dashboardUpstreamBlockerText(upstreamBlocker)}</td>
+                    </tr>
+                  )}
                   {latestHealth.adminEntryCoverage && (
                     <tr>
                       <td>管理员入口</td>
@@ -2929,6 +2955,24 @@ function DashboardView({
                   )}
                 </tbody>
               </table>
+              {upstreamBlocker && (
+                <div className="dashboard-health-item">
+                  <div className={healthRowClass(upstreamBlocker.status)}>
+                    {upstreamBlocker.status === "ok" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                    <strong>{upstreamBlocker.label}</strong>
+                  </div>
+                  <p>{upstreamBlocker.summary}</p>
+                  {upstreamBlocker.actionHint && <small>{upstreamBlocker.actionHint}</small>}
+                  <div className="health-preview-actions">
+                    {(upstreamBlocker.issueCount > 0 || upstreamBlocker.sampleCount > 0) && (
+                      <small>{upstreamBlocker.issueCount} issue / {upstreamBlocker.sampleCount} sample</small>
+                    )}
+                    <button className="secondary mini" onClick={() => onOpenHealthCheck(upstreamBlocker.check)}>
+                      <ChevronRight size={14} />{dashboardUpstreamBlockerActionLabel(upstreamBlocker)}
+                    </button>
+                  </div>
+                </div>
+              )}
               {criticalChecks.length > 0 && (
                 <div className="dashboard-health-list">
                   {criticalChecks.map((check) => {
@@ -6085,6 +6129,15 @@ function dashboardSnapshotFreshnessText(snapshot: NonNullable<Dashboard["latestS
 function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) {
   const status = coverage.ok ? "ok" : "需要处理";
   return `${status} / ${coverage.summary || [coverage.api?.summary, coverage.frontend?.summary].filter(Boolean).join(" / ") || "-"}`;
+}
+
+function dashboardUpstreamBlockerText(blocker: DashboardUpstreamBlocker) {
+  const status = blocker.blocked ? "阻断" : "警告";
+  return `${status} / ${blocker.label} / ${blocker.summary}`;
+}
+
+function dashboardUpstreamBlockerActionLabel(blocker: DashboardUpstreamBlocker) {
+  return dashboardHealthCheckTarget(blocker.check)?.label ?? "打开巡检详情";
 }
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {

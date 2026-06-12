@@ -244,6 +244,60 @@ test("dashboard latest system health preview exposes snapshot freshness", () => 
   assert.equal(stale.stale, true);
 });
 
+test("dashboard latest system health preview exposes actionable upstream blocker", () => {
+  const snapshot = {
+    id: "snapshot-upstream-blocker",
+    status: "error",
+    source: "manual",
+    summary: { totalChecks: 3, ok: 1, warning: 0, error: 2 },
+    checks: [
+      {
+        id: "sub2",
+        label: "Sub2/OpenAI 上游",
+        status: "error",
+        summary: "阻断：openai_group_has_no_active_accounts",
+        detail: { issues: [{ id: "openai-group-empty", type: "openai_group_has_no_active_accounts" }] }
+      },
+      {
+        id: "resourceCredentials",
+        label: "资源凭据",
+        status: "error",
+        summary: "Sub2 上游无 active 账号，且没有可应用的资源凭据",
+        detail: {
+          issues: [{
+            id: "openai-refresh-token-candidate-missing",
+            type: "openai_refresh_token_candidate_missing",
+            repairAction: "apply_openai_refresh_token_to_sub2_account",
+            actionHint: "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.",
+            resourceList: true,
+            resourceType: "codex",
+            resourceScope: "production"
+          }]
+        }
+      },
+      {
+        id: "openAiProxyContract",
+        label: "OpenAI 反代契约",
+        status: "ok",
+        summary: "OpenAI/Codex 本地反代契约正常"
+      }
+    ],
+    createdAt: new Date("2026-06-12T10:00:00.000Z")
+  };
+
+  const preview = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T10:01:00.000Z"));
+
+  assert.equal(preview.upstreamBlocker?.blocked, true);
+  assert.equal(preview.upstreamBlocker?.status, "error");
+  assert.equal(preview.upstreamBlocker?.checkId, "resourceCredentials");
+  assert.equal(preview.upstreamBlocker?.label, "资源凭据");
+  assert.equal(preview.upstreamBlocker?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(preview.upstreamBlocker?.resourceList, true);
+  assert.equal(preview.upstreamBlocker?.resourceType, "codex");
+  assert.equal(preview.upstreamBlocker?.resourceScope, "production");
+  assert.equal(preview.upstreamBlocker?.check.primaryIssue?.actionHint, "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.");
+});
+
 test("dashboard latest system health preview always exposes admin entry coverage", () => {
   const snapshot = {
     id: "snapshot-admin-entry",

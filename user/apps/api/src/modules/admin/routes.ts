@@ -273,6 +273,24 @@ interface DashboardAdminEntryCoveragePreview {
   frontend?: DashboardAdminEntryCoverageSide;
 }
 
+interface DashboardUpstreamBlockerPreview {
+  blocked: boolean;
+  status: SystemHealthStatus;
+  checkId: string;
+  label: string;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+  actionHint?: string | null;
+  repairAction?: string | null;
+  sub2AccountId?: string | number | boolean | null;
+  resourceId?: string | number | boolean | null;
+  resourceList?: string | number | boolean | null;
+  resourceType?: string | number | boolean | null;
+  resourceScope?: string | number | boolean | null;
+  check: DashboardHealthCheckPreview;
+}
+
 const dashboardHealthDetailPreviewFields = [
   "id",
   "type",
@@ -5566,6 +5584,7 @@ export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSyst
     ageMinutes,
     stale: ageMinutes >= staleThresholdMinutes,
     staleThresholdMinutes,
+    upstreamBlocker: dashboardUpstreamBlockerPreview(snapshot.checks),
     adminEntryCoverage: dashboardAdminEntryCoveragePreview(snapshot.checks),
     criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
   };
@@ -5639,6 +5658,64 @@ function dashboardAdminEntryCoverageSide(
     issueCount: check.issueCount,
     metrics
   };
+}
+
+function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBlockerPreview | null {
+  if (!Array.isArray(checks)) return null;
+  const previews = checks
+    .map(dashboardHealthCheckPreview)
+    .filter((item): item is DashboardHealthCheckPreview => Boolean(item));
+  const check = previews
+    .filter((item) => ["sub2", "localProxySmoke", "resourceCredentials", "resources", "productCatalog"].includes(item.id))
+    .filter((item) => item.status !== "ok")
+    .sort((left, right) => {
+      const statusDelta = systemHealthStatusRank(right.status) - systemHealthStatusRank(left.status);
+      if (statusDelta !== 0) return statusDelta;
+      const actionableDelta = dashboardUpstreamBlockerActionRank(left) - dashboardUpstreamBlockerActionRank(right);
+      if (actionableDelta !== 0) return actionableDelta;
+      return dashboardHealthCheckRank(left.id) - dashboardHealthCheckRank(right.id);
+    })[0];
+  if (!check) return null;
+
+  const detail = dashboardUpstreamBlockerDetail(check);
+  return {
+    blocked: check.status === "error",
+    status: check.status,
+    checkId: check.id,
+    label: check.label,
+    summary: check.summary,
+    issueCount: check.issueCount,
+    sampleCount: check.sampleCount,
+    actionHint: textJsonValue(detail.actionHint) ?? null,
+    repairAction: textJsonValue(detail.repairAction) ?? null,
+    sub2AccountId: dashboardHealthScalarValue(detail.sub2AccountId) ?? null,
+    resourceId: dashboardHealthScalarValue(detail.resourceId) ?? null,
+    resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,
+    resourceType: dashboardHealthScalarValue(detail.resourceType) ?? null,
+    resourceScope: dashboardHealthScalarValue(detail.resourceScope) ?? null,
+    check
+  };
+}
+
+function dashboardUpstreamBlockerDetail(check: DashboardHealthCheckPreview): DashboardHealthDetailPreview {
+  return [check.primaryIssue, check.primarySample].find(dashboardUpstreamBlockerDetailIsActionable)
+    ?? check.primaryIssue
+    ?? check.primarySample
+    ?? {};
+}
+
+function dashboardUpstreamBlockerActionRank(check: DashboardHealthCheckPreview) {
+  return dashboardUpstreamBlockerDetailIsActionable(dashboardUpstreamBlockerDetail(check)) ? 0 : 1;
+}
+
+function dashboardUpstreamBlockerDetailIsActionable(detail: DashboardHealthDetailPreview | undefined) {
+  return Boolean(
+    detail?.actionHint
+    || detail?.repairAction
+    || detail?.sub2AccountId
+    || detail?.resourceId
+    || detail?.resourceList
+  );
 }
 
 function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPreview | null {

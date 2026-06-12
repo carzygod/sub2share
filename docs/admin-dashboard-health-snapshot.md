@@ -273,3 +273,13 @@
 - API 单元测试覆盖：当 `adminCapabilities` 与 `adminSurfaceCoverage` 被 top 8 挤出时，`adminEntryCoverage` 仍返回 `ok` 与完整摘要。
 
 这样“用户、共享、余额、售出、OpenAI/Codex 反代”的完整管理员入口能力不会因为其他可用性风险较多而从首页消失。
+
+## 2026-06-13 扩展：首页稳定展示上游阻断摘要
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth` 新增 `upstreamBlocker`。
+- 该字段独立于 `criticalChecks` top 8 切片，从 `sub2`、`localProxySmoke`、`resourceCredentials`、`resources` 和 `productCatalog` 中提炼当前最需要管理员处理的 Sub2/OpenAI 上游问题。
+- 同级错误中会优先选择携带 `actionHint`、`repairAction`、`sub2AccountId`、`resourceId` 或 `resourceList` 的可操作记录，避免首页只展示不可执行的阻断码。
+- `upstreamBlocker.check` 保留原始 dashboard 健康检查预览，Admin 首页可以复用现有跳转逻辑打开 `反代状态`、`共享资源` 或完整巡检。
+- Admin 首页系统状态表新增“上游阻断”行，并在关键巡检列表前展示一条可点击的阻断摘要。
+
+这样管理员进入后台首屏时，可以同时确认“真实不可用点在 Sub2/OpenAI 上游凭据”和“下一步应去哪里处理”，不需要先展开完整巡检才能定位维修入口。
