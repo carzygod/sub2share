@@ -204,3 +204,14 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 如果条件不满足，接口返回 `400 codex_resource_not_ready_for_online`，并在 `issues` 中返回 `sub2_account_missing` 或 `active_openai_refresh_token_missing`。非 Codex 资源和非 `online` 状态变更不受该闸门影响。
 
 这让管理员状态写入口与 `readyOnlineCodexResources` 巡检口径保持一致：不可交付资源不会先被手工标成 `online`，再由系统健康页二次发现。真实 `/v1/responses` 成功仍以 Sub2 账号测试、本地反代 smoke 和代理请求日志为准。
+
+## 2026-06-12 Update: Resource Test Online Gate
+
+`POST /api/admin/resources/:id/test` 现在也复用 ready online 口径。Sub2 账号测试通过后，后端仍会先按既有规则计算目标状态；但如果目标状态是 `online` 且资源类型是 Codex，必须同时满足：
+
+- 资源已绑定 `sub2AccountId`。
+- 资源已拥有 `credentialType=openai_refresh_token` 且 `status=active` 的凭据。
+
+不满足条件时，资源会保持原状态，不会自动切为 `online`；接口响应和审计日志会包含 `statusTransition.blockedOnline=true` 与 `onlineReadiness.issues`。已存凭据应用到 Sub2 后的账号测试、以及从 Sub2 状态页直接保存 refresh token 到共享资源的同步路径，也使用同一状态转移 helper。
+
+这让手动状态变更、资源测试自动收敛、凭据应用后收敛和系统巡检共享同一套 Codex ready 语义。真实 `/v1/responses` 成功仍以有效 OpenAI refresh token、active Sub2 OpenAI 账号、本地反代 smoke 和代理请求日志共同证明。

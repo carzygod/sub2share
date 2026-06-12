@@ -25,6 +25,23 @@ export interface SupplierResourceManualOnlineReadinessResult {
   message: string;
 }
 
+export type SupplierResourceStatus = "pending" | "testing" | "online" | "busy" | "paused" | "abnormal" | "disabled";
+
+export interface SupplierResourceTestStatusTransitionInput {
+  currentStatus: SupplierResourceStatus;
+  ok: boolean;
+  resourceType: string;
+  sub2AccountId?: string | null;
+  credential?: SupplierResourceCredentialIdentity | null;
+}
+
+export interface SupplierResourceTestStatusTransitionResult {
+  status: SupplierResourceStatus;
+  targetStatus: SupplierResourceStatus;
+  blockedOnline: boolean;
+  onlineReadiness: SupplierResourceManualOnlineReadinessResult;
+}
+
 export interface SupplierResourceAvailabilityMetricsInput {
   resourcesByStatus: Record<string, number>;
   totalCodexResources: number;
@@ -89,6 +106,32 @@ export function inspectSupplierResourceManualOnlineReadiness(
     message: issues.length === 0
       ? "Codex resource is ready to switch online"
       : "Codex resources require a Sub2 account id and an active OpenAI refresh token credential before manual online status changes"
+  };
+}
+
+export function supplierResourceStatusAfterTest(current: SupplierResourceStatus, ok: boolean): SupplierResourceStatus {
+  if (["disabled", "paused"].includes(current)) return current;
+  if (ok) return current === "testing" || current === "pending" || current === "abnormal" ? "online" : current;
+  return current === "online" || current === "testing" || current === "pending" || current === "busy" ? "abnormal" : current;
+}
+
+export function inspectSupplierResourceTestStatusTransition(
+  input: SupplierResourceTestStatusTransitionInput
+): SupplierResourceTestStatusTransitionResult {
+  const targetStatus = supplierResourceStatusAfterTest(input.currentStatus, input.ok);
+  const onlineReadiness = inspectSupplierResourceManualOnlineReadiness({
+    resourceType: input.resourceType,
+    targetStatus,
+    sub2AccountId: input.sub2AccountId,
+    credential: input.credential
+  });
+  const blockedOnline = targetStatus === "online" && !onlineReadiness.ok;
+
+  return {
+    status: blockedOnline ? input.currentStatus : targetStatus,
+    targetStatus,
+    blockedOnline,
+    onlineReadiness
   };
 }
 

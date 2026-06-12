@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   internalHealthCheckSupplierResourceWhere,
   inspectSupplierResourceManualOnlineReadiness,
+  inspectSupplierResourceTestStatusTransition,
   isInternalHealthCheckSupplierResource,
   nonSmokeSupplierResourceWhere,
   supplierResourceAvailabilityMetrics,
@@ -154,4 +155,48 @@ test("manual online readiness does not block non-Codex resources or non-online s
     resourceType: "codex",
     targetStatus: "paused"
   }).ok, true);
+});
+
+test("resource tests do not auto-online incomplete Codex resources", () => {
+  const result = inspectSupplierResourceTestStatusTransition({
+    currentStatus: "testing",
+    ok: true,
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: null
+  });
+
+  assert.equal(result.targetStatus, "online");
+  assert.equal(result.status, "testing");
+  assert.equal(result.blockedOnline, true);
+  assert.deepEqual(result.onlineReadiness.issues, ["active_openai_refresh_token_missing"]);
+});
+
+test("resource tests auto-online ready Codex resources", () => {
+  const result = inspectSupplierResourceTestStatusTransition({
+    currentStatus: "testing",
+    ok: true,
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: { credentialType: "openai_refresh_token", status: "active" }
+  });
+
+  assert.equal(result.targetStatus, "online");
+  assert.equal(result.status, "online");
+  assert.equal(result.blockedOnline, false);
+  assert.deepEqual(result.onlineReadiness.issues, []);
+});
+
+test("resource tests still move failing active resources to abnormal", () => {
+  const result = inspectSupplierResourceTestStatusTransition({
+    currentStatus: "online",
+    ok: false,
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: { credentialType: "openai_refresh_token", status: "active" }
+  });
+
+  assert.equal(result.targetStatus, "abnormal");
+  assert.equal(result.status, "abnormal");
+  assert.equal(result.blockedOnline, false);
 });

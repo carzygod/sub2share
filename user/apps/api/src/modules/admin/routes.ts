@@ -66,9 +66,11 @@ import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } fro
 import {
   internalHealthCheckSupplierResourceWhere,
   inspectSupplierResourceManualOnlineReadiness,
+  inspectSupplierResourceTestStatusTransition,
   nonSmokeSupplierResourceWhere,
   supplierResourceAvailabilityMetrics,
-  supplierResourceMissingCodexIssueFields
+  supplierResourceMissingCodexIssueFields,
+  type SupplierResourceStatus
 } from "./supplier-resource-health.js";
 import {
   buildSub2UpstreamIssues,
@@ -91,7 +93,7 @@ const resourceStatuses = ["pending", "testing", "online", "busy", "paused", "abn
 const resourceLevels = ["L0", "L1", "L2", "L3", "L4"] as const;
 const resourceCredentialTypes = ["openai_refresh_token", "openai_api_key", "custom"] as const;
 const resourceCredentialStatuses = ["active", "rotated", "disabled"] as const;
-type ResourceStatus = (typeof resourceStatuses)[number];
+type ResourceStatus = SupplierResourceStatus;
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
 const reconciliationScanLimit = 500;
@@ -2717,16 +2719,29 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const before = await prisma.supplierResource.findUnique({
       where: { id },
-      select: { id: true, status: true, sub2AccountId: true, lastCheckedAt: true }
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        sub2AccountId: true,
+        lastCheckedAt: true,
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     if (!before) throw new AppError("resource_not_found", "Supplier resource not found", 404);
     const accountId = parseResourceSub2AccountId(before.sub2AccountId);
     const result = await sub2Client.testAccount(accountId);
-    const nextStatus = statusAfterResourceTest(before.status, result.ok);
+    const statusTransition = inspectSupplierResourceTestStatusTransition({
+      currentStatus: before.status,
+      ok: result.ok,
+      resourceType: before.resourceType,
+      sub2AccountId: before.sub2AccountId,
+      credential: before.credential
+    });
     const resource = await prisma.supplierResource.update({
       where: { id },
       data: {
-        status: nextStatus,
+        status: statusTransition.status,
         lastCheckedAt: new Date()
       },
       include: {
@@ -2739,9 +2754,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       sub2AccountId: resource.sub2AccountId,
       ok: result.ok,
       statusCode: result.statusCode,
-      events: result.events.map((event) => event.type ?? event.message ?? "event")
+      events: result.events.map((event) => event.type ?? event.message ?? "event"),
+      statusTransition: {
+        targetStatus: statusTransition.targetStatus,
+        appliedStatus: statusTransition.status,
+        blockedOnline: statusTransition.blockedOnline,
+        onlineReadiness: statusTransition.onlineReadiness
+      }
     });
-    return adminOk(reply, { resource, result });
+    return adminOk(reply, { resource, result, statusTransition });
   });
 
   app.patch("/api/admin/resources/:id/status", async (request, reply) => {
@@ -6657,12 +6678,6 @@ function nonEmpty(value: string | undefined) {
   return value && value.length > 0 ? value : undefined;
 }
 
-function statusAfterResourceTest(current: ResourceStatus, ok: boolean): ResourceStatus {
-  if (["disabled", "paused"].includes(current)) return current;
-  if (ok) return current === "testing" || current === "pending" || current === "abnormal" ? "online" : current;
-  return current === "online" || current === "testing" || current === "pending" || current === "busy" ? "abnormal" : current;
-}
-
 interface LocalProxySmokeProvision {
   userId: string;
   productId: string;
@@ -7505,7 +7520,14 @@ async function syncSub2RefreshTokenToSupplierResource(
       lastCheckedAt: target.resource.lastCheckedAt?.toISOString() ?? null,
       credential: target.resource.credential ? resourceCredentialAuditPayload(target.resource.credential) : null
     };
-    const nextStatus = testResult ? statusAfterResourceTest(target.resource.status, testResult.ok) : statusAfterDirectCredentialSync(target.resource.status);
+    const statusTransition = testResult ? inspectSupplierResourceTestStatusTransition({
+      currentStatus: target.resource.status,
+      ok: testResult.ok,
+      resourceType: target.resource.resourceType,
+      sub2AccountId,
+      credential: credentialData
+    }) : null;
+    const nextStatus = statusTransition ? statusTransition.status : statusAfterDirectCredentialSync(target.resource.status);
     const resource = await prisma.supplierResource.update({
       where: { id: target.resource.id },
       data: {
@@ -7536,12 +7558,20 @@ async function syncSub2RefreshTokenToSupplierResource(
       credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
       source: "sub2_direct_refresh_token_apply",
       accountId,
-      test: resourceSyncTestAuditPayload(testResult)
+      test: resourceSyncTestAuditPayload(testResult),
+      statusTransition
     });
-    return { saved: true, skippedReason: null, created: false, resource, credential: resource.credential };
+    return { saved: true, skippedReason: null, created: false, resource, credential: resource.credential, statusTransition };
   }
 
-  const initialStatus = testResult ? statusAfterResourceTest("testing", testResult.ok) : "testing";
+  const initialStatusTransition = testResult ? inspectSupplierResourceTestStatusTransition({
+    currentStatus: "testing",
+    ok: testResult.ok,
+    resourceType: "codex",
+    sub2AccountId,
+    credential: credentialData
+  }) : null;
+  const initialStatus = initialStatusTransition ? initialStatusTransition.status : "testing";
   const resource = await prisma.$transaction(async (tx) => {
     await tx.userRole.upsert({
       where: { userId_role: { userId: target.user.id, role: "supplier" } },
@@ -7581,9 +7611,10 @@ async function syncSub2RefreshTokenToSupplierResource(
     credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
     source: "sub2_direct_refresh_token_apply",
     accountId,
-    test: resourceSyncTestAuditPayload(testResult)
+    test: resourceSyncTestAuditPayload(testResult),
+    statusTransition: initialStatusTransition
   });
-  return { saved: true, skippedReason: null, created: true, resource, credential: resource.credential };
+  return { saved: true, skippedReason: null, created: true, resource, credential: resource.credential, statusTransition: initialStatusTransition };
 }
 
 function statusAfterDirectCredentialSync(current: ResourceStatus): ResourceStatus {
@@ -7608,7 +7639,8 @@ function resourceCredentialSyncAuditPayload(sync: Awaited<ReturnType<typeof sync
     resourceId: sync.resource?.id ?? null,
     resourceStatus: sync.resource?.status ?? null,
     sub2AccountId: sync.resource?.sub2AccountId ?? null,
-    credential: sync.credential ? resourceCredentialAuditPayload(sync.credential) : null
+    credential: sync.credential ? resourceCredentialAuditPayload(sync.credential) : null,
+    statusTransition: "statusTransition" in sync ? sync.statusTransition : null
   };
 }
 
@@ -7622,6 +7654,7 @@ async function applyStoredResourceCredentialToSub2(
     where: { id },
     select: {
       id: true,
+      resourceType: true,
       status: true,
       sub2AccountId: true,
       lastCheckedAt: true,
@@ -7662,14 +7695,22 @@ async function applyStoredResourceCredentialToSub2(
       credential: { select: typeof resourceCredentialSummarySelect };
     };
   }> | null = null;
+  let statusTransition: ReturnType<typeof inspectSupplierResourceTestStatusTransition> | null = null;
   let smokeTest: Sub2ProxySmokeTestResult | null = null;
   let smokeTestSkippedReason: string | null = null;
   if (result.ok) {
     testResult = await testSub2AccountForResourceApply(accountId);
+    statusTransition = inspectSupplierResourceTestStatusTransition({
+      currentStatus: resource.status,
+      ok: testResult.ok,
+      resourceType: resource.resourceType,
+      sub2AccountId: resource.sub2AccountId,
+      credential: resource.credential
+    });
     updatedResource = await prisma.supplierResource.update({
       where: { id },
       data: {
-        status: statusAfterResourceTest(resource.status, testResult.ok),
+        status: statusTransition.status,
         lastCheckedAt: new Date()
       },
       include: {
@@ -7706,6 +7747,7 @@ async function applyStoredResourceCredentialToSub2(
       statusCode: testResult.statusCode,
       events: testResult.events.map((event) => event.type ?? event.message ?? "event")
     } : null,
+    statusTransition,
     resource: updatedResource ? {
       status: updatedResource.status,
       lastCheckedAt: updatedResource.lastCheckedAt?.toISOString() ?? null
@@ -7722,7 +7764,7 @@ async function applyStoredResourceCredentialToSub2(
     } : null
   });
 
-  return { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, resource: updatedResource, smokeTest, smokeTestSkippedReason };
+  return { resourceId: id, accountId, credential: credentialSummary, result, test: testResult, statusTransition, resource: updatedResource, smokeTest, smokeTestSkippedReason };
 }
 
 function resourceCredentialAuditPayload(credential: ResourceCredentialSummary | ResourceCredentialPrivate) {
