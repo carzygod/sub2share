@@ -41,3 +41,10 @@
 - `pnpm.cmd --filter @zyz/admin run typecheck`
 - `pnpm.cmd --filter @zyz/admin run build`
 - `pnpm.cmd --filter @zyz/api test`
+
+## 2026-06-13 追加：巡检详情保留商品名称
+
+- `adminSystemHealthIssueRefFields` 新增 `productName`。
+- `adminSystemHealthSampleSummaryFields` 新增 `productName`。
+- 完整可用性巡检页在展示 `productCatalog`、`resources`、`resourceCredentials`、`sub2`、`localProxySmoke` 等跨链路问题时，会同时显示商品名、商品 ID 和价格 ID。
+- Admin 测试覆盖 issue ref 与 sample summary 都保留 `productName`，避免后续只保留 UUID 而丢失人类可读定位信息。

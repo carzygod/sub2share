@@ -168,3 +168,13 @@
 - 该能力不会自动触发新的 `GET /api/admin/system-health`，因此不会增加巡检写入噪音；管理员仍可点击“打开巡检”手动刷新当前快照。
 
 这样管理员不会把很久以前的 Sub2/OpenAI、共享资源、余额或售出交付巡检结果误判为当前状态。
+
+## 2026-06-13 扩展：完整巡检详情商品名可读
+
+完整 `可用性巡检` 页的 issue ref 与 sample summary 继续补齐商品定位字段：
+
+- `productName` 纳入 `adminSystemHealthIssueRefFields`。
+- `productName` 纳入 `adminSystemHealthSampleSummaryFields`。
+- 当线上 `productCatalog`、`resources`、`resourceCredentials`、`sub2` 或 `localProxySmoke` 问题携带商品上下文时，管理员在详情行中可以直接看到商品名、商品 ID 和价格 ID。
+
+该能力不改变首页关键巡检排序、跳转目标、资源 ready 判定或 Sub2/OpenAI 调用，只让巡检详情中的商品定位更适合人工排障。
