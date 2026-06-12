@@ -277,3 +277,12 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 商品 CSV 导出新增 `deliveryReady`、`readyDeliveryResources`、`deliveryBlockedReason` 字段。
 
 这让 `productCatalog` 健康告警可以直接映射到商品管理页：管理员在系统健康中看到 `active_codex_product_without_ready_delivery_resource` 后，可在商品列表和导出表中确认具体商品是否可交付。
+
+## 2026-06-13 扩展：Codex 商品上架写入口使用同一 ready 闸门
+
+- 管理员创建/更新 Codex 商品为 `active` 时，默认复用 ready production Codex shared resource 口径。
+- 管理员创建/更新 active Codex 商品的可购买 active 价格时，也默认复用该口径。
+- 无 ready 资源时，写入口会返回 `codex_resource_not_ready_for_product_activation` 或 `codex_resource_not_ready_for_price_activation`。
+- 显式传入 `allowUnavailableDelivery=true` 才能覆盖。
+
+这让系统健康的 `productCatalog` warning 更像兜底巡检：正常路径下，不可交付的 Codex 商品不应被重新上架。

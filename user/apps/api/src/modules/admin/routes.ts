@@ -35,9 +35,12 @@ import { recordOrderStatusHistory } from "../orders/status-history.js";
 import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
 import {
   codexCatalogDeliveryReadinessIssueFields,
+  codexDeliveryResourceMissingDetails,
   publicProductDeliveryReadinessFields,
   readyCodexSupplierResourceDeliveryWhere,
-  requireReadySupplierResourceForDelivery
+  requireReadySupplierResourceForDelivery,
+  shouldBlockUnavailableCodexPriceActivation,
+  shouldBlockUnavailableCodexProductActivation
 } from "../suppliers/resource-delivery-readiness.js";
 import {
   adminCapabilities,
@@ -770,15 +773,21 @@ const createProductSchema = z.object({
   resourceType: z.enum(resourceTypes),
   billingMode: z.enum(billingModes).default("monthly"),
   status: z.enum(productStatuses).default("draft"),
-  description: z.string().trim().max(2000).optional()
+  description: z.string().trim().max(2000).optional(),
+  allowUnavailableDelivery: z.boolean().default(false)
 });
 
 const updateProductSchema = createProductSchema
   .partial()
   .extend({
-    description: z.union([z.string().trim().max(2000), z.null()]).optional()
+    description: z.union([z.string().trim().max(2000), z.null()]).optional(),
+    allowUnavailableDelivery: z.boolean().default(false)
   })
-  .refine((input) => Object.values(input).some((value) => value !== undefined), {
+  .refine((input) => input.name !== undefined
+    || input.resourceType !== undefined
+    || input.billingMode !== undefined
+    || input.status !== undefined
+    || input.description !== undefined, {
     message: "At least one product field must be provided"
   });
 
@@ -794,7 +803,8 @@ const createProductPriceSchema = z.object({
   spendLimit: z.coerce.number().positive().optional(),
   discountRate: z.coerce.number().min(0).max(1).default(0.2),
   tierMultiplier: z.coerce.number().positive().default(1),
-  status: z.enum(productStatuses).default("active")
+  status: z.enum(productStatuses).default("active"),
+  allowUnavailableDelivery: z.boolean().default(false)
 });
 
 const updateProductPriceSchema = createProductPriceSchema
@@ -805,9 +815,20 @@ const updateProductPriceSchema = createProductPriceSchema
     rpmLimit: nullablePositiveInteger,
     tpmLimit: nullablePositiveInteger,
     requestLimit: nullablePositiveInteger,
-    spendLimit: nullablePositiveDecimal
+    spendLimit: nullablePositiveDecimal,
+    allowUnavailableDelivery: z.boolean().default(false)
   })
-  .refine((input) => Object.values(input).some((value) => value !== undefined), {
+  .refine((input) => input.displayName !== undefined
+    || input.fixedPrice !== undefined
+    || input.durationDays !== undefined
+    || input.maxConcurrency !== undefined
+    || input.rpmLimit !== undefined
+    || input.tpmLimit !== undefined
+    || input.requestLimit !== undefined
+    || input.spendLimit !== undefined
+    || input.discountRate !== undefined
+    || input.tierMultiplier !== undefined
+    || input.status !== undefined, {
     message: "At least one product price field must be provided"
   });
 
@@ -2699,6 +2720,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.post("/api/admin/products", async (request, reply) => {
     const actor = await requireRole(request, ["admin"]);
     const input = createProductSchema.parse(request.body);
+    await enforceCodexProductActivationReadiness({
+      resourceType: input.resourceType,
+      productStatus: input.status,
+      productName: input.name,
+      allowUnavailableDelivery: input.allowUnavailableDelivery
+    });
     const product = await prisma.product.create({
       data: {
         name: input.name,
@@ -2716,7 +2743,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       name: product.name,
       resourceType: product.resourceType,
       billingMode: product.billingMode,
-      status: product.status
+      status: product.status,
+      allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
     return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
   });
@@ -2744,6 +2772,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       select: { id: true, name: true, resourceType: true, billingMode: true, status: true, description: true }
     });
     if (!before) throw new AppError("product_not_found", "Product not found", 404);
+    await enforceCodexProductActivationReadiness({
+      productId: id,
+      productName: input.name ?? before.name,
+      resourceType: input.resourceType ?? before.resourceType,
+      productStatus: input.status ?? before.status,
+      allowUnavailableDelivery: input.allowUnavailableDelivery
+    });
     const product = await prisma.product.update({
       where: { id },
       data: {
@@ -2763,7 +2798,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       resourceType: product.resourceType,
       billingMode: product.billingMode,
       status: product.status,
-      description: product.description
+      description: product.description,
+      allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
     return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
   });
@@ -2772,9 +2808,22 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const { id } = request.params as { id: string };
     const input = createProductPriceSchema.parse(request.body);
-    const product = await prisma.product.findUnique({ where: { id }, select: { id: true, name: true, billingMode: true } });
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: { id: true, name: true, billingMode: true, resourceType: true, status: true }
+    });
     if (!product) throw new AppError("product_not_found", "Product not found", 404);
     validateProductPricePurchaseMode(product.billingMode, input.fixedPrice);
+    await enforceCodexPriceActivationReadiness({
+      productId: id,
+      productName: product.name,
+      resourceType: product.resourceType,
+      productStatus: product.status,
+      billingMode: product.billingMode,
+      priceStatus: input.status,
+      fixedPrice: input.fixedPrice,
+      allowUnavailableDelivery: input.allowUnavailableDelivery
+    });
     const existing = await prisma.productPrice.findUnique({
       where: { productId_tierCode: { productId: id, tierCode: input.tierCode } },
       select: { id: true }
@@ -2805,7 +2854,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       rpmLimit: price.rpmLimit,
       tpmLimit: price.tpmLimit,
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
-      status: price.status
+      status: price.status,
+      allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
     return adminOk(reply, price);
   });
@@ -2830,13 +2880,24 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         discountRate: true,
         tierMultiplier: true,
         status: true,
-        product: { select: { billingMode: true } }
+        product: { select: { id: true, name: true, billingMode: true, resourceType: true, status: true } }
       }
     });
     if (!before) throw new AppError("product_price_not_found", "Product price not found", 404);
     if (input.fixedPrice !== undefined) {
       validateProductPricePurchaseMode(before.product.billingMode, input.fixedPrice);
     }
+    await enforceCodexPriceActivationReadiness({
+      productId: before.productId,
+      productName: before.product.name,
+      priceId: id,
+      resourceType: before.product.resourceType,
+      productStatus: before.product.status,
+      billingMode: before.product.billingMode,
+      priceStatus: input.status ?? before.status,
+      fixedPrice: input.fixedPrice !== undefined ? input.fixedPrice : before.fixedPrice,
+      allowUnavailableDelivery: input.allowUnavailableDelivery
+    });
     const price = await prisma.productPrice.update({
       where: { id },
       data: {
@@ -2865,7 +2926,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       spendLimit: price.spendLimit ? String(price.spendLimit) : null,
       discountRate: String(price.discountRate),
       tierMultiplier: String(price.tierMultiplier),
-      status: price.status
+      status: price.status,
+      allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
     return adminOk(reply, price);
   });
@@ -7095,6 +7157,76 @@ function productWithDeliveryReadiness<T extends { resourceType: string }>(produc
       readyCodexDeliveryResources
     })
   };
+}
+
+async function enforceCodexProductActivationReadiness(input: {
+  productId?: string;
+  productName?: string;
+  resourceType: string;
+  productStatus: string;
+  allowUnavailableDelivery?: boolean;
+}) {
+  const readyCodexDeliveryResources = await readyCodexDeliveryResourceCount();
+  if (!shouldBlockUnavailableCodexProductActivation({
+    resourceType: input.resourceType,
+    productStatus: input.productStatus,
+    readyCodexDeliveryResources,
+    allowUnavailableDelivery: input.allowUnavailableDelivery
+  })) return;
+
+  throw new AppError(
+    "codex_resource_not_ready_for_product_activation",
+    "Cannot activate a Codex product until a ready online production Codex shared resource is available",
+    409,
+    {
+      ...codexDeliveryResourceMissingDetails(input.resourceType),
+      productId: input.productId ?? null,
+      productName: input.productName ?? null,
+      productStatus: input.productStatus,
+      readyCodexDeliveryResources,
+      allowUnavailableDelivery: true
+    }
+  );
+}
+
+async function enforceCodexPriceActivationReadiness(input: {
+  productId: string;
+  productName?: string;
+  priceId?: string;
+  resourceType: string;
+  productStatus: string;
+  billingMode: string;
+  priceStatus: string;
+  fixedPrice: unknown;
+  allowUnavailableDelivery?: boolean;
+}) {
+  const readyCodexDeliveryResources = await readyCodexDeliveryResourceCount();
+  if (!shouldBlockUnavailableCodexPriceActivation({
+    resourceType: input.resourceType,
+    productStatus: input.productStatus,
+    priceStatus: input.priceStatus,
+    billingMode: input.billingMode,
+    fixedPrice: input.fixedPrice,
+    readyCodexDeliveryResources,
+    allowUnavailableDelivery: input.allowUnavailableDelivery
+  })) return;
+
+  throw new AppError(
+    "codex_resource_not_ready_for_price_activation",
+    "Cannot activate a purchasable Codex price until a ready online production Codex shared resource is available",
+    409,
+    {
+      ...codexDeliveryResourceMissingDetails(input.resourceType),
+      productId: input.productId,
+      productName: input.productName ?? null,
+      priceId: input.priceId ?? null,
+      productStatus: input.productStatus,
+      priceStatus: input.priceStatus,
+      billingMode: input.billingMode,
+      readyCodexDeliveryResources,
+      allowUnavailableDelivery: true
+    }
+  );
 }
 
 function validateProductPricePurchaseMode(billingMode: (typeof billingModes)[number], fixedPrice: number | null | undefined) {

@@ -51,3 +51,12 @@ curl -sS http://127.0.0.1:4100/api/admin/products
 - `deliveryReady=false`
 - `readyDeliveryResources=0`
 - `deliveryBlockedReason=codex_resource_not_ready_for_delivery`
+
+## 2026-06-13 扩展：上架默认要求交付就绪
+
+- 管理员创建或更新 Codex 商品为 `active` 时，默认要求存在 ready production Codex shared resource。
+- 管理员在 active Codex 商品下创建或启用 active 可购买价格时，也默认要求存在 ready production Codex shared resource。
+- 后端拒绝码为 `codex_resource_not_ready_for_product_activation` 或 `codex_resource_not_ready_for_price_activation`。
+- Admin 商品和价格表单提供 `override delivery` 勾选项，只有显式覆盖时才允许在无 ready 资源的情况下继续配置。
+
+这样商品管理页不仅展示 `deliveryReady=false`，也会在上架入口默认阻止不可交付商品重新进入公开目录。

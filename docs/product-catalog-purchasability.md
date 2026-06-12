@@ -54,3 +54,12 @@
 - Codex delivery readiness issue 的 id 会包含 `productId` 与 `priceId`，不再只能落到商品级别。
 - Dashboard 预览、商品管理搜索、共享资源修复默认值、修复诊断条和凭据应用确认弹窗可以复用同一个价格定位字段。
 - 该能力只补齐巡检证据和管理员排障上下文，不改变商品可购买性、下单闸门或共享资源 ready 判定。
+
+## 2026-06-13 扩展：Codex 商品上架准入
+
+- `productCatalog` 的 ready 资源语义已前移到管理员写入口。
+- `POST /api/admin/products` 与 `PATCH /api/admin/products/:id` 默认阻止没有 ready production Codex shared resource 的 Codex 商品上架。
+- `POST /api/admin/products/:id/prices` 与 `PATCH /api/admin/product-prices/:id` 默认阻止 active Codex 商品启用可购买价格。
+- 管理员可以显式传入 `allowUnavailableDelivery=true` 覆盖，但该动作会作为商品或价格更新审计的一部分记录。
+
+这样商品目录巡检从“发现 active 商品风险”补强为“默认阻止新的 active 商品风险进入目录”。

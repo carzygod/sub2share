@@ -1669,7 +1669,8 @@ function App() {
         description: optionalFormString(form, "description"),
         resourceType: form.get("resourceType"),
         billingMode: form.get("billingMode"),
-        status: form.get("status")
+        status: form.get("status"),
+        allowUnavailableDelivery: form.get("allowUnavailableDelivery") === "on"
       })
     });
     event.currentTarget.reset();
@@ -1698,7 +1699,8 @@ function App() {
         description: nullableFormString(form, "description"),
         resourceType: form.get("resourceType"),
         billingMode: form.get("billingMode"),
-        status: form.get("status")
+        status: form.get("status"),
+        allowUnavailableDelivery: form.get("allowUnavailableDelivery") === "on"
       })
     });
     setMessage("Product config updated");
@@ -1723,7 +1725,8 @@ function App() {
         spendLimit: optionalFormString(form, "spendLimit"),
         discountRate: form.get("discountRate"),
         tierMultiplier: form.get("tierMultiplier"),
-        status: form.get("status")
+        status: form.get("status"),
+        allowUnavailableDelivery: form.get("allowUnavailableDelivery") === "on"
       })
     });
     event.currentTarget.reset();
@@ -1758,7 +1761,8 @@ function App() {
         spendLimit: nullableFormNumber(form, "spendLimit"),
         discountRate: form.get("discountRate"),
         tierMultiplier: form.get("tierMultiplier"),
-        status: form.get("status")
+        status: form.get("status"),
+        allowUnavailableDelivery: form.get("allowUnavailableDelivery") === "on"
       })
     });
     setMessage("Product price updated");
@@ -4541,6 +4545,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
         <select name="status" defaultValue="draft" required>
           {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
+        <label><input name="allowUnavailableDelivery" type="checkbox" /> override delivery</label>
         <button>创建商品</button>
       </form>
 
@@ -4564,6 +4569,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
         <select name="status" defaultValue="active" required>
           {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
         </select>
+        <label><input name="allowUnavailableDelivery" type="checkbox" /> override delivery</label>
         <button>创建价格</button>
       </form>
 
@@ -4597,6 +4603,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
                 <select name="status" defaultValue={product.status} required>
                   {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
                 </select>
+                <label><input name="allowUnavailableDelivery" type="checkbox" /> override delivery</label>
                 <button type="submit" className="secondary mini">保存商品</button>
               </form>
             </td>
@@ -4636,6 +4643,7 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
                     <select name="status" defaultValue={price.status} required>
                       {productStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}
                     </select>
+                    <label><input name="allowUnavailableDelivery" type="checkbox" /> override delivery</label>
                     <button type="submit" className="secondary mini">保存价格</button>
                   </form>
                 </div>

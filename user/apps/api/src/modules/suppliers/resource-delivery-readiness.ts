@@ -78,6 +78,42 @@ export function codexCatalogDeliveryReadinessIssueFields(input: {
   };
 }
 
+export function isPurchasableProductPrice(input: {
+  billingMode: string;
+  fixedPrice: unknown;
+}) {
+  return input.billingMode === "pay_as_you_go" || input.fixedPrice !== null;
+}
+
+export function shouldBlockUnavailableCodexProductActivation(input: {
+  resourceType: string;
+  productStatus: string;
+  readyCodexDeliveryResources: number;
+  allowUnavailableDelivery?: boolean;
+}) {
+  return input.resourceType === "codex"
+    && input.productStatus === "active"
+    && input.readyCodexDeliveryResources <= 0
+    && input.allowUnavailableDelivery !== true;
+}
+
+export function shouldBlockUnavailableCodexPriceActivation(input: {
+  resourceType: string;
+  productStatus: string;
+  priceStatus: string;
+  billingMode: string;
+  fixedPrice: unknown;
+  readyCodexDeliveryResources: number;
+  allowUnavailableDelivery?: boolean;
+}) {
+  return shouldBlockUnavailableCodexProductActivation({
+    resourceType: input.resourceType,
+    productStatus: input.productStatus,
+    readyCodexDeliveryResources: input.readyCodexDeliveryResources,
+    allowUnavailableDelivery: input.allowUnavailableDelivery
+  }) && input.priceStatus === "active" && isPurchasableProductPrice(input);
+}
+
 export async function findReadySupplierResourceForDelivery(resourceType: string) {
   if (!isDeliveryResourceReadinessRequired(resourceType)) return null;
 
