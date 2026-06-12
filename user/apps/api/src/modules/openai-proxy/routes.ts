@@ -12,7 +12,7 @@ import {
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
   openAiProxyRouteMethods,
-  openAiProxyRoutePath,
+  openAiProxyRoutePaths,
   proxyBodyByteLength,
   proxyBodyText,
   proxyRequestModel,
@@ -64,11 +64,10 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
       (_request, body, done) => done(null, body)
     );
 
-    proxy.route({
+    const routeOptions = {
       method: [...openAiProxyRouteMethods],
-      url: openAiProxyRoutePath,
       bodyLimit: env.OPENAI_PROXY_BODY_LIMIT_BYTES,
-      handler: async (request, reply) => {
+      handler: async (request: FastifyRequest, reply: FastifyReply) => {
         const startedAt = Date.now();
         attachProxyRequestIdHeader(reply, request.id);
         const apiKey = bearerToken(request);
@@ -225,7 +224,11 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
         });
         return reply.send(forwardedStream);
       }
-    });
+    };
+
+    for (const url of openAiProxyRoutePaths) {
+      proxy.route({ ...routeOptions, url });
+    }
   });
 }
 

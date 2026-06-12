@@ -1,7 +1,9 @@
 export const proxyRequestIdHeaderName = "x-proxy-request-id";
 export const upstreamRequestIdHeaderNames = ["x-request-id", "openai-request-id", "x-openai-request-id", "request-id"] as const;
 export const openAiProxyCorsExposedHeaders = [proxyRequestIdHeaderName, ...upstreamRequestIdHeaderNames];
+export const openAiProxyRouteBasePath = "/v1";
 export const openAiProxyRoutePath = "/v1/*";
+export const openAiProxyRoutePaths = [openAiProxyRouteBasePath, openAiProxyRoutePath] as const;
 export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
@@ -24,6 +26,7 @@ export const openAiProxyForwardingContract = {
   forwardsOriginalBodyBytes: true,
   bodylessMethods: "GET,HEAD",
   upstreamAcceptEncoding: "identity",
+  routesV1BasePath: true,
   stripsInboundAuthorization: true,
   stripsInboundAcceptEncoding: true,
   reinjectsLocalBearerToSub2: true,
@@ -119,8 +122,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const normalizedEndpoint = trimmedEndpoint.replace(/\/+$/, "");
   const issues: OpenAiProxyContractIssue[] = [];
   const routePath = openAiProxyRoutePath;
+  const routePaths = [...openAiProxyRoutePaths];
   const routeMethods = [...openAiProxyRouteMethods];
+  const supportsV1BasePath = routePaths.includes(openAiProxyRouteBasePath) && isOpenAiProxyRoutedPath(openAiProxyRouteBasePath);
   const supportsAllV1ChildPaths = routePath === "/v1/*";
+  const routesV1BasePath = isOpenAiProxyRoutedPath("/v1");
   const supportsReadMethods = ["GET", "HEAD"].every((method) => routeMethods.includes(method as typeof openAiProxyRouteMethods[number]));
   const supportsMutationMethods = ["POST", "PUT", "PATCH", "DELETE"].every((method) => routeMethods.includes(method as typeof openAiProxyRouteMethods[number]));
   const routesResponsesApi = isOpenAiProxyRoutedPath("/v1/responses");
@@ -178,6 +184,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy must forward every concrete /v1 child path to Sub2API"
     });
   }
+  if (!supportsV1BasePath || !routesV1BasePath) {
+    issues.push({
+      type: "route_base_path_not_registered",
+      severity: "error",
+      message: "OpenAI proxy must forward the exact /v1 API base path to Sub2API"
+    });
+  }
   if (!supportsReadMethods || !supportsMutationMethods) {
     issues.push({
       type: "route_methods_incomplete",
@@ -231,8 +244,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       endpointProtocol,
       endpointEndsWithV1: normalizedEndpoint.endsWith("/v1"),
       routePath,
+      routePaths: routePaths.join(","),
+      supportsV1BasePath,
       routeMethods: routeMethods.join(","),
       supportsAllV1ChildPaths,
+      routesV1BasePath: routesV1BasePath && openAiProxyForwardingContract.routesV1BasePath,
       supportsReadMethods,
       supportsMutationMethods,
       routesResponsesApi,
@@ -297,7 +313,7 @@ function validatePositiveIntegerRuntimeOption(
 
 export function isOpenAiProxyRoutedPath(url: string) {
   const path = url.split("?")[0]?.replace(/\/+$/, "");
-  return Boolean(path && path.startsWith("/v1/"));
+  return path === openAiProxyRouteBasePath || Boolean(path && path.startsWith(`${openAiProxyRouteBasePath}/`));
 }
 
 export function inspectOpenAiProxyRuntime(summary: OpenAiProxyRuntimeSummary) {

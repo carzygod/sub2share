@@ -37,6 +37,7 @@ OPENAI_PROXY_PUBLIC_ENDPOINT=https://api.example.com/v1
 - API Key 轮换后写回的 `Rental.endpointUrl`。
 - 管理后台 `反代状态 -> 端到端自检` 使用的本地代理 endpoint。
 - Sub2 Key 开通结果中返回给业务系统的 endpoint。
+- 精确访问 `endpointUrl` 对应的 `/v1` 基路径时，也会进入本地 OpenAI/Codex 反代门禁并转发到 Sub2API。
 
 ## 验收方式
 
@@ -52,5 +53,6 @@ OPENAI_PROXY_PUBLIC_ENDPOINT=https://api.example.com/v1
 2. 创建一笔 Codex/OpenAI 租赁。
 3. 确认订单返回的 `endpointUrl` 指向 API 服务的 `/v1`。
 4. 使用售出的 Key 请求 `${endpointUrl}/models`，预期进入本系统反代并返回 `x-proxy-request-id`；如果 Sub2API/OpenAI 返回上游 request id，后台 `反代请求` 日志会记录为 `upstreamRequestId`。
-5. 浏览器端调用时确认响应包含 `Access-Control-Expose-Headers`，且前端代码可读取 `x-proxy-request-id` 和常见上游 request id 响应头。
-6. 在后台运行 `反代状态 -> 端到端自检`，确认 `localProxy.endpoint` 与生产 API `/v1` 一致。
+5. 使用售出的 Key 请求 `${endpointUrl}` 或 `${endpointUrl}/`，预期不会被本地 API 404 提前截断，而是进入本系统反代并返回 `x-proxy-request-id`。
+6. 浏览器端调用时确认响应包含 `Access-Control-Expose-Headers`，且前端代码可读取 `x-proxy-request-id` 和常见上游 request id 响应头。
+7. 在后台运行 `反代状态 -> 端到端自检`，确认 `localProxy.endpoint` 与生产 API `/v1` 一致。

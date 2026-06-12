@@ -16,6 +16,7 @@ import {
   openAiProxyCorsExposedHeaders,
   openAiProxyRouteMethods,
   openAiProxyRoutePath,
+  openAiProxyRoutePaths,
   proxyBodyByteLength,
   proxyRequestIdHeaderName,
   proxyBodyText,
@@ -42,13 +43,16 @@ test("keeps non-metadata OpenAI and Codex calls inside proxy gates", () => {
 
 test("routes every concrete OpenAI v1 child path through the local proxy", () => {
   assert.equal(openAiProxyRoutePath, "/v1/*");
+  assert.deepEqual([...openAiProxyRoutePaths], ["/v1", "/v1/*"]);
   assert.deepEqual([...openAiProxyRouteMethods], ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+  assert.equal(isOpenAiProxyRoutedPath("/v1"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123/input_items?after=item_1"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/chat/completions"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex"), true);
-  assert.equal(isOpenAiProxyRoutedPath("/v1"), false);
+  assert.equal(isOpenAiProxyRoutedPath("/v10/responses"), false);
   assert.equal(isOpenAiProxyRoutedPath("/api/admin/system-health"), false);
 });
 
@@ -248,8 +252,11 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.endpoint, "https://api.example.com/v1");
   assert.equal(result.summary.endpointEndsWithV1, true);
   assert.equal(result.summary.routePath, "/v1/*");
+  assert.equal(result.summary.routePaths, "/v1,/v1/*");
+  assert.equal(result.summary.supportsV1BasePath, true);
   assert.equal(result.summary.routeMethods, "GET,HEAD,POST,PUT,PATCH,DELETE");
   assert.equal(result.summary.supportsAllV1ChildPaths, true);
+  assert.equal(result.summary.routesV1BasePath, true);
   assert.equal(result.summary.supportsReadMethods, true);
   assert.equal(result.summary.supportsMutationMethods, true);
   assert.equal(result.summary.routesResponsesApi, true);

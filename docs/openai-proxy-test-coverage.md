@@ -41,7 +41,7 @@
   - `/v1/responses/:id/input_items`
   - `/v1/chat/completions`
   - `/v1/models/:id`
-- `/v1` 本身和 `/api/admin/*` 不属于该 catch-all 反代范围。
+- `/api/admin/*` 不属于该 catch-all 反代范围；`/v1` 基路径已在 2026-06-12 追补中单独纳入本地反代入口。
 
 ## 验收命令
 
@@ -91,3 +91,17 @@ pnpm.cmd --filter @zyz/api run build
   - 响应：`204`
   - `access-control-allow-methods` 与 `GET,HEAD,POST,PUT,PATCH,DELETE` 完全一致。
 - 该测试确保浏览器端 OpenAI/Codex 兼容客户端不会因为 CORS 默认方法漂移而无法调用非 POST 的 `/v1/*` 路径。
+
+## 2026-06-12 追补：精确 `/v1` 基路径透传
+
+- 本地反代路由从单一 `/v1/*` 扩展为：
+  - `/v1`
+  - `/v1/*`
+- 两个路径共用同一套本地售出 Key 鉴权、余额准入、租赁状态检查、并发/RPM/TPM 限流、请求日志、上游 request id 捕获和 Sub2API 透传逻辑。
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `routePaths=/v1,/v1/*`
+  - `supportsV1BasePath=true`
+  - `routesV1BasePath=true`
+- 单元测试确认 `/v1` 与 `/v1/` 都属于本地 OpenAI/Codex 反代范围，同时 `/v10/responses` 和 `/api/admin/*` 不会误入反代。
+
+这项补齐让公开 endpoint `https://api.example.com/v1` 的基路径本身也能进入 Sub2API 代理链路；即使上游返回 404 或其他响应，也会产生本地代理请求 ID 和可审计日志，而不是被 API 服务自己的 404 提前截断。
