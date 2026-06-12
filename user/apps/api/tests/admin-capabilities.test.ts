@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
@@ -176,6 +176,34 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[3].sampleCount, 1);
   assert.equal(previews[3].primarySample?.sampleType, "scheduler_state");
   assert.equal(previews[3].primarySample?.repairAction, "enable_billing_sync");
+});
+
+test("dashboard latest system health preview exposes snapshot freshness", () => {
+  const snapshot = {
+    id: "snapshot-1",
+    status: "warning",
+    source: "manual",
+    summary: { totalChecks: 2, ok: 1, warning: 1, error: 0 },
+    checks: [{
+      id: "sub2",
+      label: "Sub2/OpenAI 上游",
+      status: "warning",
+      summary: "需要更新 OpenAI refresh token",
+      detail: { issues: [{ repairAction: "apply_openai_refresh_token_to_sub2_account", sub2AccountId: 2 }] }
+    }],
+    createdAt: new Date("2026-06-12T10:00:00.000Z")
+  };
+
+  const fresh = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T10:59:59.000Z"));
+  assert.equal(fresh.ageMinutes, 59);
+  assert.equal(fresh.stale, false);
+  assert.equal(fresh.staleThresholdMinutes, 60);
+  assert.equal(fresh.criticalChecks[0].id, "sub2");
+  assert.equal(fresh.criticalChecks[0].primaryIssue?.sub2AccountId, 2);
+
+  const stale = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T11:00:00.000Z"));
+  assert.equal(stale.ageMinutes, 60);
+  assert.equal(stale.stale, true);
 });
 
 test("dashboard health previews retain product catalog drilldown fields", () => {

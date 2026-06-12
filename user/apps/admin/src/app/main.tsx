@@ -184,6 +184,9 @@ interface Dashboard {
     };
     criticalChecks?: DashboardHealthCheckPreview[];
     createdAt: string;
+    ageMinutes?: number;
+    stale?: boolean;
+    staleThresholdMinutes?: number;
   } | null;
 }
 
@@ -2846,13 +2849,14 @@ function DashboardView({
           <h2>系统状态</h2>
           {latestHealth ? (
             <>
-              <div className={healthRowClass(latestHealth.status)}>
-                {latestHealth.status === "ok" ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-                <strong>{healthStatusText(latestHealth.status)}</strong>
+              <div className={latestHealth.stale ? "health-row warning" : healthRowClass(latestHealth.status)}>
+                {latestHealth.status === "ok" && !latestHealth.stale ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+                <strong>{latestHealth.stale ? `${healthStatusText(latestHealth.status)} / 快照过期` : healthStatusText(latestHealth.status)}</strong>
               </div>
               <table>
                 <tbody>
-                  <tr><td>最近巡检</td><td>{dateTime(latestHealth.createdAt)}</td></tr>
+                  <tr><td>最近巡检</td><td>{dateTime(latestHealth.createdAt)} / {dashboardSnapshotAgeText(latestHealth.ageMinutes)}</td></tr>
+                  <tr><td>快照状态</td><td>{dashboardSnapshotFreshnessText(latestHealth)}</td></tr>
                   <tr><td>来源</td><td>{latestHealth.source}</td></tr>
                   <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
                 </tbody>
@@ -5974,6 +5978,20 @@ function healthRowClass(status: SystemHealthResult["status"]) {
   if (status === "ok") return "health-row";
   if (status === "warning") return "health-row warning";
   return "health-row error";
+}
+
+function dashboardSnapshotAgeText(ageMinutes?: number) {
+  if (typeof ageMinutes !== "number" || !Number.isFinite(ageMinutes)) return "-";
+  if (ageMinutes < 1) return "刚刚";
+  if (ageMinutes < 60) return `${ageMinutes} 分钟前`;
+  const hours = Math.floor(ageMinutes / 60);
+  const minutes = ageMinutes % 60;
+  return minutes > 0 ? `${hours} 小时 ${minutes} 分钟前` : `${hours} 小时前`;
+}
+
+function dashboardSnapshotFreshnessText(snapshot: NonNullable<Dashboard["latestSystemHealth"]>) {
+  const threshold = snapshot.staleThresholdMinutes ?? 60;
+  return snapshot.stale ? `已过期，建议重新巡检（阈值 ${threshold} 分钟）` : `有效（阈值 ${threshold} 分钟）`;
 }
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {

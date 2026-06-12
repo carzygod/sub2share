@@ -117,6 +117,7 @@ const systemHealthSalesDeliveryIssueLimit = 50;
 const systemHealthPendingUsageScanLimit = 200;
 const systemHealthPendingUsageIssueLimit = 50;
 const systemHealthLocalSmokeFreshMs = 24 * 60 * 60 * 1000;
+const dashboardSystemHealthSnapshotStaleMs = 60 * 60 * 1000;
 const systemHealthLocalSmokeCredentialAuditScanLimit = 100;
 const systemHealthFrontendProbeTimeoutMs = 3000;
 const sub2BindingReconciliationLimit = 500;
@@ -673,12 +674,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       paidOrderCount: orderAgg._count,
       paidOrderAmount: orderAgg._sum.paidAmount ?? 0,
       latestSystemHealth: latestSystemHealth ? {
-        id: latestSystemHealth.id,
-        status: latestSystemHealth.status,
-        source: latestSystemHealth.source,
-        summary: latestSystemHealth.summary,
-        createdAt: latestSystemHealth.createdAt,
-        criticalChecks: dashboardHealthCheckPreviews(latestSystemHealth.checks)
+        ...dashboardLatestSystemHealthPreview(latestSystemHealth)
       } : null
     });
   });
@@ -5272,6 +5268,32 @@ const dashboardHealthCheckPriority = [
 const dashboardHealthCheckPriorityIndex = new Map<string, number>(
   dashboardHealthCheckPriority.map((id, index) => [id, index])
 );
+
+interface DashboardLatestSystemHealthSnapshot {
+  id: string;
+  status: string;
+  source: string;
+  summary: unknown;
+  checks: unknown;
+  createdAt: Date;
+}
+
+export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSystemHealthSnapshot, now = new Date()) {
+  const ageMinutes = Math.floor(Math.max(0, now.getTime() - snapshot.createdAt.getTime()) / 60000);
+  const staleThresholdMinutes = Math.floor(dashboardSystemHealthSnapshotStaleMs / 60000);
+
+  return {
+    id: snapshot.id,
+    status: snapshot.status,
+    source: snapshot.source,
+    summary: snapshot.summary,
+    createdAt: snapshot.createdAt,
+    ageMinutes,
+    stale: ageMinutes >= staleThresholdMinutes,
+    staleThresholdMinutes,
+    criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
+  };
+}
 
 export function dashboardHealthCheckPreviews(checks: unknown): DashboardHealthCheckPreview[] {
   if (!Array.isArray(checks)) return [];
