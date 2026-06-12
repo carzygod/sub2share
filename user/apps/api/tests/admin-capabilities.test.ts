@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
@@ -47,6 +47,51 @@ test("admin capability operations include frontend management targets", () => {
   assert.equal(targetById.get("systemHealth.read")?.view, "systemHealth");
   assert.equal(targetById.get("auditLogs.list")?.view, "audit");
   assert.ok(operations.every((operation) => operation.target?.label.startsWith("打开")));
+});
+
+test("proxy request status filters expose operational failure buckets", () => {
+  assert.deepEqual(proxyRequestStatusWhere("503"), { statusCode: 503 });
+  assert.deepEqual(proxyRequestStatusWhere("failed"), {
+    OR: [
+      { statusCode: { gte: 400 } },
+      { errorCode: { not: null } }
+    ]
+  });
+  assert.deepEqual(proxyRequestStatusWhere("client_error"), { statusCode: { gte: 400, lt: 500 } });
+  assert.deepEqual(proxyRequestStatusWhere("server_error"), { statusCode: { gte: 500 } });
+  assert.deepEqual(proxyRequestStatusWhere("upstream_error"), {
+    OR: [
+      { upstreamStatusCode: { gte: 400 } },
+      { errorCode: { startsWith: "upstream_" } }
+    ]
+  });
+  assert.deepEqual(proxyRequestStatusWhere("local_rejection"), {
+    errorCode: {
+      in: [
+        "missing_api_key",
+        "invalid_api_key",
+        "user_not_active",
+        "insufficient_balance",
+        "rental_not_active",
+        "rental_expired",
+        "key_rental_mismatch",
+        "unsupported_resource_type",
+        "spend_limit_exhausted",
+        "request_limit_exceeded",
+        "rpm_limit_exceeded",
+        "tpm_limit_exceeded",
+        "concurrency_limit_exceeded"
+      ]
+    }
+  });
+  assert.deepEqual(proxyRequestStatusWhere("local_availability"), {
+    errorCode: { in: ["proxy_limiter_unavailable", "upstream_timeout", "upstream_unavailable"] }
+  });
+  assert.deepEqual(proxyRequestStatusWhere("stream_error"), {
+    errorCode: { in: ["upstream_stream_error", "upstream_stream_closed", "upstream_stream_idle_timeout"] }
+  });
+  assert.deepEqual(proxyRequestStatusWhere(""), {});
+  assert.deepEqual(proxyRequestStatusWhere("not-a-filter"), {});
 });
 
 test("admin capability coverage reports missing declared routes", () => {

@@ -431,3 +431,19 @@
 - 前端单元测试覆盖 `productCatalog + resourceList=true` 可以显示共享资源修复动作，非 `productCatalog` 或无资源上下文时不误显示。
 
 这样管理员在首页看到 Codex 商品交付阻断时，可以同时进入商品定位和共享资源修复入口，不再需要先进入完整巡检列表才能拿到“打开共享资源”的按钮。
+
+## 2026-06-13 扩展：反代请求日志支持失败类别筛选
+
+- Admin `反代请求` 页面的状态筛选新增运维类别：
+  - `failed`
+  - `client_error`
+  - `server_error`
+  - `upstream_error`
+  - `local_rejection`
+  - `local_availability`
+  - `stream_error`
+- 原有精确 HTTP 状态码筛选继续保留，例如 `503`。
+- `GET /api/admin/proxy-requests` 会把类别筛选、错误码 contains 和 request/user/rental/model/path 关键字搜索用 `AND` 组合，避免多个 `OR` 条件互相覆盖。
+- API 单元测试锁定每个类别对应的 Prisma 查询条件。
+
+这样管理员可以直接筛出所有 OpenAI/Codex 反代失败、上游失败、本地准入拒绝、本地可用性问题或 stream 异常，用同一个反代请求列表完成问题定位。

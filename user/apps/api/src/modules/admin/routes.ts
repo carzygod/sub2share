@@ -104,6 +104,15 @@ type ResourceStatus = SupplierResourceStatus;
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
 const walletManagementStatuses = ["negative", "frozen", "available", "spent"] as const;
+export const proxyRequestStatusFilters = [
+  "failed",
+  "client_error",
+  "server_error",
+  "upstream_error",
+  "local_rejection",
+  "local_availability",
+  "stream_error"
+] as const;
 const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
@@ -3502,12 +3511,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/proxy-requests", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
-    const statusCode = numericStatusCode(query.status);
     const proxyRequestLookup = normalizeProxyRequestLookup(query.q ?? "");
-    const where: Prisma.ProxyRequestLogWhereInput = {
-      ...(statusCode ? { statusCode } : {}),
-      ...(query.action ? { errorCode: containsText(query.action) } : {}),
-      ...(proxyRequestLookup ? {
+    const conditions: Prisma.ProxyRequestLogWhereInput[] = [
+      proxyRequestStatusWhere(query.status),
+      ...(query.action ? [{ errorCode: containsText(query.action) }] : []),
+      ...(proxyRequestLookup ? [{
         OR: [
           { id: containsText(proxyRequestLookup) },
           { requestId: containsText(proxyRequestLookup) },
@@ -3532,8 +3540,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { rental: { order: { items: { some: { productId: containsText(proxyRequestLookup) } } } } },
           { apiKey: { name: containsText(proxyRequestLookup) } }
         ]
-      } : {})
-    };
+      }] : [])
+    ].filter((condition) => Object.keys(condition).length > 0);
+    const where: Prisma.ProxyRequestLogWhereInput = conditions.length > 0 ? { AND: conditions } : {};
     const [logs, total] = await Promise.all([
       prisma.proxyRequestLog.findMany({
         where,
@@ -7689,6 +7698,34 @@ function numericStatusCode(value: string | undefined) {
   if (!value) return undefined;
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) && parsed >= 100 && parsed <= 599 ? parsed : undefined;
+}
+
+export function proxyRequestStatusWhere(status: string | undefined): Prisma.ProxyRequestLogWhereInput {
+  const statusCode = numericStatusCode(status);
+  if (statusCode) return { statusCode };
+
+  if (status === "failed") {
+    return {
+      OR: [
+        { statusCode: { gte: 400 } },
+        { errorCode: { not: null } }
+      ]
+    };
+  }
+  if (status === "client_error") return { statusCode: { gte: 400, lt: 500 } };
+  if (status === "server_error") return { statusCode: { gte: 500 } };
+  if (status === "upstream_error") {
+    return {
+      OR: [
+        { upstreamStatusCode: { gte: 400 } },
+        { errorCode: { startsWith: "upstream_" } }
+      ]
+    };
+  }
+  if (status === "local_rejection") return { errorCode: { in: [...proxyClientRejectionErrorCodes] } };
+  if (status === "local_availability") return { errorCode: { in: [...proxyLocalAvailabilityErrorCodes] } };
+  if (status === "stream_error") return { errorCode: { in: [...proxyStreamErrorCodes] } };
+  return {};
 }
 
 function nonEmpty(value: string | undefined) {
