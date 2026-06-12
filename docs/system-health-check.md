@@ -237,3 +237,22 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 如果配置修改导致已有 `online` 或 `busy` Codex 资源失去 ready 条件，例如清空 `sub2AccountId`，资源状态会自动收敛为 `abnormal` 并清空 `lastCheckedAt`。
 
 这让共享资源创建、配置维护、手动状态变更、资源测试、凭据维护和系统巡检的 Codex ready 口径保持一致。
+
+## 2026-06-12 Update: Product Catalog Delivery Readiness
+
+`productCatalog` / `商品目录` 巡检现在不只检查 active 商品是否有可购买价格，也会检查可售 Codex 商品是否具备 ready production Codex shared resource。
+
+- 巡检指标新增：
+  - `readyCodexDeliveryResources`
+  - `codexProductsWithoutReadyDeliveryResources`
+- 当 active Codex 商品存在可购买价格，但 `readyCodexDeliveryResources=0` 时，`productCatalog.status=warning`。
+- issue type 为 `active_codex_product_without_ready_delivery_resource`。
+- issue 会携带：
+  - `resourceType=codex`
+  - `resourceList=true`
+  - `resourceScope=production`
+  - `resourceStatus=online`
+  - `repairAction=apply_openai_refresh_token_to_sub2_account`
+- 该检查与 `POST /api/orders` 的 `codex_resource_not_ready_for_delivery` 闸门保持一致：管理员会在用户购买失败前看到“商品可售但交付资源缺失”的经营风险。
+
+该检查仍然不主动调用 OpenAI，也不自动下架商品；真实恢复仍需要有效 OpenAI refresh token、active Sub2 OpenAI 账号、ready Codex 共享资源和 `/v1/responses` smoke 共同证明。

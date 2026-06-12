@@ -26,6 +26,11 @@
 - 用户下单路径会在钱包扣款和订单/租赁写入前完成检查，避免资源不可交付时先扣款再回滚。
 - 管理员重试路径会在订单状态切换、钱包重新扣款和 Sub2 key 创建前完成检查。
 - 下单与管理员重试的订单状态历史会记录本次匹配到的 `supplierResourceId`，便于后续审计交叉核查。
+- `GET /api/admin/system-health` 的 `productCatalog` 巡检会在 active Codex 商品已有可购买价格、但没有 ready Codex 交付资源时返回 warning：
+  - `readyCodexDeliveryResources=0`
+  - `codexProductsWithoutReadyDeliveryResources>0`
+  - issue type 为 `active_codex_product_without_ready_delivery_resource`
+  - issue 携带共享资源修复入口字段和 `repairAction=apply_openai_refresh_token_to_sub2_account`
 
 ## 管理员价值
 
@@ -46,3 +51,10 @@ pnpm --filter @zyz/api test
 - `resource-delivery-readiness.test.ts`：4/4 通过。
 - `@zyz/api typecheck`：通过。
 - `@zyz/api test`：103/103 通过。
+
+2026-06-12 补充验收：
+
+- `resource-delivery-readiness.test.ts`：6/6 通过。
+- `@zyz/api typecheck`：通过。
+- `@zyz/api test`：105/105 通过。
+- `@zyz/api build`：通过。

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   codexDeliveryResourceMissingDetails,
+  codexCatalogDeliveryReadinessIssueFields,
   isDeliveryResourceReadinessRequired,
   readyCodexSupplierResourceDeliveryWhere,
   requireReadySupplierResourceForDelivery
@@ -40,4 +41,39 @@ test("non-Codex delivery skips supplier resource gating", async () => {
       resource: null
     });
   });
+});
+
+test("reports purchasable Codex catalog products without delivery resources", () => {
+  assert.deepEqual(codexCatalogDeliveryReadinessIssueFields({
+    productId: "product-1",
+    productName: "Codex Monthly",
+    resourceType: "codex",
+    readyCodexDeliveryResources: 0
+  }), {
+    type: "active_codex_product_without_ready_delivery_resource",
+    productId: "product-1",
+    productName: "Codex Monthly",
+    resourceType: "codex",
+    resourceList: true,
+    resourceScope: "production",
+    resourceStatus: "online",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Create or repair a production Codex shared resource with a Sub2 account id and an active OpenAI refresh token credential before selling Codex access.",
+    message: "Active Codex product Codex Monthly is purchasable but no ready production Codex shared resource is available for delivery."
+  });
+});
+
+test("catalog delivery readiness ignores ready Codex resources and non-Codex products", () => {
+  assert.equal(codexCatalogDeliveryReadinessIssueFields({
+    productId: "product-1",
+    productName: "Codex Monthly",
+    resourceType: "codex",
+    readyCodexDeliveryResources: 1
+  }), null);
+  assert.equal(codexCatalogDeliveryReadinessIssueFields({
+    productId: "product-2",
+    productName: "Gemini Monthly",
+    resourceType: "gemini",
+    readyCodexDeliveryResources: 0
+  }), null);
 });

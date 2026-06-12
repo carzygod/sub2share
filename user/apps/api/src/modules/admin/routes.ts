@@ -33,7 +33,11 @@ import { inspectAuthTokenConfig } from "../auth/token-config.js";
 import { rotateRentalApiKey } from "../rentals/key-rotation.js";
 import { recordOrderStatusHistory } from "../orders/status-history.js";
 import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } from "../suppliers/resource-credential-crypto.js";
-import { requireReadySupplierResourceForDelivery } from "../suppliers/resource-delivery-readiness.js";
+import {
+  codexCatalogDeliveryReadinessIssueFields,
+  readyCodexSupplierResourceDeliveryWhere,
+  requireReadySupplierResourceForDelivery
+} from "../suppliers/resource-delivery-readiness.js";
 import {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage,
@@ -291,6 +295,12 @@ interface ProductCatalogIssue {
   productId: string;
   productName: string;
   priceId?: string;
+  resourceType?: string;
+  resourceList?: boolean;
+  resourceScope?: "production";
+  resourceStatus?: string | null;
+  repairAction?: string;
+  actionHint?: string;
   message: string;
 }
 
@@ -5847,7 +5857,7 @@ async function inspectProductCatalogReadiness() {
     status: "active",
     ...nonSmokeProductWhere()
   };
-  const [matched, products] = await Promise.all([
+  const [matched, products, readyCodexDeliveryResources] = await Promise.all([
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
@@ -5868,14 +5878,17 @@ async function inspectProductCatalogReadiness() {
       },
       orderBy: { updatedAt: "desc" },
       take: systemHealthProductCatalogScanLimit
-    })
+    }),
+    prisma.supplierResource.count({ where: readyCodexSupplierResourceDeliveryWhere() })
   ]);
 
   const issues: ProductCatalogIssue[] = [];
   const counters = {
     productsWithoutActivePrices: 0,
     productsWithoutPurchasablePrices: 0,
-    activePricesWithoutFixedPrice: 0
+    activePricesWithoutFixedPrice: 0,
+    readyCodexDeliveryResources,
+    codexProductsWithoutReadyDeliveryResources: 0
   };
   let warnings = 0;
 
@@ -5911,6 +5924,16 @@ async function inspectProductCatalogReadiness() {
         productName: product.name,
         message: `Active product ${product.name} has active prices but no fixed price supported by direct purchase.`
       });
+    }
+    const deliveryReadinessIssue = codexCatalogDeliveryReadinessIssueFields({
+      productId: product.id,
+      productName: product.name,
+      resourceType: product.resourceType,
+      readyCodexDeliveryResources
+    });
+    if (purchasablePrices.length > 0 && deliveryReadinessIssue) {
+      counters.codexProductsWithoutReadyDeliveryResources += 1;
+      addIssue(deliveryReadinessIssue);
     }
 
     for (const price of product.prices) {

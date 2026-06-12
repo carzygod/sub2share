@@ -39,6 +39,28 @@ export function codexDeliveryResourceMissingDetails(resourceType: string) {
   };
 }
 
+export function codexCatalogDeliveryReadinessIssueFields(input: {
+  productId: string;
+  productName: string;
+  resourceType: string;
+  readyCodexDeliveryResources: number;
+}) {
+  if (input.resourceType !== "codex" || input.readyCodexDeliveryResources > 0) return null;
+
+  return {
+    type: "active_codex_product_without_ready_delivery_resource",
+    productId: input.productId,
+    productName: input.productName,
+    resourceType: "codex",
+    resourceList: true,
+    resourceScope: "production" as const,
+    resourceStatus: "online",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Create or repair a production Codex shared resource with a Sub2 account id and an active OpenAI refresh token credential before selling Codex access.",
+    message: `Active Codex product ${input.productName} is purchasable but no ready production Codex shared resource is available for delivery.`
+  };
+}
+
 export async function findReadySupplierResourceForDelivery(resourceType: string) {
   if (!isDeliveryResourceReadinessRequired(resourceType)) return null;
 
