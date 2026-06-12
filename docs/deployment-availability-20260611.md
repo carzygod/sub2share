@@ -4953,3 +4953,76 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 Sub2/OpenAI 修复入口现在不只具备页面展示，也有 Admin 单元测试锁定关键上下文字段。真实 OpenAI/Codex `/v1/responses` 仍未恢复，剩余阻断继续是缺少有效 OpenAI refresh token 或 active Sub2 OpenAI 账号。
+
+## 2026-06-12 17:28 支付巡检充值流水直达发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`4b4e466`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=4b4e466`
+  - `deployed_at=20260612T092759Z`
+- 本次能力：管理员首页 `payments` 关键巡检项保留充值流水定位字段；点击时优先打开 `余额流水` 并筛选 `recharge`，再回退到余额管理或售出情况。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`：通过，5/5。
+- `pnpm.cmd --filter @zyz/admin test`：通过，5/5。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- 第一次发布尝试在 Prisma 输出 `✔` 时被本地 Windows GBK 日志编码打断，远端未切换 release：
+  - 当时 marker 仍为 `f01df5c`。
+  - 4100、3100、3101 均为 active。
+  - 残留 `/opt/zhisuan-yizhan/user.new-20260612T092653Z-4b4e466` staging 目录已按安全路径清理。
+- 第二次使用 UTF-8 输出重新执行发布脚本并完成：
+  - Prisma generate：通过。
+  - Prisma migrate deploy：识别 16 个 migrations，无待应用迁移。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：79/79 通过。
+  - Admin tests：5/5 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- 运行目录与服务：
+  - 4100 cwd：`/opt/zhisuan-yizhan/user/apps/api`
+  - 3100 cwd：`/opt/zhisuan-yizhan/user`
+  - 3101 cwd：`/opt/zhisuan-yizhan/user`
+  - `zyz-api.service`、`zyz-web.service`、`zyz-admin.service`：active。
+- Admin 静态资源：
+  - 当前 bundle：`/assets/index-Dddl1WV3.js`
+  - bundle 包含 `打开充值流水`：true
+  - bundle 包含 `walletTransactionType`：true
+- `/opt/zhisuan-yizhan/user.new-*` staging 目录已清理。
+- `/tmp/sub2share-user-4b4e466.tar*` 已由发布脚本清理，本地归档已清理。
+
+### 线上复查
+
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - `deploymentRuntime.metrics.commit=4b4e466`
+- `GET /api/admin/dashboard`：200。
+  - `latestSystemHealth.status=error`
+  - `criticalChecks`：`sub2`、`localProxySmoke`、`resourceCredentials`、`resources`、`payments`、`openAiProxyContract`、`openAiProxyRuntime`、`proxy`
+  - `payments.primaryIssue.id=production_mock_recharge`
+  - `payments.primaryIssue.walletTransactionList=true`
+  - `payments.primaryIssue.walletTransactionType=recharge`
+  - `payments.primaryIssue.walletList=true`
+  - `payments.primaryIssue.salesList=true`
+- 当前 non-ok checks 仍为：`payments`、`resources`、`resourceCredentials`、`sub2`、`localProxySmoke`。
+
+### 结论
+
+管理员首页现在可以把支付充值 warning 从总览页直接带到充值余额流水，减少 mock/disabled 支付配置到余额入账复核之间的二次导航。真实 OpenAI/Codex `/v1/responses` 仍未恢复，剩余阻断继续是缺少有效 OpenAI refresh token 或 active Sub2 OpenAI 账号。
