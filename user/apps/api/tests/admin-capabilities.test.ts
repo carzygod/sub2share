@@ -244,6 +244,67 @@ test("dashboard latest system health preview exposes snapshot freshness", () => 
   assert.equal(stale.stale, true);
 });
 
+test("dashboard latest system health preview always exposes admin entry coverage", () => {
+  const snapshot = {
+    id: "snapshot-admin-entry",
+    status: "warning",
+    source: "manual",
+    summary: { totalChecks: 10, ok: 4, warning: 6, error: 0 },
+    checks: [
+      { id: "sub2", label: "Sub2/OpenAI 上游", status: "warning", summary: "需要复查" },
+      { id: "localProxySmoke", label: "本地反代 smoke", status: "warning", summary: "需要复查" },
+      { id: "resourceCredentials", label: "资源凭据", status: "warning", summary: "需要复查" },
+      { id: "resources", label: "共享资源", status: "warning", summary: "需要复查" },
+      { id: "productCatalog", label: "商品目录", status: "warning", summary: "需要复查" },
+      { id: "payments", label: "支付充值", status: "warning", summary: "需要复查" },
+      { id: "openAiProxyContract", label: "OpenAI 反代契约", status: "ok", summary: "契约正常" },
+      { id: "openAiProxyRuntime", label: "OpenAI 反代运行态", status: "ok", summary: "运行态正常" },
+      {
+        id: "adminCapabilities",
+        label: "管理员入口覆盖",
+        status: "ok",
+        summary: "管理员入口覆盖 5/5 个核心管理范围",
+        metrics: {
+          requiredAreas: 5,
+          coveredRequiredAreas: 5,
+          totalOperations: 65,
+          registeredOperations: 65,
+          operationsWithTargets: 65,
+          missingRoutes: 0,
+          missingTargets: 0
+        }
+      },
+      {
+        id: "adminSurfaceCoverage",
+        label: "管理前端入口",
+        status: "ok",
+        summary: "管理前端入口覆盖 5/5 个核心管理范围",
+        metrics: {
+          requiredAreas: 5,
+          coveredRequiredAreas: 5,
+          navigationItems: 18,
+          managedListViews: 18,
+          criticalViews: 5,
+          duplicateViews: 0
+        }
+      }
+    ],
+    createdAt: new Date("2026-06-12T10:00:00.000Z")
+  };
+
+  const preview = dashboardLatestSystemHealthPreview(snapshot, new Date("2026-06-12T10:01:00.000Z"));
+
+  assert.equal(preview.criticalChecks.length, 8);
+  assert.equal(preview.criticalChecks.some((check) => check.id === "adminCapabilities"), false);
+  assert.equal(preview.criticalChecks.some((check) => check.id === "adminSurfaceCoverage"), false);
+  assert.equal(preview.adminEntryCoverage?.ok, true);
+  assert.equal(preview.adminEntryCoverage?.summary, "API 5/5 核心范围，65/65 路由，65/65 入口 / 前端 5/5 核心范围，18 个列表入口，5 个关键入口");
+  assert.equal(preview.adminEntryCoverage?.api?.metrics.missingRoutes, 0);
+  assert.equal(preview.adminEntryCoverage?.api?.metrics.missingTargets, 0);
+  assert.equal(preview.adminEntryCoverage?.frontend?.metrics.managedListViews, 18);
+  assert.equal(preview.adminEntryCoverage?.frontend?.metrics.criticalViews, 5);
+});
+
 test("dashboard health previews retain product catalog drilldown fields", () => {
   const previews = dashboardHealthCheckPreviews([
     {

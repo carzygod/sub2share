@@ -259,6 +259,20 @@ interface DashboardHealthCheckPreview {
 type DashboardHealthDetailPreview = Record<string, string | number | boolean | null>;
 type DashboardHealthMetricPreview = Record<string, string | number | boolean | null>;
 
+interface DashboardAdminEntryCoverageSide {
+  status: SystemHealthStatus;
+  summary: string;
+  issueCount: number;
+  metrics: DashboardHealthMetricPreview;
+}
+
+interface DashboardAdminEntryCoveragePreview {
+  ok: boolean;
+  summary: string;
+  api?: DashboardAdminEntryCoverageSide;
+  frontend?: DashboardAdminEntryCoverageSide;
+}
+
 const dashboardHealthDetailPreviewFields = [
   "id",
   "type",
@@ -324,6 +338,10 @@ const dashboardHealthMetricPreviewFields = [
   "missingRoutes",
   "operationsWithTargets",
   "missingTargets",
+  "navigationItems",
+  "managedListViews",
+  "criticalViews",
+  "duplicateViews",
   "endpoint",
   "endpointProtocol",
   "endpointEndsWithV1",
@@ -5548,6 +5566,7 @@ export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSyst
     ageMinutes,
     stale: ageMinutes >= staleThresholdMinutes,
     staleThresholdMinutes,
+    adminEntryCoverage: dashboardAdminEntryCoveragePreview(snapshot.checks),
     criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
   };
 }
@@ -5567,6 +5586,59 @@ export function dashboardHealthCheckPreviews(checks: unknown): DashboardHealthCh
       return dashboardHealthCheckRank(left.id) - dashboardHealthCheckRank(right.id);
     })
     .slice(0, 8);
+}
+
+function dashboardAdminEntryCoveragePreview(checks: unknown): DashboardAdminEntryCoveragePreview | null {
+  if (!Array.isArray(checks)) return null;
+  const previews = checks
+    .map(dashboardHealthCheckPreview)
+    .filter((item): item is DashboardHealthCheckPreview => Boolean(item));
+  const api = dashboardAdminEntryCoverageSide(previews.find((item) => item.id === "adminCapabilities"), "api");
+  const frontend = dashboardAdminEntryCoverageSide(previews.find((item) => item.id === "adminSurfaceCoverage"), "frontend");
+  if (!api && !frontend) return null;
+
+  const ok = [api, frontend].filter(Boolean).every((item) => item?.status === "ok");
+  const summary = [api?.summary, frontend?.summary].filter(Boolean).join(" / ");
+  return {
+    ok,
+    summary,
+    ...(api ? { api } : {}),
+    ...(frontend ? { frontend } : {})
+  };
+}
+
+function dashboardAdminEntryCoverageSide(
+  check: DashboardHealthCheckPreview | undefined,
+  kind: "api" | "frontend"
+): DashboardAdminEntryCoverageSide | null {
+  if (!check) return null;
+  const metrics = check.metrics ?? {};
+  const coveredRequiredAreas = dashboardMetricNumber(metrics, "coveredRequiredAreas");
+  const requiredAreas = dashboardMetricNumber(metrics, "requiredAreas");
+  const totalOperations = dashboardMetricNumber(metrics, "totalOperations");
+  const registeredOperations = dashboardMetricNumber(metrics, "registeredOperations");
+  const operationsWithTargets = dashboardMetricNumber(metrics, "operationsWithTargets");
+  const managedListViews = dashboardMetricNumber(metrics, "managedListViews");
+  const criticalViews = dashboardMetricNumber(metrics, "criticalViews");
+
+  let summary = check.summary;
+  if (kind === "api" && coveredRequiredAreas !== null && requiredAreas !== null) {
+    const routeText = totalOperations !== null && registeredOperations !== null ? `，${registeredOperations}/${totalOperations} 路由` : "";
+    const targetText = totalOperations !== null && operationsWithTargets !== null ? `，${operationsWithTargets}/${totalOperations} 入口` : "";
+    summary = `API ${coveredRequiredAreas}/${requiredAreas} 核心范围${routeText}${targetText}`;
+  }
+  if (kind === "frontend" && coveredRequiredAreas !== null && requiredAreas !== null) {
+    const listText = managedListViews !== null ? `，${managedListViews} 个列表入口` : "";
+    const criticalText = criticalViews !== null ? `，${criticalViews} 个关键入口` : "";
+    summary = `前端 ${coveredRequiredAreas}/${requiredAreas} 核心范围${listText}${criticalText}`;
+  }
+
+  return {
+    status: check.status,
+    summary,
+    issueCount: check.issueCount,
+    metrics
+  };
 }
 
 function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPreview | null {
@@ -5622,6 +5694,11 @@ function dashboardHealthMetricPreview(value: unknown): DashboardHealthMetricPrev
   }
 
   return Object.keys(preview).length > 0 ? preview : null;
+}
+
+function dashboardMetricNumber(metrics: DashboardHealthMetricPreview, field: string) {
+  const value = metrics[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function dashboardHealthScalarValue(value: unknown) {

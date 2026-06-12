@@ -161,6 +161,20 @@ interface DashboardHealthCheckPreview {
 
 type DashboardHealthDetailPreview = Record<string, string | number | boolean | null>;
 
+interface DashboardAdminEntryCoverageSide {
+  status: "ok" | "warning" | "error";
+  summary: string;
+  issueCount: number;
+  metrics?: Record<string, string | number | boolean | null>;
+}
+
+interface DashboardAdminEntryCoverage {
+  ok: boolean;
+  summary: string;
+  api?: DashboardAdminEntryCoverageSide;
+  frontend?: DashboardAdminEntryCoverageSide;
+}
+
 interface Dashboard {
   users: number;
   activeRentals: number;
@@ -190,6 +204,7 @@ interface Dashboard {
     ageMinutes?: number;
     stale?: boolean;
     staleThresholdMinutes?: number;
+    adminEntryCoverage?: DashboardAdminEntryCoverage | null;
   } | null;
 }
 
@@ -2906,6 +2921,12 @@ function DashboardView({
                   <tr><td>快照状态</td><td>{dashboardSnapshotFreshnessText(latestHealth)}</td></tr>
                   <tr><td>来源</td><td>{latestHealth.source}</td></tr>
                   <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
+                  {latestHealth.adminEntryCoverage && (
+                    <tr>
+                      <td>管理员入口</td>
+                      <td>{dashboardAdminEntryCoverageText(latestHealth.adminEntryCoverage)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
               {criticalChecks.length > 0 && (
@@ -6059,6 +6080,11 @@ function dashboardSnapshotAgeText(ageMinutes?: number) {
 function dashboardSnapshotFreshnessText(snapshot: NonNullable<Dashboard["latestSystemHealth"]>) {
   const threshold = snapshot.staleThresholdMinutes ?? 60;
   return snapshot.stale ? `已过期，建议重新巡检（阈值 ${threshold} 分钟）` : `有效（阈值 ${threshold} 分钟）`;
+}
+
+function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) {
+  const status = coverage.ok ? "ok" : "需要处理";
+  return `${status} / ${coverage.summary || [coverage.api?.summary, coverage.frontend?.summary].filter(Boolean).join(" / ") || "-"}`;
 }
 
 function dashboardHealthCheckTarget(check: DashboardHealthCheckPreview): { view: View; label: string } | null {

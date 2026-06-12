@@ -262,3 +262,14 @@
 - Admin 首页在关键巡检没有 issue/sample 上下文时，会回退展示 metrics 摘要。
 
 这样管理员在首屏就能确认 OpenAI/Codex 反代契约是否覆盖核心 `/v1` 路径并保留 Sub2API 原始 path/query，而不必先进入完整巡检详情。
+
+## 2026-06-13 扩展：首页稳定展示管理员入口覆盖
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth` 新增 `adminEntryCoverage`。
+- 该字段独立于 `criticalChecks` top 8 切片，即使当前 Sub2/OpenAI、资源、商品和支付等问题占满首屏关键巡检，也会稳定返回：
+  - `adminCapabilities` API 能力矩阵覆盖摘要。
+  - `adminSurfaceCoverage` Admin 前端入口覆盖摘要。
+- Admin 首页系统状态表新增“管理员入口”行，展示 API 与前端核心范围覆盖、路由覆盖和入口覆盖。
+- API 单元测试覆盖：当 `adminCapabilities` 与 `adminSurfaceCoverage` 被 top 8 挤出时，`adminEntryCoverage` 仍返回 `ok` 与完整摘要。
+
+这样“用户、共享、余额、售出、OpenAI/Codex 反代”的完整管理员入口能力不会因为其他可用性风险较多而从首页消失。
