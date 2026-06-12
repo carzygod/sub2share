@@ -2,6 +2,8 @@ import { FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } fr
 import { createRoot } from "react-dom/client";
 import {
   adminNavigationItems,
+  adminSystemHealthIssueRefFields,
+  adminSystemHealthSampleSummaryFields,
   managedListViews,
   type AdminManagedListView as ManagedListView,
   type AdminView as View
@@ -5692,8 +5694,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
 }
 
 function systemHealthIssueRef(issue: Record<string, unknown>) {
-  const fields = ["requestId", "upstreamRequestId", "proxyRequestLogId", "proxyRequestPath", "proxyRequestStatusCode", "proxyRequestErrorCode", "path", "endpoint", "endpointUrl", "statusCode", "contentType", "durationMs", "auditLogId", "auditAction", "areaId", "view", "resourceId", "supplierEmail", "resourceType", "resourceStatus", "resourceScope", "productId", "priceId", "orderId", "rentalId", "apiKeyId", "apiKeyPrefix", "model", "smokeTestSkippedReason", "usageId", "userId", "userEmail", "userStatus", "walletId", "walletAccountId", "walletTransactionId", "walletTransactionType", "availableBalance", "frozenBalance", "bindingId", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "sub2BlockingReason", "sub2GroupId", "sub2GroupName", "sub2GroupStatus", "openAiAccountCount", "activeOpenAiAccountCount", "gatewayReachable", "settlementId", "settlementRecordId", "withdrawalId", "refType", "refId", "expected", "actual"];
-  const parts = fields
+  const parts = adminSystemHealthIssueRefFields
     .map((field) => textValue(issue[field]) ? `${field}: ${textValue(issue[field])}` : null)
     .filter(Boolean);
   return parts.join(" / ") || textValue(issue.id) || "-";
@@ -5752,8 +5753,7 @@ function systemHealthSampleHasAction(sample: SystemHealthSampleRow) {
 }
 
 function systemHealthSampleSummary(record: Record<string, unknown>, raw: unknown) {
-  const fields = ["userEmail", "amount", "balanceAfter", "currency", "refType", "refId", "createdAt", "supplierEmail", "resourceType", "resourceStatus", "sub2AccountId", "sub2AccountName", "accountStatus", "credentialsStatus", "schedulable", "tempUnschedulableReason", "level", "maxConcurrency", "credentialType", "status", "keyFingerprint", "lastRotatedAt", "updatedAt", "message"];
-  const parts = fields
+  const parts = adminSystemHealthSampleSummaryFields
     .map((field) => textValue(record[field]) ? `${field}: ${textValue(record[field])}` : null)
     .filter(Boolean);
   return parts.join(" / ") || compactJson(raw);

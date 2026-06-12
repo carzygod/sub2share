@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   adminNavigationItems,
+  adminSystemHealthIssueRefFields,
+  adminSystemHealthSampleSummaryFields,
   inspectAdminSurfaceCoverage,
   managedListViews,
   requiredAdminSurfaceAreas
@@ -39,4 +41,12 @@ test("all managed list views are reachable from the sidebar navigation", () => {
 
   assert.deepEqual(inspectAdminSurfaceCoverage().missingManagedListViews, []);
   assert.deepEqual(inspectAdminSurfaceCoverage().duplicateViews, []);
+});
+
+test("system health summaries expose repair actions for operator drilldown", () => {
+  assert.ok(adminSystemHealthIssueRefFields.includes("repairAction"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("sub2AccountId"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("resourceScope"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
 });

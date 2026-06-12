@@ -40,6 +40,7 @@
 - 资源凭据巡检发现可应用候选时，管理员可以直接看到共享资源 ID、Sub2 账号 ID、供给方邮箱、凭据类型、状态、指纹和轮换时间。
 - 资源凭据巡检发现没有 active 可应用 refresh token 时，会从 Sub2/OpenAI 巡检结果中暴露 `sub2_account_repair_candidate`，让管理员直接看到可优先补 token 的 Sub2 账号 ID、名称、状态、凭据状态和调度状态。
 - 资源凭据巡检的 `openai_refresh_token_candidate_missing` 问题会同时暴露 `resourceList=true`、`resourceScope=production`、`resourceType=codex` 和 `sub2Status=true`，管理员可以在同一行进入生产共享资源列表创建/补凭据，或进入反代状态页直接应用 fresh token。
+- 问题样本和候选样本摘要会展示 `repairAction`，例如 `apply_openai_refresh_token_to_sub2_account`，让管理员在点击共享资源或反代状态之前即可知道下一步维修动作。
 - 共享资源巡检发现没有 online Codex 资源或存在异常资源时，管理员可以直接看到资源类型、资源状态、Sub2 账号、供给方邮箱和维修建议，并一键打开共享资源列表或具体资源详情。
 - 如果共享资源问题样本带有 `resourceType` 和 `resourceStatus`，点击“打开共享资源”会自动把这些字段写入共享资源列表筛选条件，例如直接打开 `codex + disabled` 的资源列表。
 - 如果共享资源或资源凭据问题样本带有 `resourceScope=production`，点击“打开共享资源”会写入隐藏筛选 `action=production`，只打开生产资源范围，排除内部 smoke / disabled 自检资源；普通共享资源列表不带该参数时仍可审计内部资源。
