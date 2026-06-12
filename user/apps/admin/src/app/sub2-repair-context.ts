@@ -31,6 +31,7 @@ export interface Sub2RepairContext {
   stale?: string;
   staleThresholdMinutes?: string;
   freshMinutesRemaining?: string;
+  staleAt?: string;
 }
 
 export interface ResourceCreateDefaults {
@@ -62,6 +63,7 @@ export interface ResourceCreateDefaults {
   stale?: string;
   staleThresholdMinutes?: string;
   freshMinutesRemaining?: string;
+  staleAt?: string;
 }
 
 export interface Sub2RepairContextItem {
@@ -93,6 +95,7 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     context.ageMinutes ? `${context.ageMinutes} 分钟前` : undefined,
     context.staleThresholdMinutes ? `阈值 ${context.staleThresholdMinutes} 分钟` : undefined,
     context.freshMinutesRemaining && context.stale !== "true" ? `剩余 ${context.freshMinutesRemaining} 分钟过期` : undefined,
+    context.staleAt ? `staleAt ${context.staleAt}` : undefined,
     context.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   const accountDiagnostics = [
@@ -172,6 +175,7 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
     defaults.ageMinutes ? `${defaults.ageMinutes} 分钟前` : undefined,
     defaults.staleThresholdMinutes ? `阈值 ${defaults.staleThresholdMinutes} 分钟` : undefined,
     defaults.freshMinutesRemaining && defaults.stale !== "true" ? `剩余 ${defaults.freshMinutesRemaining} 分钟过期` : undefined,
+    defaults.staleAt ? `staleAt ${defaults.staleAt}` : undefined,
     defaults.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   const product = resourceCreateDefaultsProductText(defaults);

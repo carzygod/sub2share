@@ -76,6 +76,7 @@ export interface LocalProxySmokeEvidenceIssue {
   stale?: boolean | null;
   staleThresholdMinutes?: number | null;
   freshMinutesRemaining?: number | null;
+  staleAt?: string | null;
   message: string;
   actionHint: string;
 }
@@ -137,7 +138,8 @@ export function localProxySmokeEvidenceSummary(
   ageMinutes: number,
   stale: boolean,
   staleThresholdMinutes: number | null = null,
-  freshMinutesRemaining: number | null = null
+  freshMinutesRemaining: number | null = null,
+  staleAt: string | null = null
 ) {
   return {
     auditLogId: smoke.auditLogId,
@@ -150,6 +152,7 @@ export function localProxySmokeEvidenceSummary(
     stale,
     staleThresholdMinutes,
     freshMinutesRemaining,
+    staleAt,
     ok: smoke.ok,
     model: smoke.model ?? null,
     modelsOk: smoke.modelsOk,
@@ -177,7 +180,8 @@ export function localProxySmokeEvidenceIssue(
   actionHint: string,
   stale = false,
   staleThresholdMinutes: number | null = null,
-  freshMinutesRemaining: number | null = null
+  freshMinutesRemaining: number | null = null,
+  staleAt: string | null = null
 ): LocalProxySmokeEvidenceIssue {
   return {
     id: `local_proxy_smoke:${smoke.auditLogId}:${type}`,
@@ -206,6 +210,7 @@ export function localProxySmokeEvidenceIssue(
     stale,
     staleThresholdMinutes,
     freshMinutesRemaining,
+    staleAt,
     message,
     actionHint
   };

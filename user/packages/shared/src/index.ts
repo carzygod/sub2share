@@ -174,6 +174,7 @@ export const adminSystemHealthIssueRefFields = [
   "stale",
   "staleThresholdMinutes",
   "freshMinutesRemaining",
+  "staleAt",
   "usageId",
   "userId",
   "userEmail",
@@ -263,6 +264,7 @@ export const adminSystemHealthSampleSummaryFields = [
   "stale",
   "staleThresholdMinutes",
   "freshMinutesRemaining",
+  "staleAt",
   "message"
 ] as const;
 

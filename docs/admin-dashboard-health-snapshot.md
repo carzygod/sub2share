@@ -209,3 +209,10 @@
 - Admin 首页打开 `反代状态` 时优先使用 `accountMessage` 作为账号诊断；旧快照没有该字段时仍回退到 `message`。
 
 这样管理员从首页 `sub2` 检查进入维修页时，可以直接看到 `token_invalidated` 等账号级失败原因，不必先打开完整巡检候选样本。
+
+## 2026-06-13 扩展：smoke 证据绝对过期时间
+
+- `GET /api/admin/dashboard` 的关键巡检详情预览继续保留 smoke 新鲜度上下文，并新增 `staleAt`。
+- `localProxySmoke`、`sub2`、`resourceCredentials`、`resources` 或 `productCatalog` 相关修复入口携带 `staleAt` 时，Admin 会把该字段传入 `反代状态` 或 `共享资源` 修复上下文。
+- `反代状态 -> 修复定位 -> 失败请求` 与共享资源创建表单 `Failure` 项会显示 `staleAt <ISO 时间>`，用于确认当前 smoke 证据的绝对过期时刻。
+- 该能力只补齐诊断上下文，不触发新的系统巡检、Sub2API 调用或真实 OpenAI/Codex smoke 请求。

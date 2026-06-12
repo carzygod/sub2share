@@ -154,7 +154,8 @@ test("dashboard health previews prioritize blocking checks and retain critical o
           ageMinutes: 12,
           stale: true,
           staleThresholdMinutes: 1440,
-          freshMinutesRemaining: 1428
+          freshMinutesRemaining: 1428,
+          staleAt: "2026-06-12T04:00:00.000Z"
         }, { id: "account-3" }]
       }
     }
@@ -174,6 +175,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[0].primaryIssue?.stale, true);
   assert.equal(previews[0].primaryIssue?.staleThresholdMinutes, 1440);
   assert.equal(previews[0].primaryIssue?.freshMinutesRemaining, 1428);
+  assert.equal(previews[0].primaryIssue?.staleAt, "2026-06-12T04:00:00.000Z");
   assert.equal(previews[2].primaryIssue?.walletTransactionList, true);
   assert.equal(previews[2].primaryIssue?.walletTransactionType, "recharge");
   assert.equal(previews[2].primaryIssue?.salesList, true);

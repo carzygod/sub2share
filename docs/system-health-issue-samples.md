@@ -81,3 +81,10 @@
 - 资源凭据、Sub2 上游、支付充值、反代 smoke、账务对账等检查把对象放在 sample 中时，管理员也能一键跳转，不再只对 issue 行生效。
 - 售出交付、余额、共享资源、反代请求和用量等关键管理入口在巡检页面形成统一 drilldown 体验。
 - 这只增强前端巡检入口和摘要字段，不改变系统健康判定、业务数据、Sub2API 请求或 OpenAI/Codex 反代行为。
+
+## 2026-06-13 扩展：smoke 证据过期时间透传
+
+- 完整 `可用性巡检` 的 issue ref 字段白名单新增 `staleAt`。
+- 完整 `可用性巡检` 的 sample summary 字段白名单新增 `staleAt`。
+- issue/sample 行进入 `反代状态` 或 `共享资源` 修复入口时，会继续携带 `staleAt`。
+- 管理员可以在同一行或修复诊断条中确认 smoke 证据的绝对过期时刻，减少根据 `freshMinutesRemaining` 手工换算的步骤。

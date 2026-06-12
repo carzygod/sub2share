@@ -409,15 +409,18 @@ test("stale failed smoke evidence asks operators to refresh live proof", () => {
     actionHint,
     true,
     1_440,
-    0
+    0,
+    "2026-06-12T04:00:00.000Z"
   );
-  const summary = localProxySmokeEvidenceSummary(direct, 1_500, true, 1_440, 0);
+  const summary = localProxySmokeEvidenceSummary(direct, 1_500, true, 1_440, 0, "2026-06-12T04:00:00.000Z");
 
   assert.equal(issue.stale, true);
   assert.equal(issue.staleThresholdMinutes, 1_440);
   assert.equal(issue.freshMinutesRemaining, 0);
+  assert.equal(issue.staleAt, "2026-06-12T04:00:00.000Z");
   assert.equal(summary.staleThresholdMinutes, 1_440);
   assert.equal(summary.freshMinutesRemaining, 0);
+  assert.equal(summary.staleAt, "2026-06-12T04:00:00.000Z");
   assert.match(issue.message, /Evidence is 1500 minutes old/);
   assert.match(issue.message, /current \/v1\/responses availability/);
   assert.match(issue.actionHint, /refresh stale \/v1\/responses evidence/);
@@ -455,12 +458,15 @@ test("fresh smoke evidence reports minutes remaining before it becomes stale", (
     localProxySmokeFailureIssueActionHint(false),
     false,
     1_440,
-    108
+    108,
+    "2026-06-12T04:00:00.000Z"
   );
-  const summary = localProxySmokeEvidenceSummary(direct, 1_332, false, 1_440, 108);
+  const summary = localProxySmokeEvidenceSummary(direct, 1_332, false, 1_440, 108, "2026-06-12T04:00:00.000Z");
 
   assert.equal(issue.stale, false);
   assert.equal(issue.staleThresholdMinutes, 1_440);
   assert.equal(issue.freshMinutesRemaining, 108);
+  assert.equal(issue.staleAt, "2026-06-12T04:00:00.000Z");
   assert.equal(summary.freshMinutesRemaining, 108);
+  assert.equal(summary.staleAt, "2026-06-12T04:00:00.000Z");
 });

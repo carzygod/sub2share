@@ -47,6 +47,14 @@
 - 审计日志只保存脱敏结果，不返回明文 API Key、refresh token 或请求体。
 - 如果要证明当前瞬时可用性，仍应在 `反代状态` 页面点击端到端自检。
 
+## 2026-06-13 扩展：绝对过期时间
+
+- `localProxySmoke.summary`、`localProxySmoke.detail.latest` 和 `localProxySmoke.detail.issues[]` 新增 `staleAt`。
+- `staleAt` 按 smoke 审计证据的 `createdAt + 24 小时 freshness 窗口` 计算。
+- 缺少 smoke 证据时 `staleAt=null`。
+- Dashboard 关键巡检预览、完整巡检 issue/sample 摘要、`反代状态` 修复定位和共享资源创建诊断都会保留该字段。
+- 该字段只帮助管理员确认 smoke 证据什么时候过期，不触发新的 OpenAI/Codex 请求，也不改变 stale 判定。
+
 ## 验证方式
 
 - `npm.cmd --prefix user/apps/api run typecheck`

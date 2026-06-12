@@ -81,3 +81,9 @@
 
 - `pnpm.cmd --filter @zyz/admin test`
 - `pnpm.cmd --filter @zyz/admin run typecheck`
+
+## 2026-06-13 扩展：smoke 证据过期时间
+
+- 从 Dashboard 或完整 `可用性巡检` 打开共享资源修复入口时，`ResourceCreateDefaults` 会继续保留 `staleAt`。
+- 创建表单诊断条的 `Failure` 项会在证据年龄、过期阈值和剩余新鲜时间后显示 `staleAt <ISO 时间>`。
+- 该字段用于让管理员确认 smoke 证据的绝对过期时刻，不改变共享资源创建、凭据保存、Sub2 应用或端到端 smoke 执行条件。

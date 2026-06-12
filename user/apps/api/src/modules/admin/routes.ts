@@ -296,6 +296,7 @@ const dashboardHealthDetailPreviewFields = [
   "stale",
   "staleThresholdMinutes",
   "freshMinutesRemaining",
+  "staleAt",
   "auditLogId",
   "walletTransactionList",
   "walletTransactionType",
@@ -6427,6 +6428,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       stale: null,
       staleThresholdMinutes: Math.floor(systemHealthLocalSmokeFreshMs / 60_000),
       freshMinutesRemaining: null,
+      staleAt: null,
       message: "No local OpenAI/Codex end-to-end smoke test evidence was found in recent audit logs.",
       actionHint: "Run the Sub2 proxy end-to-end smoke test from the admin proxy status page."
     });
@@ -6442,6 +6444,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
         stale: null,
         staleThresholdMinutes: Math.floor(systemHealthLocalSmokeFreshMs / 60_000),
         freshMinutesRemaining: null,
+        staleAt: null,
         ok: false,
         model: null,
         modelsOk: null,
@@ -6464,6 +6467,7 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
   const stale = ageMs > systemHealthLocalSmokeFreshMs;
   const staleThresholdMinutes = Math.floor(systemHealthLocalSmokeFreshMs / 60_000);
   const freshMinutesRemaining = Math.max(0, staleThresholdMinutes - ageMinutes);
+  const staleAt = new Date(latest.createdAt.getTime() + systemHealthLocalSmokeFreshMs).toISOString();
   if (!latest.ok) {
     issues.push(localProxySmokeEvidenceIssue(
       latest,
@@ -6474,7 +6478,8 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       localProxySmokeFailureIssueActionHint(stale),
       stale,
       staleThresholdMinutes,
-      freshMinutesRemaining
+      freshMinutesRemaining,
+      staleAt
     ));
   } else if (stale) {
     issues.push(localProxySmokeEvidenceIssue(
@@ -6486,7 +6491,8 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       "Rerun the smoke test to refresh live /v1/responses evidence.",
       true,
       staleThresholdMinutes,
-      freshMinutesRemaining
+      freshMinutesRemaining,
+      staleAt
     ));
   }
 
@@ -6512,9 +6518,10 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       evidenceCandidates: candidates.length,
       freshnessHours: systemHealthLocalSmokeFreshMs / 60 / 60 / 1000,
       staleThresholdMinutes,
-      freshMinutesRemaining
+      freshMinutesRemaining,
+      staleAt
     },
-    latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale, staleThresholdMinutes, freshMinutesRemaining),
+    latest: localProxySmokeEvidenceSummary(latest, ageMinutes, stale, staleThresholdMinutes, freshMinutesRemaining, staleAt),
     issues
   };
 }
