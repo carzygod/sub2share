@@ -10,6 +10,7 @@ import {
 } from "@zyz/shared";
 import {
   resourceCreateDefaultsContextItems,
+  resourceCreateDefaultsProductText,
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -208,4 +209,20 @@ test("resource create defaults expose product catalog repair context", () => {
   assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2");
   assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "enabled after apply");
+});
+
+test("resource create defaults format product context for confirmations", () => {
+  assert.equal(resourceCreateDefaultsProductText({
+    productId: "prod-codex",
+    productName: "Codex Pro",
+    priceId: "price-monthly"
+  }), "Codex Pro / prod-codex / price-monthly");
+
+  assert.equal(resourceCreateDefaultsProductText({
+    productId: " prod-codex ",
+    productName: " ",
+    priceId: ""
+  }), "prod-codex");
+
+  assert.equal(resourceCreateDefaultsProductText({ productName: "   " }), "");
 });

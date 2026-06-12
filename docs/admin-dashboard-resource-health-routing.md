@@ -35,12 +35,21 @@
 - 该展示复用 `resourceCreateDefaultsContextItems()` 纯 helper，并由 Admin 单元测试锁定。
 - 展示只读上下文，不改变创建资源、保存凭据、应用到 Sub2 或 smoke test 的执行条件。
 
+## 2026-06-13 扩展：凭据应用确认保留商品上下文
+
+- 从 `productCatalog` 风险进入共享资源修复入口时，商品名、商品 ID 和价格 ID 会由 `resourceCreateDefaultsProductText()` 统一格式化。
+- 创建表单诊断条继续展示 `Product` 项。
+- 当管理员勾选 `创建后应用到 Sub2` 并提交创建共享资源时，确认弹窗会额外展示 `关联商品`。
+- 如果修复上下文没有商品字段，普通共享资源创建确认不展示该行。
+- 该能力只增强高风险提交前的上下文确认，不改变资源创建、凭据保存、Sub2 应用或端到端 smoke 的执行条件。
+
 ## 价值
 
 - “共享资源缺失”与“上游账号失效”在首页进入各自更贴近的管理入口，减少管理员在反代状态和共享资源之间来回切换。
 - 管理员可以从当前线上 `No online production Codex shared resource` warning 直接进入共享资源创建/筛选路径。
 - 管理员粘贴有效 OpenAI refresh token 后，可以在同一个创建提交中完成“保存凭据 -> 应用到 Sub2 -> 账号测试 -> 端到端 smoke”的闭环，减少只创建资源但忘记验证 `/v1/responses` 的空窗。
 - 管理员在创建前可以直接确认这次表单默认值来自哪条巡检问题、绑定哪个 Sub2 账号、是否会自动应用凭据和运行 smoke，降低误把巡检上下文当成普通资源创建的风险。
+- 管理员在最终确认应用凭据前也能看到受影响商品，降低多个 Codex 商品并存时误修复的风险。
 - 该改动只影响 Admin 导航和默认筛选，不会自动写入 refresh token、不会修改 Sub2 账号，也不会触发真实 OpenAI/Codex smoke test。
 
 ## 验证

@@ -36,6 +36,7 @@ import {
 import { api, clearAdminToken, saveAdminToken } from "./api";
 import {
   resourceCreateDefaultsContextItems,
+  resourceCreateDefaultsProductText,
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
@@ -2071,7 +2072,18 @@ function App() {
     const credentialClientId = optionalFormString(form, "credentialClientId");
     const credentialProxyIdText = String(form.get("credentialProxyId") || "").trim();
     const credentialSmokeModel = optionalFormString(form, "credentialSmokeModel");
-    if (applyCredentialToSub2 && !confirmAdminAction("确认创建后应用初始凭据到 Sub2？", `供给方：${form.get("supplierEmail")}\n资源类型：${form.get("resourceType")}\nSub2 账号：${optionalFormString(form, "sub2AccountId") ?? "-"}\nClient ID：${credentialClientId ?? "-"}\nProxy ID：${credentialProxyIdText || "-"}\n端到端自检：${credentialRunSmokeTest ? "是" : "否"}\n自检模型：${credentialSmokeModel ?? "-"}`)) return;
+    const productContext = resourceCreateDefaultsProductText(resourceCreateDefaults);
+    const credentialConfirmation = [
+      `供给方：${form.get("supplierEmail")}`,
+      productContext ? `关联商品：${productContext}` : undefined,
+      `资源类型：${form.get("resourceType")}`,
+      `Sub2 账号：${optionalFormString(form, "sub2AccountId") ?? "-"}`,
+      `Client ID：${credentialClientId ?? "-"}`,
+      `Proxy ID：${credentialProxyIdText || "-"}`,
+      `端到端自检：${credentialRunSmokeTest ? "是" : "否"}`,
+      `自检模型：${credentialSmokeModel ?? "-"}`
+    ].filter(Boolean).join("\n");
+    if (applyCredentialToSub2 && !confirmAdminAction("确认创建后应用初始凭据到 Sub2？", credentialConfirmation)) return;
     const resource = await api<ResourceRow & { credentialApply?: Sub2CredentialApplyResult | null }>("/api/admin/resources", {
       method: "POST",
       body: JSON.stringify({

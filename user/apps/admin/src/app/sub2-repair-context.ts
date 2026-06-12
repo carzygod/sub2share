@@ -118,6 +118,14 @@ export function resourceCreateDefaultsSmokeModel(defaults: ResourceCreateDefault
   return defaults.model?.trim() || "";
 }
 
+export function resourceCreateDefaultsProductText(defaults: ResourceCreateDefaults) {
+  return [
+    defaults.productName,
+    defaults.productId,
+    defaults.priceId
+  ].map((value) => value?.trim()).filter(Boolean).join(" / ");
+}
+
 export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefaults): Sub2RepairContextItem[] {
   const resource = [
     defaults.resourceType,
@@ -134,11 +142,7 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
     defaults.proxyRequestStatusCode ? `HTTP ${defaults.proxyRequestStatusCode}` : undefined,
     defaults.proxyRequestErrorCode
   ].filter(Boolean).join(" / ");
-  const product = [
-    defaults.productName,
-    defaults.productId,
-    defaults.priceId
-  ].filter(Boolean).join(" / ");
+  const product = resourceCreateDefaultsProductText(defaults);
 
   return [
     { label: "Source", value: [defaults.checkId, defaults.resourceScope].filter(Boolean).join(" / ") },
