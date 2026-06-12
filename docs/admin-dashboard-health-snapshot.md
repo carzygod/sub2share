@@ -248,3 +248,17 @@
 - `primaryIssue` 和 `primarySample` 都会保留这些字段。
 - 首页关键巡检与完整 `可用性巡检` 对同一条 smoke 失败证据的摘要保持一致，管理员无需进入详情页才能确认临时 Key 清理和代理日志数量。
 - 该能力只扩展 dashboard 预览字段，不改变健康状态聚合或排序。
+
+## 2026-06-13 扩展：首页保留关键巡检 metrics
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth.criticalChecks[]` 新增 `metrics` 预览。
+- 预览只保留标量字段，忽略嵌套对象，避免把完整详情塞进首页。
+- `openAiProxyContract` 等没有 issue/sample 的 ok 关键巡检也可以在首页展示核心证据：
+  - `corePathSamples`
+  - `routesCorePathSamples`
+  - `preservesRawPathAndQuery`
+  - `normalizesSub2BaseTrailingSlash`
+  - `routesResponsesItems`
+- Admin 首页在关键巡检没有 issue/sample 上下文时，会回退展示 metrics 摘要。
+
+这样管理员在首屏就能确认 OpenAI/Codex 反代契约是否覆盖核心 `/v1` 路径并保留 Sub2API 原始 path/query，而不必先进入完整巡检详情。

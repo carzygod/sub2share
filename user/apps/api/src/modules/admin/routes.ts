@@ -249,6 +249,7 @@ interface DashboardHealthCheckPreview {
   label: string;
   status: SystemHealthStatus;
   summary: string;
+  metrics?: DashboardHealthMetricPreview;
   issueCount: number;
   sampleCount: number;
   primaryIssue?: DashboardHealthDetailPreview;
@@ -256,6 +257,7 @@ interface DashboardHealthCheckPreview {
 }
 
 type DashboardHealthDetailPreview = Record<string, string | number | boolean | null>;
+type DashboardHealthMetricPreview = Record<string, string | number | boolean | null>;
 
 const dashboardHealthDetailPreviewFields = [
   "id",
@@ -311,6 +313,55 @@ const dashboardHealthDetailPreviewFields = [
   "userId",
   "salesList",
   "message"
+] as const;
+
+const dashboardHealthMetricPreviewFields = [
+  "requiredAreas",
+  "coveredRequiredAreas",
+  "totalOperations",
+  "criticalOperations",
+  "registeredOperations",
+  "missingRoutes",
+  "operationsWithTargets",
+  "missingTargets",
+  "endpoint",
+  "endpointProtocol",
+  "endpointEndsWithV1",
+  "routePath",
+  "routePaths",
+  "supportsV1BasePath",
+  "routeMethods",
+  "supportsAllV1ChildPaths",
+  "routesV1BasePath",
+  "supportsReadMethods",
+  "supportsMutationMethods",
+  "routesResponsesApi",
+  "routesResponsesItems",
+  "routesChatCompletions",
+  "routesModelMetadata",
+  "corePathSamples",
+  "routesCorePathSamples",
+  "preservesRawPathAndQuery",
+  "normalizesSub2BaseTrailingSlash",
+  "requestBodyMode",
+  "parsesAllContentTypesAsBuffer",
+  "forwardsOriginalBodyBytes",
+  "bodylessMethods",
+  "upstreamAcceptEncoding",
+  "stripsInboundAuthorization",
+  "stripsInboundAcceptEncoding",
+  "reinjectsLocalBearerToSub2",
+  "capturesUpstreamRequestId",
+  "storeMode",
+  "limiterScope",
+  "shared",
+  "redisReachable",
+  "activeConcurrencyRentals",
+  "activeConcurrencyLeases",
+  "activeRateWindowRentals",
+  "activeRateWindowRequests",
+  "activeRateWindowEstimatedTokens",
+  "lastRateWindowCleanupAt"
 ] as const;
 
 interface AdminSurfaceCoverageIssue {
@@ -5530,6 +5581,7 @@ function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPrevie
   const detail = jsonObject(record.detail);
   const issueRows = Array.isArray(detail?.issues) ? detail.issues : [];
   const sampleRows = Array.isArray(detail?.samples) ? detail.samples : [];
+  const metrics = dashboardHealthMetricPreview(record.metrics);
   const primaryIssue = dashboardHealthDetailPreview(issueRows[0]);
   const primarySample = dashboardHealthDetailPreview(sampleRows[0]);
 
@@ -5538,6 +5590,7 @@ function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPrevie
     label,
     status,
     summary,
+    ...(metrics ? { metrics } : {}),
     issueCount: issueRows.length,
     sampleCount: sampleRows.length,
     ...(primaryIssue ? { primaryIssue } : {}),
@@ -5551,6 +5604,19 @@ function dashboardHealthDetailPreview(value: unknown): DashboardHealthDetailPrev
 
   const preview: DashboardHealthDetailPreview = {};
   for (const field of dashboardHealthDetailPreviewFields) {
+    const value = dashboardHealthScalarValue(record[field]);
+    if (value !== undefined) preview[field] = value;
+  }
+
+  return Object.keys(preview).length > 0 ? preview : null;
+}
+
+function dashboardHealthMetricPreview(value: unknown): DashboardHealthMetricPreview | null {
+  const record = jsonObject(value);
+  if (!record) return null;
+
+  const preview: DashboardHealthMetricPreview = {};
+  for (const field of dashboardHealthMetricPreviewFields) {
     const value = dashboardHealthScalarValue(record[field]);
     if (value !== undefined) preview[field] = value;
   }

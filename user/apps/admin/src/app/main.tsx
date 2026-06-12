@@ -152,6 +152,7 @@ interface DashboardHealthCheckPreview {
   label: string;
   status: "ok" | "warning" | "error";
   summary: string;
+  metrics?: Record<string, string | number | boolean | null>;
   issueCount: number;
   sampleCount: number;
   primaryIssue?: DashboardHealthDetailPreview;
@@ -6226,7 +6227,7 @@ function dashboardHealthCanOpenResourceRepair(check: DashboardHealthCheckPreview
 
 function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
   const record = dashboardHealthDetailRecord(check);
-  if (!record) return "";
+  if (!record) return check.metrics ? healthMetricSummary(check.metrics) : "";
   const fields = [
     "repairAction",
     "actionHint",

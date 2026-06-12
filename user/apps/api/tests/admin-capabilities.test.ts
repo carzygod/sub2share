@@ -114,6 +114,21 @@ test("dashboard health previews prioritize blocking checks and retain critical o
       detail: { samples: [{ id: "sync-state", sampleType: "scheduler_state", repairAction: "enable_billing_sync" }] }
     },
     {
+      id: "openAiProxyContract",
+      label: "OpenAI 反代契约",
+      status: "ok",
+      summary: "OpenAI/Codex 本地反代契约正常",
+      metrics: {
+        routesCorePathSamples: true,
+        preservesRawPathAndQuery: true,
+        normalizesSub2BaseTrailingSlash: true,
+        corePathSamples: "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions",
+        routesResponsesItems: true,
+        endpoint: "https://api.example.com/v1",
+        ignoredNested: { ok: true }
+      }
+    },
+    {
       id: "payments",
       label: "支付充值",
       status: "warning",
@@ -166,7 +181,7 @@ test("dashboard health previews prioritize blocking checks and retain critical o
     }
   ]);
 
-  assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "payments", "billingSync", "adminCapabilities"]);
+  assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "payments", "billingSync", "openAiProxyContract", "adminCapabilities"]);
   assert.equal(previews[0].issueCount, 2);
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(previews[0].primaryIssue?.actionHint, "Apply a fresh OpenAI refresh token, then rerun smoke.");
@@ -192,6 +207,13 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[3].sampleCount, 1);
   assert.equal(previews[3].primarySample?.sampleType, "scheduler_state");
   assert.equal(previews[3].primarySample?.repairAction, "enable_billing_sync");
+  assert.equal(previews[4].metrics?.routesCorePathSamples, true);
+  assert.equal(previews[4].metrics?.preservesRawPathAndQuery, true);
+  assert.equal(previews[4].metrics?.normalizesSub2BaseTrailingSlash, true);
+  assert.equal(previews[4].metrics?.routesResponsesItems, true);
+  assert.equal(previews[4].metrics?.corePathSamples, "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions");
+  assert.equal(previews[4].metrics?.endpoint, "https://api.example.com/v1");
+  assert.equal(Object.hasOwn(previews[4].metrics ?? {}, "ignoredNested"), false);
 });
 
 test("dashboard latest system health preview exposes snapshot freshness", () => {
