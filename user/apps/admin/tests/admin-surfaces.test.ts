@@ -29,7 +29,7 @@ test("admin navigation covers the required management areas", () => {
 test("admin navigation exposes the objective-critical entry points", () => {
   const views = new Set(adminNavigationItems.map((item) => item.view));
 
-  for (const view of ["users", "resources", "wallets", "sales", "sub2", "proxyRequests"] as const) {
+  for (const view of ["users", "resources", "wallets", "sales", "sub2", "proxyRequests", "capabilities"] as const) {
     assert.ok(views.has(view), `missing admin entry point: ${view}`);
   }
 

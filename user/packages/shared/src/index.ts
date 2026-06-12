@@ -50,6 +50,7 @@ export type AdminView =
   | "dashboard"
   | "systemHealth"
   | "systemHealthHistory"
+  | "capabilities"
   | "users"
   | "wallets"
   | "walletTransactions"
@@ -99,6 +100,7 @@ export const adminNavigationItems: AdminNavigationItem[] = [
   { view: "dashboard", label: "总览", area: "governance" },
   { view: "systemHealth", label: "可用性巡检", area: "governance" },
   { view: "systemHealthHistory", label: "巡检历史", area: "governance" },
+  { view: "capabilities", label: "入口能力", area: "governance" },
   { view: "users", label: "用户管理", area: "users", critical: true },
   { view: "wallets", label: "余额管理", area: "wallets", critical: true },
   { view: "walletTransactions", label: "余额流水", area: "wallets" },

@@ -186,6 +186,52 @@ interface Dashboard {
   } | null;
 }
 
+interface AdminCapabilityOperation {
+  id: string;
+  label: string;
+  method: string;
+  path: string;
+  roles: string[];
+  critical: boolean;
+}
+
+interface AdminCapabilityArea {
+  id: string;
+  label: string;
+  required: boolean;
+  operations: AdminCapabilityOperation[];
+}
+
+interface AdminCapabilityCoverageIssue {
+  id: string;
+  type: string;
+  severity: "error";
+  areaId?: string;
+  operationId?: string;
+  method?: string;
+  path?: string;
+  message: string;
+  actionHint: string;
+}
+
+interface AdminCapabilityCoverage {
+  ok: boolean;
+  summary: {
+    requiredAreas: number;
+    coveredRequiredAreas: number;
+    totalOperations: number;
+    criticalOperations: number;
+    registeredOperations: number;
+    missingRoutes: number;
+  };
+  issues: AdminCapabilityCoverageIssue[];
+}
+
+interface AdminCapabilitiesResult {
+  capabilities: AdminCapabilityArea[];
+  coverage: AdminCapabilityCoverage;
+}
+
 interface SystemHealthCheckRow {
   id: string;
   label: string;
@@ -1023,6 +1069,7 @@ function App() {
   const [systemMaintenance, setSystemMaintenance] = useState<SystemMaintenanceResult | null>(null);
   const [systemHealthSnapshots, setSystemHealthSnapshots] = useState<SystemHealthSnapshotRow[]>([]);
   const [systemHealthHistory, setSystemHealthHistory] = useState<SystemHealthSnapshotRow[]>([]);
+  const [adminCapabilities, setAdminCapabilities] = useState<AdminCapabilitiesResult | null>(null);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserDetailRow | null>(null);
   const [wallets, setWallets] = useState<WalletRow[]>([]);
@@ -1141,6 +1188,7 @@ function App() {
       if (nextView === "dashboard") setDashboard(await api<Dashboard>("/api/admin/dashboard"));
       if (nextView === "systemHealth") await loadSystemHealthView();
       if (nextView === "systemHealthHistory") await loadPaged("systemHealthHistory", "/api/admin/system-health/snapshots", setSystemHealthHistory, queryOverride);
+      if (nextView === "capabilities") setAdminCapabilities(await api<AdminCapabilitiesResult>("/api/admin/capabilities"));
       if (nextView === "users") await loadPaged("users", "/api/admin/users", setUsers, queryOverride);
       if (nextView === "wallets") await loadPaged("wallets", "/api/admin/wallets", setWallets, queryOverride);
       if (nextView === "walletTransactions") await loadPaged("walletTransactions", "/api/admin/wallet-transactions", setWalletTransactions, queryOverride);
@@ -2319,6 +2367,9 @@ function App() {
             onExport={() => exportFilteredList("systemHealthHistory")}
           />
         )}
+        {view === "capabilities" && (
+          <CapabilitiesView capabilities={adminCapabilities} onRefresh={() => refresh("capabilities")} />
+        )}
         {view === "users" && (
           <UsersView
             users={users}
@@ -3013,6 +3064,76 @@ function SystemHealthHistoryView({ snapshots, query, meta, onDraft, onFilter, on
           <tr><td colSpan={5}><small>暂无巡检历史。</small></td></tr>
         )}
       </TablePanel>
+    </section>
+  );
+}
+
+function CapabilitiesView({ capabilities, onRefresh }: {
+  capabilities: AdminCapabilitiesResult | null;
+  onRefresh: () => void;
+}) {
+  const coverage = capabilities?.coverage;
+  const areas = capabilities?.capabilities ?? [];
+  const summary = coverage?.summary;
+  return (
+    <section className="stack">
+      <div className="panel glass-panel export-strip">
+        <div>
+          <span className="eyebrow">Admin capabilities</span>
+          <div className={coverage?.ok ? "health-row" : "health-row warning"}>
+            {coverage?.ok ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
+            <strong>{coverage ? coverage.ok ? "能力覆盖完整" : "能力覆盖缺失" : "等待读取能力矩阵"}</strong>
+          </div>
+          <small>用户、共享、余额、售出和 OpenAI/Codex 反代管理范围的 API 路由覆盖。</small>
+        </div>
+        <div className="row-actions">
+          <button className="secondary" onClick={onRefresh}><RefreshCw size={16} />刷新矩阵</button>
+        </div>
+      </div>
+      <section className="cards compact-cards">
+        <Metric label="核心范围" value={`${summary?.coveredRequiredAreas ?? 0}/${summary?.requiredAreas ?? 0}`} />
+        <Metric label="声明操作" value={summary?.totalOperations ?? 0} />
+        <Metric label="关键操作" value={summary?.criticalOperations ?? 0} />
+        <Metric label="已注册" value={summary?.registeredOperations ?? 0} />
+        <Metric label="缺失路由" value={summary?.missingRoutes ?? 0} />
+      </section>
+      {coverage && coverage.issues.length > 0 && (
+        <TablePanel title="能力覆盖问题" count={coverage.issues.length} headers={["级别", "范围", "操作", "路由", "说明"]}>
+          {coverage.issues.map((issue) => (
+            <tr key={issue.id}>
+              <td><StatusPill status="error" /></td>
+              <td><small>{issue.areaId ?? "-"}</small></td>
+              <td><strong>{issue.operationId ?? issue.type}</strong><small>{issue.id}</small></td>
+              <td><small>{[issue.method, issue.path].filter(Boolean).join(" ") || "-"}</small></td>
+              <td><small>{issue.message} 建议：{issue.actionHint}</small></td>
+            </tr>
+          ))}
+        </TablePanel>
+      )}
+      {areas.map((area) => (
+        <TablePanel
+          key={area.id}
+          title={`${area.label}${area.required ? " / required" : ""}`}
+          count={area.operations.length}
+          headers={["范围", "操作", "方法", "路径", "角色", "级别"]}
+        >
+          {area.operations.map((operation) => (
+            <tr key={operation.id}>
+              <td><strong>{area.id}</strong><small>{area.required ? "required" : "optional"}</small></td>
+              <td><strong>{operation.label}</strong><small>{operation.id}</small></td>
+              <td><small>{operation.method}</small></td>
+              <td><small>{operation.path}</small></td>
+              <td><small>{operation.roles.join(", ")}</small></td>
+              <td><StatusPill status={operation.critical ? "warning" : "active"} /></td>
+            </tr>
+          ))}
+        </TablePanel>
+      ))}
+      {!capabilities && (
+        <div className="panel glass-panel">
+          <div className="health-row warning"><AlertTriangle size={18} />尚未读取能力矩阵</div>
+        </div>
+      )}
     </section>
   );
 }
@@ -6282,6 +6403,7 @@ function navigationIcon(view: View) {
     dashboard: <BarChart3 size={size} />,
     systemHealth: <ShieldCheck size={size} />,
     systemHealthHistory: <ScrollText size={size} />,
+    capabilities: <ShieldCheck size={size} />,
     users: <Users size={size} />,
     wallets: <WalletCards size={size} />,
     walletTransactions: <ReceiptText size={size} />,
@@ -6305,6 +6427,7 @@ function navigationIcon(view: View) {
 
 function titleFor(view: View) {
   const map: Record<View, string> = {
+    capabilities: "入口能力",
     dashboard: "经营看板",
     systemHealth: "可用性巡检",
     systemHealthHistory: "巡检历史",

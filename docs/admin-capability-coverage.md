@@ -16,6 +16,8 @@
   - `governance`：仪表盘、系统健康、维护、审计、商品、结算和提现。
 - 新增 `GET /api/admin/capabilities`，返回能力矩阵和当前 Fastify 路由覆盖结果。
 - `GET /api/admin/system-health` 新增 `adminCapabilities` 检查项，会用 Fastify `hasRoute()` 核对矩阵声明的端点是否已注册。
+- Admin 前端新增 `入口能力` 页面，直接读取并展示 `GET /api/admin/capabilities` 的覆盖摘要、能力范围、操作列表和缺失路由问题。
+- 独立说明见 `docs/admin-capability-matrix-view.md`。
 
 ## 健康判定
 
@@ -32,5 +34,6 @@
 - `admin capability matrix covers the required management areas`
 - `admin capability coverage reports missing declared routes`
 - `registered admin routes cover the declared capability matrix`
+- `admin navigation exposes the objective-critical entry points` 覆盖 `capabilities` 入口。
 
 这些测试确保能力矩阵覆盖核心管理范围，并且实际注册的后台路由与矩阵保持一致。
