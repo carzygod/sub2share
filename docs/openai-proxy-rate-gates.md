@@ -51,3 +51,12 @@ Redis 共享限流说明见 `docs/openai-proxy-redis-limiter.md`。
 | --- | --- |
 | 本地 API typecheck | 通过 |
 | 本地 API build | 通过 |
+
+## 2026-06-13 追加：本地 429 限流响应头
+
+- 本地反代现在会为自身产生的限流类 429 写入 OpenAI/Codex 兼容响应头：
+  - 并发租约耗尽 `concurrency_limit_exceeded`：返回 `retry-after` 与 `retry-after-ms`。
+  - RPM/TPM 滚动窗口耗尽 `rpm_limit_exceeded` / `tpm_limit_exceeded`：返回 `retry-after`、`retry-after-ms`、`x-ratelimit-limit-*`、`x-ratelimit-remaining-*` 与 `x-ratelimit-reset-*`。
+  - 套餐请求量耗尽 `request_limit_exceeded`：返回 `x-ratelimit-limit-requests` 与 `x-ratelimit-remaining-requests=0`，不伪造分钟级重试时间。
+- 内存模式会基于滚动窗口中最早可释放的事件计算 `retryAfterMs`；Redis 模式在失败时返回当前 RPM/TPM 用量上下文，并使用 60 秒窗口作为保守重试提示。
+- `inspectOpenAiProxyContract()` 新增 `setsLocalRateLimitHeaders`，当本地 429 无法生成完整限流响应头时会报告 `local_rate_limit_headers_incomplete`。

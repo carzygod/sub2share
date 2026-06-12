@@ -106,7 +106,12 @@ function acquireMemoryConcurrency(rentalId: string, limit: number) {
   const normalizedLimit = Math.max(1, limit);
   const activeCount = activeProxyRequests.get(rentalId) ?? 0;
   if (activeCount >= normalizedLimit) {
-    return failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached");
+    return {
+      ...failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached"),
+      activeCount,
+      limit: normalizedLimit,
+      retryAfterMs: 1_000
+    };
   }
 
   activeProxyRequests.set(rentalId, activeCount + 1);
@@ -147,7 +152,12 @@ async function acquireRedisConcurrency(rentalId: string, limit: number) {
   const allowed = numberAt(result, 0) === 1;
   const activeCount = numberAt(result, 1);
   if (!allowed) {
-    return failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached");
+    return {
+      ...failure(429, "concurrency_limit_exceeded", "Rental concurrency limit has been reached"),
+      activeCount,
+      limit: normalizedLimit,
+      retryAfterMs: 1_000
+    };
   }
 
   let released = false;
@@ -196,7 +206,15 @@ function consumeMemoryRateLimit(input: {
     estimatedTokens: input.estimatedTokens
   });
   if (!windowCheck.ok) {
-    return failure(429, windowCheck.code, windowCheck.message);
+    return {
+      ...failure(429, windowCheck.code, windowCheck.message),
+      rpmLimit: input.rpmLimit,
+      rpmUsed: windowCheck.rpmUsed,
+      tpmLimit: input.tpmLimit,
+      tpmUsed: windowCheck.tpmUsed,
+      estimatedTokens: input.estimatedTokens,
+      retryAfterMs: windowCheck.retryAfterMs
+    };
   }
 
   windowCheck.commit();
@@ -237,11 +255,19 @@ async function consumeRedisRateLimit(input: {
   const tpmUsed = nullablePositive(numberAt(result, 3));
 
   if (!allowed) {
-    return failure(
-      429,
-      code,
-      code === "tpm_limit_exceeded" ? "Rental TPM limit has been reached" : "Rental RPM limit has been reached"
-    );
+    return {
+      ...failure(
+        429,
+        code,
+        code === "tpm_limit_exceeded" ? "Rental TPM limit has been reached" : "Rental RPM limit has been reached"
+      ),
+      rpmLimit: input.rpmLimit,
+      rpmUsed,
+      tpmLimit: input.tpmLimit,
+      tpmUsed,
+      estimatedTokens: input.estimatedTokens,
+      retryAfterMs: RATE_WINDOW_MS
+    };
   }
 
   return {

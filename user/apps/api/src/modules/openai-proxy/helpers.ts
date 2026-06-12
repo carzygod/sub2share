@@ -18,6 +18,17 @@ export const openAiProxyRoutePaths = [openAiProxyRouteBasePath, openAiProxyRoute
 export const openAiProxyRouteMethods = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
+export type OpenAiProxyRateLimitHeaderName = typeof openAiProxyRateLimitHeaderNames[number];
+
+export interface OpenAiProxyRateLimitHeaderInput {
+  retryAfterMs?: number | null;
+  requestLimit?: number | null;
+  requestUsed?: number | null;
+  rpmLimit?: number | null;
+  rpmUsed?: number | null;
+  tpmLimit?: number | null;
+  tpmUsed?: number | null;
+}
 
 export interface OpenAiProxyContractIssue {
   type: string;
@@ -115,6 +126,38 @@ export function openAiProxyErrorPayload(statusCode: number, code: string, messag
   };
 }
 
+export function openAiProxyRateLimitHeaders(input: OpenAiProxyRateLimitHeaderInput) {
+  const headers: Partial<Record<OpenAiProxyRateLimitHeaderName, string>> = {};
+  const retryAfterMs = normalizePositiveInteger(input.retryAfterMs);
+
+  if (retryAfterMs !== null) {
+    headers["retry-after-ms"] = String(retryAfterMs);
+    headers["retry-after"] = String(Math.max(1, Math.ceil(retryAfterMs / 1000)));
+  }
+
+  const requestLimit = normalizeNonNegativeInteger(input.rpmLimit ?? input.requestLimit);
+  if (requestLimit !== null) {
+    const requestUsed = normalizeNonNegativeInteger(input.rpmUsed ?? input.requestUsed) ?? requestLimit;
+    headers["x-ratelimit-limit-requests"] = String(requestLimit);
+    headers["x-ratelimit-remaining-requests"] = String(Math.max(0, requestLimit - requestUsed));
+    if (retryAfterMs !== null) {
+      headers["x-ratelimit-reset-requests"] = formatRateLimitReset(retryAfterMs);
+    }
+  }
+
+  const tokenLimit = normalizeNonNegativeInteger(input.tpmLimit);
+  if (tokenLimit !== null) {
+    const tokenUsed = normalizeNonNegativeInteger(input.tpmUsed) ?? tokenLimit;
+    headers["x-ratelimit-limit-tokens"] = String(tokenLimit);
+    headers["x-ratelimit-remaining-tokens"] = String(Math.max(0, tokenLimit - tokenUsed));
+    if (retryAfterMs !== null) {
+      headers["x-ratelimit-reset-tokens"] = formatRateLimitReset(retryAfterMs);
+    }
+  }
+
+  return headers;
+}
+
 export function upstreamHttpProxyErrorCode(statusCode: number | null | undefined) {
   if (statusCode === undefined || statusCode === null || statusCode < 400) return null;
   return `upstream_http_${statusCode}`;
@@ -176,6 +219,14 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const corsExposesRequestId = openAiProxyCorsExposedHeaders.includes(proxyRequestIdHeaderName);
   const corsExposesUpstreamRequestIds = upstreamRequestIdHeaderNames.every((headerName) => openAiProxyCorsExposedHeaders.includes(headerName));
   const corsExposesRateLimitHeaders = openAiProxyRateLimitHeaderNames.every((headerName) => openAiProxyCorsExposedHeaders.includes(headerName));
+  const localRateLimitHeaders = openAiProxyRateLimitHeaders({
+    retryAfterMs: 60_000,
+    rpmLimit: 1,
+    rpmUsed: 1,
+    tpmLimit: 1_000,
+    tpmUsed: 1_000
+  });
+  const setsLocalRateLimitHeaders = openAiProxyRateLimitHeaderNames.every((headerName) => Boolean(localRateLimitHeaders[headerName]));
   if (!corsExposesRequestId) {
     issues.push({
       type: "request_id_header_not_exposed",
@@ -195,6 +246,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       type: "rate_limit_headers_not_exposed",
       severity: "error",
       message: "CORS must expose retry-after and OpenAI rate limit headers for browser-side OpenAI proxy clients"
+    });
+  }
+  if (!setsLocalRateLimitHeaders) {
+    issues.push({
+      type: "local_rate_limit_headers_incomplete",
+      severity: "error",
+      message: "Local 429 proxy responses must set retry-after and x-ratelimit headers for OpenAI-compatible clients"
     });
   }
   if (!supportsAllV1ChildPaths) {
@@ -302,6 +360,7 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       corsExposesRequestId,
       corsExposesUpstreamRequestIds,
       corsExposesRateLimitHeaders,
+      setsLocalRateLimitHeaders,
       normalizesProxyRequestLookupHeaders,
       requestBodyMode: openAiProxyForwardingContract.requestBodyMode,
       parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,
@@ -337,6 +396,20 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
 function normalizeHeaderValue(value: string | null | undefined) {
   const normalized = value?.replace(/[\r\n]/g, " ").trim() ?? "";
   return normalized ? normalized.slice(0, 240) : null;
+}
+
+function normalizePositiveInteger(value: number | null | undefined) {
+  if (value === undefined || value === null || !Number.isFinite(value) || value <= 0) return null;
+  return Math.ceil(value);
+}
+
+function normalizeNonNegativeInteger(value: number | null | undefined) {
+  if (value === undefined || value === null || !Number.isFinite(value) || value < 0) return null;
+  return Math.floor(value);
+}
+
+function formatRateLimitReset(retryAfterMs: number) {
+  return retryAfterMs % 1000 === 0 ? `${retryAfterMs / 1000}s` : `${retryAfterMs}ms`;
 }
 
 function escapeRegExp(value: string) {
@@ -522,7 +595,10 @@ export function evaluateProxyRateLimitWindow(options: {
     return {
       ok: false as const,
       code: "rpm_limit_exceeded",
-      message: "Rental RPM limit has been reached"
+      message: "Rental RPM limit has been reached",
+      rpmUsed: window.requests.length,
+      tpmUsed: tpmLimit ? window.tokens.reduce((total, event) => total + event.tokens, 0) : null,
+      retryAfterMs: retryAfterForRequestWindow(window.requests, rpmLimit, now, windowMs)
     };
   }
 
@@ -531,7 +607,10 @@ export function evaluateProxyRateLimitWindow(options: {
     return {
       ok: false as const,
       code: "tpm_limit_exceeded",
-      message: "Rental TPM limit has been reached"
+      message: "Rental TPM limit has been reached",
+      rpmUsed: rpmLimit ? window.requests.length : null,
+      tpmUsed: currentTokens,
+      retryAfterMs: retryAfterForTokenWindow(window.tokens, tpmLimit, estimatedTokens, now, windowMs)
     };
   }
 
@@ -556,4 +635,30 @@ export function pruneProxyRateLimitWindow(window: ProxyRateLimitWindow, now: num
 
 export function isProxyRateLimitWindowEmpty(window: ProxyRateLimitWindow) {
   return window.requests.length === 0 && window.tokens.length === 0;
+}
+
+function retryAfterForRequestWindow(requests: number[], rpmLimit: number, now: number, windowMs: number) {
+  const sorted = [...requests].sort((left, right) => left - right);
+  const expiresIndex = Math.max(0, sorted.length - rpmLimit);
+  return Math.max(1, (sorted[expiresIndex] ?? now) + windowMs - now);
+}
+
+function retryAfterForTokenWindow(
+  tokens: Array<{ at: number; tokens: number }>,
+  tpmLimit: number,
+  estimatedTokens: number,
+  now: number,
+  windowMs: number
+) {
+  let projectedTokens = tokens.reduce((total, event) => total + event.tokens, 0) + estimatedTokens;
+  const sorted = [...tokens].sort((left, right) => left.at - right.at);
+
+  for (const event of sorted) {
+    projectedTokens -= event.tokens;
+    if (projectedTokens <= tpmLimit) {
+      return Math.max(1, event.at + windowMs - now);
+    }
+  }
+
+  return windowMs;
 }

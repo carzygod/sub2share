@@ -33,6 +33,9 @@ test("memory OpenAI proxy limiter enforces concurrency leases", async () => {
   assert.equal(second.ok, false);
   if (second.ok) assert.fail("expected concurrency limit to fail");
   assert.equal(second.code, "concurrency_limit_exceeded");
+  assert.equal(second.activeCount, 1);
+  assert.equal(second.limit, 1);
+  assert.equal(second.retryAfterMs, 1_000);
 
   await first.release();
   const third = await acquireOpenAiProxyConcurrency("rental-concurrency-test", 1);
@@ -62,6 +65,9 @@ test("memory OpenAI proxy limiter consumes RPM windows", async () => {
   assert.equal(second.ok, false);
   if (second.ok) assert.fail("expected RPM limit to fail");
   assert.equal(second.code, "rpm_limit_exceeded");
+  assert.equal(second.rpmLimit, 1);
+  assert.equal(second.rpmUsed, 1);
+  assert.equal(second.retryAfterMs, 59_999);
 });
 
 test("memory OpenAI proxy runtime exposes process-local state", async () => {

@@ -43,3 +43,12 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com,https://a
 - `pnpm.cmd --filter @zyz/api run typecheck`
 - `pnpm.cmd --filter @zyz/api test`
 - `pnpm.cmd --filter @zyz/api run build`
+
+## 2026-06-13 追加：本地限流头与 CORS 暴露闭环
+
+- CORS 暴露头继续覆盖 `retry-after`、`retry-after-ms` 与常见 `x-ratelimit-*`，浏览器端 JavaScript 可以读取本地或上游返回的限流信息。
+- 本地 OpenAI/Codex 反代自身产生的 429 现在也会实际写出限流头：
+  - 并发耗尽返回重试间隔。
+  - RPM/TPM 耗尽返回重试间隔、限制值和剩余额度。
+  - 套餐请求量耗尽返回请求量限制和剩余 0。
+- `openAiProxyContract.metrics` 同时暴露 `corsExposesRateLimitHeaders` 与 `setsLocalRateLimitHeaders`，用于区分“浏览器可读”与“本地 429 会写出”两个契约。

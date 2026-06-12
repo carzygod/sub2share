@@ -11,6 +11,7 @@ import {
   extractUpstreamRequestId,
   isMetadataProxyRequest,
   openAiProxyErrorPayload,
+  openAiProxyRateLimitHeaders,
   openAiProxyRouteMethods,
   openAiProxyRoutePaths,
   proxyBodyByteLength,
@@ -96,7 +97,16 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
             statusCode: limitCheck.statusCode,
             errorCode: limitCheck.code
           });
-          return openAiError(reply, limitCheck.statusCode, limitCheck.code, limitCheck.message);
+          return openAiError(
+            reply,
+            limitCheck.statusCode,
+            limitCheck.code,
+            limitCheck.message,
+            openAiProxyRateLimitHeaders({
+              requestLimit: limitCheck.requestLimit,
+              requestUsed: limitCheck.requestUsed
+            })
+          );
         }
 
         const estimatedTokens = estimateRateLimitTokens(keyRecord.apiKey.rental, request);
@@ -120,7 +130,15 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
             errorCode: concurrencyLease.code,
             estimatedInputTokens: estimatedTokens
           });
-          return openAiError(reply, concurrencyLease.statusCode, concurrencyLease.code, concurrencyLease.message);
+          return openAiError(
+            reply,
+            concurrencyLease.statusCode,
+            concurrencyLease.code,
+            concurrencyLease.message,
+            openAiProxyRateLimitHeaders({
+              retryAfterMs: numericField(concurrencyLease, "retryAfterMs")
+            })
+          );
         }
 
         let rateLimitCheck: Awaited<ReturnType<typeof checkRentalRateLimits>>;
@@ -145,7 +163,19 @@ export async function registerOpenAiProxyRoutes(app: FastifyInstance) {
             errorCode: rateLimitCheck.code,
             estimatedInputTokens: estimatedTokens
           });
-          return openAiError(reply, rateLimitCheck.statusCode, rateLimitCheck.code, rateLimitCheck.message);
+          return openAiError(
+            reply,
+            rateLimitCheck.statusCode,
+            rateLimitCheck.code,
+            rateLimitCheck.message,
+            openAiProxyRateLimitHeaders({
+              retryAfterMs: numericField(rateLimitCheck, "retryAfterMs"),
+              rpmLimit: numericField(rateLimitCheck, "rpmLimit"),
+              rpmUsed: numericField(rateLimitCheck, "rpmUsed"),
+              tpmLimit: numericField(rateLimitCheck, "tpmLimit"),
+              tpmUsed: numericField(rateLimitCheck, "tpmUsed")
+            })
+          );
         }
         releaseLeaseOnReplyEnd(reply, concurrencyLease.release);
 
@@ -392,7 +422,13 @@ async function checkRentalRequestLimit(
 
   const requestUsed = Math.max(usageRecordCount, proxyRequestCount);
   if (requestUsed >= requestLimit) {
-    return failure(429, "request_limit_exceeded", "Rental request limit has been exhausted");
+    return {
+      ...failure(429, "request_limit_exceeded", "Rental request limit has been exhausted"),
+      requestLimit,
+      requestUsed,
+      usageRecordCount,
+      proxyRequestCount
+    };
   }
 
   return {
@@ -677,6 +713,20 @@ function copyResponseHeaders(upstream: Response, reply: FastifyReply) {
   });
 }
 
-function openAiError(reply: FastifyReply, statusCode: number, code: string, message: string) {
+function numericField(record: object, field: string) {
+  const value = (record as Record<string, unknown>)[field];
+  return typeof value === "number" ? value : null;
+}
+
+function openAiError(
+  reply: FastifyReply,
+  statusCode: number,
+  code: string,
+  message: string,
+  headers: Partial<Record<string, string>> = {}
+) {
+  for (const [name, value] of Object.entries(headers)) {
+    reply.header(name, value);
+  }
   return reply.status(statusCode).send(openAiProxyErrorPayload(statusCode, code, message));
 }

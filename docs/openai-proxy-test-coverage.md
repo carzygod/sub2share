@@ -155,3 +155,27 @@ pnpm.cmd --filter @zyz/api run build
 - API CORS 测试确认真实 `Access-Control-Expose-Headers` 包含 `retry-after` 和 `x-ratelimit-*`。
 
 这项补齐让浏览器端 OpenAI/Codex 客户端在遇到本地或上游 429 时，可以读取重试间隔和余量信息，减少只能依赖后台日志排查限流的情况。
+
+## 2026-06-13 追加：本地限流响应头生成
+
+- `openAiProxyRateLimitHeaders()` 负责统一生成本地 429 响应头。
+- `openai-proxy-helpers.test.ts` 新增覆盖：
+  - `retry-after`
+  - `retry-after-ms`
+  - `x-ratelimit-limit-requests`
+  - `x-ratelimit-remaining-requests`
+  - `x-ratelimit-reset-requests`
+  - `x-ratelimit-limit-tokens`
+  - `x-ratelimit-remaining-tokens`
+  - `x-ratelimit-reset-tokens`
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `setsLocalRateLimitHeaders`
+- `openai-proxy-limiter-store.test.ts` 新增覆盖：
+  - 并发租约耗尽会返回 `retryAfterMs`。
+  - RPM 窗口耗尽会返回 `rpmLimit`、`rpmUsed` 与 `retryAfterMs`。
+- 本轮验证命令：
+  - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/openai-proxy-helpers.test.ts`
+  - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/openai-proxy-limiter-store.test.ts`
+  - `pnpm.cmd --filter @zyz/api typecheck`
+  - `pnpm.cmd --filter @zyz/api test`
+  - `pnpm.cmd --filter @zyz/api build`

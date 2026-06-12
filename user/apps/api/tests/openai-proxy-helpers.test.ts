@@ -14,6 +14,7 @@ import {
   openAiProxyErrorPayload,
   openAiProxyErrorType,
   openAiProxyCorsExposedHeaders,
+  openAiProxyRateLimitHeaders,
   openAiProxyRateLimitHeaderNames,
   openAiProxyRouteMethods,
   openAiProxyRoutePath,
@@ -99,6 +100,9 @@ test("defers proxy RPM and TPM accounting until a rate check is committed", () =
   assert.equal(rpmExceeded.ok, false);
   if (rpmExceeded.ok) assert.fail("expected RPM limit to fail after commit");
   assert.equal(rpmExceeded.code, "rpm_limit_exceeded");
+  assert.equal(rpmExceeded.rpmUsed, 1);
+  assert.equal(rpmExceeded.tpmUsed, 4);
+  assert.equal(rpmExceeded.retryAfterMs, 59_999);
 });
 
 test("prunes expired proxy RPM and TPM events from a rolling window", () => {
@@ -211,6 +215,33 @@ test("exposes local diagnostics and rate limit headers to browser clients", () =
   assert.ok(openAiProxyCorsExposedHeaders.includes("x-ratelimit-remaining-requests"));
 });
 
+test("builds OpenAI-compatible local rate limit response headers", () => {
+  const headers = openAiProxyRateLimitHeaders({
+    retryAfterMs: 60_000,
+    rpmLimit: 10,
+    rpmUsed: 10,
+    tpmLimit: 1_000,
+    tpmUsed: 750
+  });
+
+  assert.equal(headers["retry-after"], "60");
+  assert.equal(headers["retry-after-ms"], "60000");
+  assert.equal(headers["x-ratelimit-limit-requests"], "10");
+  assert.equal(headers["x-ratelimit-remaining-requests"], "0");
+  assert.equal(headers["x-ratelimit-reset-requests"], "60s");
+  assert.equal(headers["x-ratelimit-limit-tokens"], "1000");
+  assert.equal(headers["x-ratelimit-remaining-tokens"], "250");
+  assert.equal(headers["x-ratelimit-reset-tokens"], "60s");
+
+  const exhaustedRequestLedgerHeaders = openAiProxyRateLimitHeaders({
+    requestLimit: 25,
+    requestUsed: 25
+  });
+  assert.equal(exhaustedRequestLedgerHeaders["x-ratelimit-limit-requests"], "25");
+  assert.equal(exhaustedRequestLedgerHeaders["x-ratelimit-remaining-requests"], "0");
+  assert.equal(exhaustedRequestLedgerHeaders["retry-after"], undefined);
+});
+
 test("extracts upstream request ids from common OpenAI and gateway headers", () => {
   assert.equal(extractUpstreamRequestId(new Headers({ "openai-request-id": "req_openai" })), "req_openai");
   assert.equal(extractUpstreamRequestId(new Headers({ "x-openai-request-id": " req_x_openai " })), "req_x_openai");
@@ -280,6 +311,7 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.corsExposesRequestId, true);
   assert.equal(result.summary.corsExposesUpstreamRequestIds, true);
   assert.equal(result.summary.corsExposesRateLimitHeaders, true);
+  assert.equal(result.summary.setsLocalRateLimitHeaders, true);
   assert.equal(result.summary.normalizesProxyRequestLookupHeaders, true);
   assert.equal(result.summary.requestBodyMode, "raw-buffer");
   assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
