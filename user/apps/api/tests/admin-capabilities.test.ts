@@ -115,14 +115,35 @@ test("dashboard health previews prioritize blocking checks and retain critical o
       label: "Sub2/OpenAI 上游",
       status: "error",
       summary: "阻断：openai_group_has_no_active_accounts",
-      detail: { issues: [{ id: "account-2", repairAction: "apply_openai_refresh_token_to_sub2_account", sub2AccountId: 2 }, { id: "account-3" }] }
+      detail: {
+        issues: [{
+          id: "account-2",
+          repairAction: "apply_openai_refresh_token_to_sub2_account",
+          actionHint: "Apply a fresh OpenAI refresh token, then rerun smoke.",
+          sub2AccountId: 2,
+          proxyRequestPath: "/v1/responses",
+          proxyRequestStatusCode: 503,
+          proxyRequestErrorCode: "upstream_http_503",
+          model: "gpt-5.3-codex",
+          responsesOk: false,
+          localProxyOk: false,
+          ageMinutes: 12
+        }, { id: "account-3" }]
+      }
     }
   ]);
 
   assert.deepEqual(previews.map((item) => item.id), ["sub2", "customError", "payments", "billingSync", "adminCapabilities"]);
   assert.equal(previews[0].issueCount, 2);
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(previews[0].primaryIssue?.actionHint, "Apply a fresh OpenAI refresh token, then rerun smoke.");
   assert.equal(previews[0].primaryIssue?.sub2AccountId, 2);
+  assert.equal(previews[0].primaryIssue?.proxyRequestPath, "/v1/responses");
+  assert.equal(previews[0].primaryIssue?.proxyRequestStatusCode, 503);
+  assert.equal(previews[0].primaryIssue?.proxyRequestErrorCode, "upstream_http_503");
+  assert.equal(previews[0].primaryIssue?.model, "gpt-5.3-codex");
+  assert.equal(previews[0].primaryIssue?.responsesOk, false);
+  assert.equal(previews[0].primaryIssue?.ageMinutes, 12);
   assert.equal(previews[2].primaryIssue?.walletTransactionList, true);
   assert.equal(previews[2].primaryIssue?.walletTransactionType, "recharge");
   assert.equal(previews[2].primaryIssue?.salesList, true);

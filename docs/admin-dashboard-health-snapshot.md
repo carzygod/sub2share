@@ -84,6 +84,15 @@
 - 当只携带钱包定位字段时，行内按钮打开 `余额管理`；当只携带 `salesList=true` 时，仍打开 `售出情况` 作为收入复核后备入口。
 - 首页摘要会展示 `walletTransactionType`、`walletTransactionId`、`walletLookup` 和 `walletId`，便于管理员确认本次跳转是充值流水复核而不是售出交付复核。
 
+## 2026-06-12 扩展：Smoke 失败诊断穿透
+
+首页关键巡检项继续补齐 Sub2/OpenAI smoke 失败的诊断字段：
+
+- `GET /api/admin/dashboard` 的关键巡检详情预览保留 `actionHint`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`model`、`modelsOk`、`responsesOk`、`localProxyOk`、`smokeTestSkippedReason` 和 `ageMinutes`。
+- 首页摘要可以直接展示 `/v1/responses`、HTTP 状态码、代理错误码、自检模型和 smoke 分段结果。
+- 从首页点击 `sub2`、`localProxySmoke`、`resourceCredentials` 或 `resources` 进入 `反代状态` 时，这些字段会进入 `修复定位` 诊断块。
+- `修复定位` 会同时显示维修建议、目标账号、资源上下文、请求定位、Smoke 分段结果和失败请求，减少管理员在首页、完整巡检页和反代状态页之间来回复核。
+
 ## 管理价值
 
 - 管理员进入后台首页即可看到真实巡检状态，而不是静态提示。
@@ -94,6 +103,7 @@
 - 管理员可以从经营指标直接进入用户、共享、余额、售出和供给收益管理页面。
 - 管理员从指标进入列表时默认看到与指标口径一致的数据集，减少二次筛选。
 - 管理员从首页支付巡检 warning 可以优先进入充值流水，快速确认余额入账影响，再按需进入售出情况复核收入口径。
+- 管理员从首页进入反代修复页后，可以直接确认失败路径、HTTP 状态码和 smoke 分段结果，不必再回到完整巡检页二次定位。
 
 ## 验收方式
 

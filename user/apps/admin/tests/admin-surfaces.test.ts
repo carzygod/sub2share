@@ -57,6 +57,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     checkId: "localProxySmoke",
     checkLabel: "本地 OpenAI/Codex 反代 smoke",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Apply a fresh OpenAI refresh token, then rerun smoke.",
     accountId: "2",
     sub2AccountName: "codex-primary",
     accountStatus: "inactive",
@@ -68,14 +69,25 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     supplierEmail: "admin@zhisuan.local",
     requestId: "req-local",
     proxyRequestLogId: "log-1",
-    upstreamRequestId: "req-upstream"
+    upstreamRequestId: "req-upstream",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: "503",
+    proxyRequestErrorCode: "upstream_http_503",
+    model: "gpt-5.3-codex",
+    modelsOk: "true",
+    responsesOk: "false",
+    localProxyOk: "false",
+    ageMinutes: "12"
   });
 
-  assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "目标账号", "账号状态", "资源", "供给方", "请求定位"]);
+  assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "维修建议", "目标账号", "账号状态", "资源", "供给方", "请求定位", "Smoke", "失败请求"]);
   assert.equal(items.find((item) => item.label === "来源")?.value, "本地 OpenAI/Codex 反代 smoke / localProxySmoke");
+  assert.equal(items.find((item) => item.label === "维修建议")?.value, "Apply a fresh OpenAI refresh token, then rerun smoke.");
   assert.equal(items.find((item) => item.label === "目标账号")?.value, "#2 / codex-primary");
   assert.equal(items.find((item) => item.label === "账号状态")?.value, "inactive / expired");
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
+  assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
+  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前");
   assert.ok(items.every((item) => item.value.trim().length > 0));
 });

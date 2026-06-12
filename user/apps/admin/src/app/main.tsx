@@ -195,6 +195,7 @@ interface SystemHealthIssueRow {
   ref: string;
   message: string;
   repairAction?: string;
+  actionHint?: string;
   resourceId?: string;
   resourceList?: boolean;
   resourceScope?: string;
@@ -202,6 +203,18 @@ interface SystemHealthIssueRow {
   resourceStatus?: string;
   supplierEmail?: string;
   proxyRequestLookup?: string;
+  requestId?: string;
+  proxyRequestLogId?: string;
+  upstreamRequestId?: string;
+  proxyRequestPath?: string;
+  proxyRequestStatusCode?: string;
+  proxyRequestErrorCode?: string;
+  model?: string;
+  modelsOk?: string;
+  responsesOk?: string;
+  localProxyOk?: string;
+  smokeTestSkippedReason?: string;
+  ageMinutes?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -4954,12 +4967,24 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     checkId: issue.checkId,
     checkLabel: issue.checkLabel,
     repairAction: issue.repairAction,
+    actionHint: issue.actionHint,
     resourceId: issue.resourceId,
     resourceType: issue.resourceType,
     resourceStatus: issue.resourceStatus,
     resourceScope: issue.resourceScope,
     supplierEmail: issue.supplierEmail,
-    requestId: issue.proxyRequestLookup
+    requestId: issue.requestId ?? issue.proxyRequestLookup,
+    proxyRequestLogId: issue.proxyRequestLogId,
+    upstreamRequestId: issue.upstreamRequestId,
+    proxyRequestPath: issue.proxyRequestPath,
+    proxyRequestStatusCode: issue.proxyRequestStatusCode,
+    proxyRequestErrorCode: issue.proxyRequestErrorCode,
+    model: issue.model,
+    modelsOk: issue.modelsOk,
+    responsesOk: issue.responsesOk,
+    localProxyOk: issue.localProxyOk,
+    smokeTestSkippedReason: issue.smokeTestSkippedReason,
+    ageMinutes: issue.ageMinutes
   };
 }
 
@@ -5731,6 +5756,7 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     checkId: check.id,
     checkLabel: check.label,
     repairAction: textValue(record?.repairAction),
+    actionHint: textValue(record?.actionHint),
     resourceId: textValue(record?.resourceId),
     resourceType: textValue(record?.resourceType),
     resourceStatus: textValue(record?.resourceStatus),
@@ -5738,7 +5764,16 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     supplierEmail: textValue(record?.supplierEmail),
     requestId: textValue(record?.requestId),
     proxyRequestLogId: textValue(record?.proxyRequestLogId),
-    upstreamRequestId: textValue(record?.upstreamRequestId)
+    upstreamRequestId: textValue(record?.upstreamRequestId),
+    proxyRequestPath: textValue(record?.proxyRequestPath),
+    proxyRequestStatusCode: textValue(record?.proxyRequestStatusCode),
+    proxyRequestErrorCode: textValue(record?.proxyRequestErrorCode),
+    model: textValue(record?.model),
+    modelsOk: textValue(record?.modelsOk),
+    responsesOk: textValue(record?.responsesOk),
+    localProxyOk: textValue(record?.localProxyOk),
+    smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
+    ageMinutes: textValue(record?.ageMinutes)
   };
 }
 
@@ -5784,6 +5819,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
   if (!record) return "";
   const fields = [
     "repairAction",
+    "actionHint",
     "sub2AccountId",
     "sub2AccountName",
     "accountStatus",
@@ -5794,6 +5830,16 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "supplierEmail",
     "requestId",
     "proxyRequestLogId",
+    "upstreamRequestId",
+    "proxyRequestPath",
+    "proxyRequestStatusCode",
+    "proxyRequestErrorCode",
+    "model",
+    "modelsOk",
+    "responsesOk",
+    "localProxyOk",
+    "smokeTestSkippedReason",
+    "ageMinutes",
     "walletTransactionType",
     "walletTransactionId",
     "walletLookup",
@@ -5836,6 +5882,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       ref: systemHealthIssueRef(record),
       message: systemHealthIssueMessage(record, issue),
       repairAction: textValue(record.repairAction),
+      actionHint: textValue(record.actionHint),
       resourceId: textValue(record.resourceId),
       resourceList: record.resourceList === true || textValue(record.resourceList)?.toLowerCase() === "true",
       resourceScope: textValue(record.resourceScope),
@@ -5843,6 +5890,18 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       resourceStatus: textValue(record.resourceStatus),
       supplierEmail: textValue(record.supplierEmail),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
+      requestId: textValue(record.requestId),
+      proxyRequestLogId: textValue(record.proxyRequestLogId),
+      upstreamRequestId: textValue(record.upstreamRequestId),
+      proxyRequestPath: textValue(record.proxyRequestPath),
+      proxyRequestStatusCode: textValue(record.proxyRequestStatusCode),
+      proxyRequestErrorCode: textValue(record.proxyRequestErrorCode),
+      model: textValue(record.model),
+      modelsOk: textValue(record.modelsOk),
+      responsesOk: textValue(record.responsesOk),
+      localProxyOk: textValue(record.localProxyOk),
+      smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
+      ageMinutes: textValue(record.ageMinutes),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
