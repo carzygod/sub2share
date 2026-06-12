@@ -215,3 +215,14 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 不满足条件时，资源会保持原状态，不会自动切为 `online`；接口响应和审计日志会包含 `statusTransition.blockedOnline=true` 与 `onlineReadiness.issues`。已存凭据应用到 Sub2 后的账号测试、以及从 Sub2 状态页直接保存 refresh token 到共享资源的同步路径，也使用同一状态转移 helper。
 
 这让手动状态变更、资源测试自动收敛、凭据应用后收敛和系统巡检共享同一套 Codex ready 语义。真实 `/v1/responses` 成功仍以有效 OpenAI refresh token、active Sub2 OpenAI 账号、本地反代 smoke 和代理请求日志共同证明。
+
+## 2026-06-12 Update: Credential Mutation Status Convergence
+
+资源凭据写入口现在也会维护 ready online 语义。管理员通过 `PUT /api/admin/resources/:id/credential` 更新凭据，或通过 `DELETE /api/admin/resources/:id/credential` 删除凭据时，如果 Codex 资源当前处于 `online` 或 `busy`，后端会重新检查：
+
+- 资源是否仍有 `sub2AccountId`。
+- 凭据是否仍为 `credentialType=openai_refresh_token` 且 `status=active`。
+
+如果凭据变更后资源不再 ready，资源状态会自动收敛为 `abnormal`，并清空 `lastCheckedAt`，避免旧测试时间继续证明已经失效的交付状态。凭据 upsert/delete 的审计日志会包含 `statusTransition.changed`、`statusTransition.reason=codex_resource_not_ready_after_credential_change` 和 `onlineReadiness.issues`。
+
+这补齐了“进入 online”和“退出 ready”的双向一致性：手动上线、测试自动上线、凭据应用上线、凭据失效降级和系统巡检都围绕同一套 Codex ready 条件运行。

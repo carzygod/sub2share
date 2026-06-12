@@ -42,6 +42,20 @@ export interface SupplierResourceTestStatusTransitionResult {
   onlineReadiness: SupplierResourceManualOnlineReadinessResult;
 }
 
+export interface SupplierResourceCredentialMutationStatusTransitionInput {
+  currentStatus: SupplierResourceStatus;
+  resourceType: string;
+  sub2AccountId?: string | null;
+  credential?: SupplierResourceCredentialIdentity | null;
+}
+
+export interface SupplierResourceCredentialMutationStatusTransitionResult {
+  status: SupplierResourceStatus;
+  changed: boolean;
+  reason: "codex_resource_not_ready_after_credential_change" | null;
+  onlineReadiness: SupplierResourceManualOnlineReadinessResult;
+}
+
 export interface SupplierResourceAvailabilityMetricsInput {
   resourcesByStatus: Record<string, number>;
   totalCodexResources: number;
@@ -131,6 +145,26 @@ export function inspectSupplierResourceTestStatusTransition(
     status: blockedOnline ? input.currentStatus : targetStatus,
     targetStatus,
     blockedOnline,
+    onlineReadiness
+  };
+}
+
+export function inspectSupplierResourceCredentialMutationStatusTransition(
+  input: SupplierResourceCredentialMutationStatusTransitionInput
+): SupplierResourceCredentialMutationStatusTransitionResult {
+  const onlineReadiness = inspectSupplierResourceManualOnlineReadiness({
+    resourceType: input.resourceType,
+    targetStatus: "online",
+    sub2AccountId: input.sub2AccountId,
+    credential: input.credential
+  });
+  const activeDeliveryStatus = input.currentStatus === "online" || input.currentStatus === "busy";
+  const shouldDemote = input.resourceType === "codex" && activeDeliveryStatus && !onlineReadiness.ok;
+
+  return {
+    status: shouldDemote ? "abnormal" : input.currentStatus,
+    changed: shouldDemote,
+    reason: shouldDemote ? "codex_resource_not_ready_after_credential_change" : null,
     onlineReadiness
   };
 }

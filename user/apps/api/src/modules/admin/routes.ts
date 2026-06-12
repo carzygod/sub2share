@@ -65,6 +65,7 @@ import {
 import { inspectPaymentProviderHealth, type PaymentRechargeActivitySummary } from "./payment-provider-health.js";
 import {
   internalHealthCheckSupplierResourceWhere,
+  inspectSupplierResourceCredentialMutationStatusTransition,
   inspectSupplierResourceManualOnlineReadiness,
   inspectSupplierResourceTestStatusTransition,
   nonSmokeSupplierResourceWhere,
@@ -2650,17 +2651,20 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const input = upsertResourceCredentialSchema.parse(request.body);
     const resource = await prisma.supplierResource.findUnique({
       where: { id },
-      select: { id: true }
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        sub2AccountId: true,
+        lastCheckedAt: true,
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
     if (!env.API_KEY_ENCRYPTION_SECRET) {
       throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
     }
 
-    const before = await prisma.supplierResourceCredential.findUnique({
-      where: { supplierResourceId: id },
-      select: resourceCredentialSummarySelect
-    });
     const encrypted = encryptSupplierResourceCredential(input.secret, env.API_KEY_ENCRYPTION_SECRET);
     const credential = await prisma.supplierResourceCredential.upsert({
       where: { supplierResourceId: id },
@@ -2682,8 +2686,39 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       },
       select: resourceCredentialSummarySelect
     });
-    await writeAuditLog(request, actor.id, "admin.resource.credential_upsert", "supplier_resource", id, before, credential);
-    return adminOk(reply, { credential });
+    const statusTransition = inspectSupplierResourceCredentialMutationStatusTransition({
+      currentStatus: resource.status,
+      resourceType: resource.resourceType,
+      sub2AccountId: resource.sub2AccountId,
+      credential
+    });
+    const resourceStatus = statusTransition.changed
+      ? await prisma.supplierResource.update({
+        where: { id },
+        data: {
+          status: statusTransition.status,
+          lastCheckedAt: null
+        },
+        select: { status: true, lastCheckedAt: true }
+      })
+      : { status: resource.status, lastCheckedAt: resource.lastCheckedAt };
+    await writeAuditLog(request, actor.id, "admin.resource.credential_upsert", "supplier_resource", id, {
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
+      resource: {
+        status: resource.status,
+        sub2AccountId: resource.sub2AccountId,
+        lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null
+      }
+    }, {
+      credential: resourceCredentialAuditPayload(credential),
+      resource: {
+        status: resourceStatus.status,
+        sub2AccountId: resource.sub2AccountId,
+        lastCheckedAt: resourceStatus.lastCheckedAt?.toISOString() ?? null
+      },
+      statusTransition
+    });
+    return adminOk(reply, { credential, statusTransition, resourceStatus });
   });
 
   app.delete("/api/admin/resources/:id/credential", async (request, reply) => {
@@ -2691,19 +2726,54 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const resource = await prisma.supplierResource.findUnique({
       where: { id },
-      select: { id: true }
+      select: {
+        id: true,
+        resourceType: true,
+        status: true,
+        sub2AccountId: true,
+        lastCheckedAt: true,
+        credential: { select: resourceCredentialSummarySelect }
+      }
     });
     if (!resource) throw new AppError("resource_not_found", "Supplier resource not found", 404);
 
-    const before = await prisma.supplierResourceCredential.findUnique({
-      where: { supplierResourceId: id },
-      select: resourceCredentialSummarySelect
-    });
     const deleted = await prisma.supplierResourceCredential.deleteMany({
       where: { supplierResourceId: id }
     });
-    await writeAuditLog(request, actor.id, "admin.resource.credential_delete", "supplier_resource", id, before, null);
-    return adminOk(reply, { deleted: deleted.count, credential: null });
+    const statusTransition = inspectSupplierResourceCredentialMutationStatusTransition({
+      currentStatus: resource.status,
+      resourceType: resource.resourceType,
+      sub2AccountId: resource.sub2AccountId,
+      credential: null
+    });
+    const resourceStatus = statusTransition.changed
+      ? await prisma.supplierResource.update({
+        where: { id },
+        data: {
+          status: statusTransition.status,
+          lastCheckedAt: null
+        },
+        select: { status: true, lastCheckedAt: true }
+      })
+      : { status: resource.status, lastCheckedAt: resource.lastCheckedAt };
+    await writeAuditLog(request, actor.id, "admin.resource.credential_delete", "supplier_resource", id, {
+      credential: resource.credential ? resourceCredentialAuditPayload(resource.credential) : null,
+      resource: {
+        status: resource.status,
+        sub2AccountId: resource.sub2AccountId,
+        lastCheckedAt: resource.lastCheckedAt?.toISOString() ?? null
+      }
+    }, {
+      credential: null,
+      deleted: deleted.count,
+      resource: {
+        status: resourceStatus.status,
+        sub2AccountId: resource.sub2AccountId,
+        lastCheckedAt: resourceStatus.lastCheckedAt?.toISOString() ?? null
+      },
+      statusTransition
+    });
+    return adminOk(reply, { deleted: deleted.count, credential: null, statusTransition, resourceStatus });
   });
 
   app.post("/api/admin/resources/:id/apply-credential-to-sub2", async (request, reply) => {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   internalHealthCheckSupplierResourceWhere,
+  inspectSupplierResourceCredentialMutationStatusTransition,
   inspectSupplierResourceManualOnlineReadiness,
   inspectSupplierResourceTestStatusTransition,
   isInternalHealthCheckSupplierResource,
@@ -199,4 +200,56 @@ test("resource tests still move failing active resources to abnormal", () => {
   assert.equal(result.targetStatus, "abnormal");
   assert.equal(result.status, "abnormal");
   assert.equal(result.blockedOnline, false);
+});
+
+test("credential mutations demote online Codex resources when readiness is lost", () => {
+  const result = inspectSupplierResourceCredentialMutationStatusTransition({
+    currentStatus: "online",
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: { credentialType: "openai_refresh_token", status: "disabled" }
+  });
+
+  assert.equal(result.status, "abnormal");
+  assert.equal(result.changed, true);
+  assert.equal(result.reason, "codex_resource_not_ready_after_credential_change");
+  assert.deepEqual(result.onlineReadiness.issues, ["active_openai_refresh_token_missing"]);
+});
+
+test("credential deletion demotes busy Codex resources", () => {
+  const result = inspectSupplierResourceCredentialMutationStatusTransition({
+    currentStatus: "busy",
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: null
+  });
+
+  assert.equal(result.status, "abnormal");
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.onlineReadiness.issues, ["active_openai_refresh_token_missing"]);
+});
+
+test("credential mutations keep ready Codex and non-Codex resources unchanged", () => {
+  assert.deepEqual(inspectSupplierResourceCredentialMutationStatusTransition({
+    currentStatus: "online",
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: { credentialType: "openai_refresh_token", status: "active" }
+  }), {
+    status: "online",
+    changed: false,
+    reason: null,
+    onlineReadiness: {
+      ok: true,
+      issues: [],
+      code: "codex_resource_not_ready_for_online",
+      message: "Codex resource is ready to switch online"
+    }
+  });
+
+  assert.equal(inspectSupplierResourceCredentialMutationStatusTransition({
+    currentStatus: "online",
+    resourceType: "gemini",
+    credential: null
+  }).status, "online");
 });
