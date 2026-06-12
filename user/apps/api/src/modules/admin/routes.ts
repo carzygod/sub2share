@@ -165,6 +165,15 @@ interface SystemHealthCheck {
   detail?: unknown;
 }
 
+interface DashboardHealthCheckPreview {
+  id: string;
+  label: string;
+  status: SystemHealthStatus;
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+}
+
 interface AdminSurfaceCoverageIssue {
   id: string;
   type: "required_surface_area_missing" | "managed_list_view_missing" | "duplicate_navigation_view";
@@ -575,6 +584,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           status: true,
           source: true,
           summary: true,
+          checks: true,
           createdAt: true
         },
         orderBy: { createdAt: "desc" }
@@ -595,7 +605,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       totalSpent: walletAgg._sum.totalSpent ?? 0,
       paidOrderCount: orderAgg._count,
       paidOrderAmount: orderAgg._sum.paidAmount ?? 0,
-      latestSystemHealth
+      latestSystemHealth: latestSystemHealth ? {
+        id: latestSystemHealth.id,
+        status: latestSystemHealth.status,
+        source: latestSystemHealth.source,
+        summary: latestSystemHealth.summary,
+        createdAt: latestSystemHealth.createdAt,
+        criticalChecks: dashboardHealthCheckPreviews(latestSystemHealth.checks)
+      } : null
     });
   });
 
@@ -4908,6 +4925,87 @@ function systemHealthCheck(
   detail?: unknown
 ): SystemHealthCheck {
   return { id, label, status, summary, metrics, detail };
+}
+
+const dashboardHealthCheckPriority = [
+  "sub2",
+  "localProxySmoke",
+  "resourceCredentials",
+  "resources",
+  "openAiProxyContract",
+  "openAiProxyRuntime",
+  "proxy",
+  "salesDelivery",
+  "apiKeys",
+  "billingSync",
+  "billingSyncScheduler",
+  "pendingUsageBilling",
+  "reconciliation",
+  "adminCapabilities",
+  "adminSurfaceCoverage",
+  "deploymentRuntime"
+] as const;
+
+const dashboardHealthCheckPriorityIndex = new Map<string, number>(
+  dashboardHealthCheckPriority.map((id, index) => [id, index])
+);
+
+export function dashboardHealthCheckPreviews(checks: unknown): DashboardHealthCheckPreview[] {
+  if (!Array.isArray(checks)) return [];
+
+  const previews = checks
+    .map(dashboardHealthCheckPreview)
+    .filter((item): item is DashboardHealthCheckPreview => Boolean(item))
+    .filter((item) => item.status !== "ok" || dashboardHealthCheckPriorityIndex.has(item.id));
+
+  return previews
+    .sort((left, right) => {
+      const statusDelta = systemHealthStatusRank(right.status) - systemHealthStatusRank(left.status);
+      if (statusDelta !== 0) return statusDelta;
+      return dashboardHealthCheckRank(left.id) - dashboardHealthCheckRank(right.id);
+    })
+    .slice(0, 8);
+}
+
+function dashboardHealthCheckPreview(value: unknown): DashboardHealthCheckPreview | null {
+  const record = jsonObject(value);
+  if (!record) return null;
+  const id = textJsonValue(record.id);
+  const label = textJsonValue(record.label);
+  const status = systemHealthStatusValue(record.status);
+  const summary = textJsonValue(record.summary);
+  if (!id || !label || !status || !summary) return null;
+
+  const detail = jsonObject(record.detail);
+  const issues = Array.isArray(detail?.issues) ? detail.issues.length : 0;
+  const samples = Array.isArray(detail?.samples) ? detail.samples.length : 0;
+
+  return {
+    id,
+    label,
+    status,
+    summary,
+    issueCount: issues,
+    sampleCount: samples
+  };
+}
+
+function dashboardHealthCheckRank(id: string) {
+  return dashboardHealthCheckPriorityIndex.get(id) ?? dashboardHealthCheckPriority.length + 1;
+}
+
+function systemHealthStatusRank(status: SystemHealthStatus) {
+  if (status === "error") return 3;
+  if (status === "warning") return 2;
+  return 1;
+}
+
+function systemHealthStatusValue(value: unknown): SystemHealthStatus | null {
+  return value === "ok" || value === "warning" || value === "error" ? value : null;
+}
+
+function textJsonValue(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function inspectRegisteredAdminCapabilityRoutes() {

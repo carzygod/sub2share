@@ -132,6 +132,15 @@ interface ListQueryState {
   pageSize: number;
 }
 
+interface DashboardHealthCheckPreview {
+  id: string;
+  label: string;
+  status: "ok" | "warning" | "error";
+  summary: string;
+  issueCount: number;
+  sampleCount: number;
+}
+
 interface Dashboard {
   users: number;
   activeRentals: number;
@@ -156,6 +165,7 @@ interface Dashboard {
       warning?: number;
       error?: number;
     };
+    criticalChecks?: DashboardHealthCheckPreview[];
     createdAt: string;
   } | null;
 }
@@ -2141,7 +2151,7 @@ function App() {
         </header>
 
         {message && <div className="notice glass-panel">{message}</div>}
-        {view === "dashboard" && <DashboardView dashboard={dashboard} />}
+        {view === "dashboard" && <DashboardView dashboard={dashboard} onOpenSystemHealth={() => refresh("systemHealth")} />}
         {view === "systemHealth" && (
           <SystemHealthView
             health={systemHealth}
@@ -2551,8 +2561,9 @@ interface ManagedListProps {
   onExport?: () => void;
 }
 
-function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
+function DashboardView({ dashboard, onOpenSystemHealth }: { dashboard: Dashboard | null; onOpenSystemHealth: () => void }) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
+  const criticalChecks = latestHealth?.criticalChecks ?? [];
   const cards = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} /> },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} /> },
@@ -2604,6 +2615,25 @@ function DashboardView({ dashboard }: { dashboard: Dashboard | null }) {
                   <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
                 </tbody>
               </table>
+              {criticalChecks.length > 0 && (
+                <div className="dashboard-health-list">
+                  {criticalChecks.map((check) => (
+                    <div className="dashboard-health-item" key={check.id}>
+                      <div className={healthRowClass(check.status)}>
+                        {check.status === "ok" ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                        <strong>{check.label}</strong>
+                      </div>
+                      <p>{check.summary}</p>
+                      {(check.issueCount > 0 || check.sampleCount > 0) && (
+                        <small>{check.issueCount} issue / {check.sampleCount} sample</small>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="actions left">
+                <button className="secondary" onClick={onOpenSystemHealth}><Activity size={16} />打开巡检</button>
+              </div>
             </>
           ) : (
             <div className="health-row warning"><AlertTriangle size={18} />尚无巡检快照</div>

@@ -207,6 +207,7 @@ select option { color: #111; }
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.actions.left { justify-content: flex-start; }
 .notice {
   padding: 12px 14px;
   color: var(--text);
@@ -343,6 +344,24 @@ select option { color: #111; }
 }
 .health-row.warning { color: var(--warning); }
 .health-row.error { color: var(--danger); }
+.dashboard-health-list {
+  display: grid;
+  gap: 10px;
+}
+.dashboard-health-item {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.dashboard-health-item p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.dashboard-health-item small { color: var(--faint); }
 .diagnostic-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
