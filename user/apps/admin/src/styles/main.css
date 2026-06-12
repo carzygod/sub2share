@@ -380,6 +380,40 @@ select option { color: #111; }
   gap: 10px;
   flex-wrap: wrap;
 }
+.management-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1px;
+  background: var(--line-soft);
+}
+.management-overview-block {
+  min-width: 0;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  background: var(--surface-2);
+}
+.management-overview-heading {
+  min-width: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+.management-overview-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 620;
+}
+.management-overview-heading small {
+  display: block;
+  margin-top: 4px;
+  color: var(--faint);
+}
+.management-overview-block .compact-table table {
+  min-width: 0;
+}
 .diagnostic-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -535,7 +569,7 @@ tbody tr:hover { background: rgba(255, 255, 255, 0.04); }
 .status-failed, .status-error, .status-disabled, .status-banned, .status-blocked { color: var(--danger); }
 
 @media (max-width: 1020px) {
-  .admin-shell, .login-shell, .diagnostic-grid, .list-controls, .filter-fields, .export-strip, .detail-grid { grid-template-columns: 1fr; }
+  .admin-shell, .login-shell, .management-overview-grid, .diagnostic-grid, .list-controls, .filter-fields, .export-strip, .detail-grid { grid-template-columns: 1fr; }
   .cards, .content-grid, .compact-cards, .inline-form { grid-template-columns: 1fr; }
   .topbar {
     align-items: stretch;

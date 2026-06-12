@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
 test("admin capability matrix covers the required management areas", () => {
@@ -90,6 +90,35 @@ test("shared admin frontend surface matrix covers the required management areas"
   assert.deepEqual(result.missingRequiredAreas, []);
   assert.deepEqual(result.missingManagedListViews, []);
   assert.deepEqual(result.duplicateViews, []);
+});
+
+test("dashboard management overview normalizes core status and wallet risk counts", () => {
+  const rows = dashboardManagementStatusCounts(["pending", "paid", "failed"], [
+    { status: "failed", _count: { _all: 2 }, _sum: { totalAmount: "18.000000", paidAmount: "9.000000" } },
+    { status: "paid", _count: { _all: 3 }, _sum: { totalAmount: 12, paidAmount: 12 } },
+    { status: "custom", _count: { _all: 1 } }
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.status), ["pending", "paid", "failed", "custom"]);
+  assert.equal(rows.find((row) => row.status === "pending")?.count, 0);
+  assert.equal(rows.find((row) => row.status === "paid")?.count, 3);
+  assert.equal(rows.find((row) => row.status === "paid")?.paidAmount, 12);
+  assert.equal(rows.find((row) => row.status === "failed")?.totalAmount, "18.000000");
+  assert.equal(rows.find((row) => row.status === "custom")?.count, 1);
+
+  assert.deepEqual(dashboardWalletManagementOverview({
+    total: 5,
+    negative: 1,
+    frozen: 2,
+    available: null,
+    spent: undefined
+  }), {
+    total: 5,
+    negative: 1,
+    frozen: 2,
+    available: 0,
+    spent: 0
+  });
 });
 
 test("dashboard health previews prioritize blocking checks and retain critical ok evidence", () => {

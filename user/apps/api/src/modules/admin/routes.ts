@@ -103,6 +103,7 @@ const resourceCredentialStatuses = ["active", "rotated", "disabled"] as const;
 type ResourceStatus = SupplierResourceStatus;
 const settlementStatuses = ["pending", "frozen", "available", "withdrawn", "cancelled"] as const;
 const withdrawalStatuses = ["pending", "approved", "rejected", "paid", "cancelled"] as const;
+const walletManagementStatuses = ["negative", "frozen", "available", "spent"] as const;
 const reconciliationScanLimit = 500;
 const reconciliationIssueLimit = 50;
 const systemHealthProxyWindowMs = 60 * 60 * 1000;
@@ -344,6 +345,21 @@ interface DashboardDeliveryBlockerPreview {
   schedulable?: boolean | null;
   accountMessage?: string | null;
   check: DashboardHealthCheckPreview;
+}
+
+interface DashboardManagementStatusCount {
+  status: string;
+  count: number;
+  totalAmount?: string | number | null;
+  paidAmount?: string | number | null;
+}
+
+interface DashboardWalletManagementOverview {
+  total: number;
+  negative: number;
+  frozen: number;
+  available: number;
+  spent: number;
 }
 
 const dashboardHealthDetailPreviewFields = [
@@ -882,7 +898,25 @@ const updateWithdrawalSchema = z.object({
 export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/dashboard", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
-    const [users, activeRentals, onlineResources, pendingWithdrawals, usageAgg, walletAgg, orderAgg, latestSystemHealth] = await Promise.all([
+    const [
+      users,
+      activeRentals,
+      onlineResources,
+      pendingWithdrawals,
+      usageAgg,
+      walletAgg,
+      orderAgg,
+      latestSystemHealth,
+      userStatusRows,
+      orderStatusRows,
+      rentalStatusRows,
+      resourceStatusRows,
+      walletCount,
+      negativeWallets,
+      frozenWallets,
+      availableWallets,
+      spentWallets
+    ] = await Promise.all([
       prisma.user.count({ where: nonSmokeUserWhere() }),
       prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
       prisma.supplierResource.count({ where: { status: "online", ...nonSmokeSupplierResourceWhere() } }),
@@ -911,8 +945,38 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           createdAt: true
         },
         orderBy: { createdAt: "desc" }
-      })
+      }),
+      prisma.user.groupBy({
+        by: ["status"],
+        where: nonSmokeUserWhere(),
+        _count: { _all: true }
+      }),
+      prisma.order.groupBy({
+        by: ["status"],
+        where: nonSmokeOrderWhere(),
+        _count: { _all: true },
+        _sum: { totalAmount: true, paidAmount: true }
+      }),
+      prisma.rental.groupBy({
+        by: ["status"],
+        where: nonSmokeRentalWhere(),
+        _count: { _all: true }
+      }),
+      prisma.supplierResource.groupBy({
+        by: ["status"],
+        where: nonSmokeSupplierResourceWhere(),
+        _count: { _all: true }
+      }),
+      prisma.walletAccount.count({ where: nonSmokeWalletWhere() }),
+      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), availableBalance: { lt: 0 } } }),
+      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), frozenBalance: { gt: 0 } } }),
+      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), availableBalance: { gt: 0 } } }),
+      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), totalSpent: { gt: 0 } } })
     ]);
+    const userStatusCounts = dashboardManagementStatusCounts(userStatuses, userStatusRows);
+    const orderStatusCounts = dashboardManagementStatusCounts(orderStatuses, orderStatusRows);
+    const rentalStatusCounts = dashboardManagementStatusCounts(rentalStatuses, rentalStatusRows);
+    const resourceStatusCounts = dashboardManagementStatusCounts(resourceStatuses, resourceStatusRows);
 
     return adminOk(reply, {
       users,
@@ -928,6 +992,31 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       totalSpent: walletAgg._sum.totalSpent ?? 0,
       paidOrderCount: orderAgg._count,
       paidOrderAmount: orderAgg._sum.paidAmount ?? 0,
+      managementOverview: {
+        users: {
+          total: users,
+          statuses: userStatusCounts
+        },
+        wallets: dashboardWalletManagementOverview({
+          total: walletCount,
+          negative: negativeWallets,
+          frozen: frozenWallets,
+          available: availableWallets,
+          spent: spentWallets
+        }),
+        sales: {
+          total: orderStatusCounts.reduce((total, row) => total + row.count, 0),
+          statuses: orderStatusCounts
+        },
+        rentals: {
+          total: rentalStatusCounts.reduce((total, row) => total + row.count, 0),
+          statuses: rentalStatusCounts
+        },
+        sharing: {
+          total: resourceStatusCounts.reduce((total, row) => total + row.count, 0),
+          statuses: resourceStatusCounts
+        }
+      },
       latestSystemHealth: latestSystemHealth ? {
         ...dashboardLatestSystemHealthPreview(latestSystemHealth)
       } : null
@@ -2205,8 +2294,10 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get("/api/admin/wallets", async (request, reply) => {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
+    const walletStatus = oneOf(walletManagementStatuses, query.status);
     const where: Prisma.WalletAccountWhereInput = {
       ...nonSmokeWalletWhere(),
+      ...walletManagementStatusWhere(walletStatus),
       ...(query.q ? {
         OR: [
           { id: containsText(query.q) },
@@ -5662,6 +5753,50 @@ interface DashboardLatestSystemHealthSnapshot {
   createdAt: Date;
 }
 
+export function dashboardManagementStatusCounts(
+  statuses: readonly string[],
+  rows: Array<{
+    status: string | null;
+    _count?: number | { _all?: number | null } | null;
+    _sum?: Record<string, string | number | Prisma.Decimal | null | undefined> | null;
+  }>
+): DashboardManagementStatusCount[] {
+  const byStatus = new Map(rows.map((row) => [row.status ?? "", row]));
+  const knownStatuses = new Set(statuses);
+  const orderedStatuses = [
+    ...statuses,
+    ...rows.map((row) => row.status ?? "").filter((status) => status && !knownStatuses.has(status))
+  ];
+
+  return orderedStatuses.map((status) => {
+    const row = byStatus.get(status);
+    const totalAmount = dashboardMoneyLikeValue(row?._sum?.totalAmount);
+    const paidAmount = dashboardMoneyLikeValue(row?._sum?.paidAmount);
+    return {
+      status,
+      count: dashboardGroupCountValue(row?._count),
+      ...(totalAmount !== null ? { totalAmount } : {}),
+      ...(paidAmount !== null ? { paidAmount } : {})
+    };
+  });
+}
+
+export function dashboardWalletManagementOverview(input: {
+  total?: number | null;
+  negative?: number | null;
+  frozen?: number | null;
+  available?: number | null;
+  spent?: number | null;
+}): DashboardWalletManagementOverview {
+  return {
+    total: input.total ?? 0,
+    negative: input.negative ?? 0,
+    frozen: input.frozen ?? 0,
+    available: input.available ?? 0,
+    spent: input.spent ?? 0
+  };
+}
+
 export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSystemHealthSnapshot, now = new Date()) {
   const ageMinutes = Math.floor(Math.max(0, now.getTime() - snapshot.createdAt.getTime()) / 60000);
   const staleThresholdMinutes = Math.floor(dashboardSystemHealthSnapshotStaleMs / 60000);
@@ -5976,6 +6111,19 @@ function dashboardHealthMetricPreview(value: unknown): DashboardHealthMetricPrev
 function dashboardMetricNumber(metrics: DashboardHealthMetricPreview, field: string) {
   const value = metrics[field];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function dashboardGroupCountValue(value: number | { _all?: number | null } | null | undefined) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "object" && value && typeof value._all === "number" && Number.isFinite(value._all)) return value._all;
+  return 0;
+}
+
+function dashboardMoneyLikeValue(value: string | number | Prisma.Decimal | null | undefined) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (value && typeof value.toString === "function") return value.toString();
+  return null;
 }
 
 function dashboardDetailNumber(detail: DashboardHealthDetailPreview, field: string) {
@@ -7437,6 +7585,14 @@ function nonSmokeWalletTransactionWhere(): Prisma.WalletTransactionWhereInput {
 
 function nonSmokeUsageWhere(): Prisma.UsageRecordWhereInput {
   return { rental: nonSmokeRentalWhere() };
+}
+
+function walletManagementStatusWhere(status: (typeof walletManagementStatuses)[number] | undefined): Prisma.WalletAccountWhereInput {
+  if (status === "negative") return { availableBalance: { lt: 0 } };
+  if (status === "frozen") return { frozenBalance: { gt: 0 } };
+  if (status === "available") return { availableBalance: { gt: 0 } };
+  if (status === "spent") return { totalSpent: { gt: 0 } };
+  return {};
 }
 
 function nonSmokeProductWhere(): Prisma.ProductWhereInput {

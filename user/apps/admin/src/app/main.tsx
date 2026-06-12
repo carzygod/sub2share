@@ -248,6 +248,39 @@ interface DashboardDeliveryBlocker {
   check: DashboardHealthCheckPreview;
 }
 
+interface DashboardManagementStatusCount {
+  status: string;
+  count: number;
+  totalAmount?: string | number | null;
+  paidAmount?: string | number | null;
+}
+
+interface DashboardManagementOverview {
+  users: {
+    total: number;
+    statuses: DashboardManagementStatusCount[];
+  };
+  wallets: {
+    total: number;
+    negative: number;
+    frozen: number;
+    available: number;
+    spent: number;
+  };
+  sales: {
+    total: number;
+    statuses: DashboardManagementStatusCount[];
+  };
+  rentals: {
+    total: number;
+    statuses: DashboardManagementStatusCount[];
+  };
+  sharing: {
+    total: number;
+    statuses: DashboardManagementStatusCount[];
+  };
+}
+
 interface DashboardAccountDiagnosisSource {
   sub2AccountId?: string | number | boolean | null;
   sub2AccountName?: string | null;
@@ -273,6 +306,7 @@ interface Dashboard {
   totalSpent: string;
   paidOrderCount: number;
   paidOrderAmount: string;
+  managementOverview?: DashboardManagementOverview;
   latestSystemHealth?: {
     id: string;
     status: "ok" | "warning" | "error";
@@ -1200,6 +1234,7 @@ const apiKeyStatusOptions = ["active", "inactive"];
 const systemHealthStatusOptions = ["ok", "warning", "error"];
 const supplierStatusOptions = ["pending", "active", "paused", "disabled"];
 const resourceStatusOptions = ["pending", "testing", "online", "busy", "paused", "abnormal", "disabled"];
+const walletManagementStatusOptions = ["negative", "frozen", "available", "spent"];
 const settlementStatusOptions = ["pending", "frozen", "available", "withdrawn", "cancelled"];
 const withdrawalStatusOptions = ["pending", "approved", "rejected", "paid", "cancelled"];
 const walletTransactionTypeOptions = ["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"];
@@ -2513,6 +2548,11 @@ function App() {
             onOpenRechargeTransactions={() => { void openWalletTransactionsCandidate({ type: "recharge" }); }}
             onOpenConsumeTransactions={() => { void openWalletTransactionsCandidate({ type: "consume" }); }}
             onOpenPendingWithdrawals={() => { void openStatusListCandidate("withdrawals", "pending", "已打开待处理提现"); }}
+            onOpenUsersByStatus={(status) => { void openStatusListCandidate("users", status, `已打开 ${status} 用户`); }}
+            onOpenWalletsByStatus={(status) => { void openStatusListCandidate("wallets", status, `已打开 ${status} 钱包`); }}
+            onOpenOrdersByStatus={(status) => { void openStatusListCandidate("orders", status, `已打开 ${status} 订单`); }}
+            onOpenRentalsByStatus={(status) => { void openStatusListCandidate("rentals", status, `已打开 ${status} 租赁通道`); }}
+            onOpenResourcesByStatus={(status) => { void openStatusListCandidate("resources", status, `已打开 ${status} 共享资源`); }}
           />
         )}
         {view === "systemHealth" && (
@@ -2942,7 +2982,12 @@ function DashboardView({
   onOpenOnlineResources,
   onOpenRechargeTransactions,
   onOpenConsumeTransactions,
-  onOpenPendingWithdrawals
+  onOpenPendingWithdrawals,
+  onOpenUsersByStatus,
+  onOpenWalletsByStatus,
+  onOpenOrdersByStatus,
+  onOpenRentalsByStatus,
+  onOpenResourcesByStatus
 }: {
   dashboard: Dashboard | null;
   onOpenSystemHealth: () => void;
@@ -2954,6 +2999,11 @@ function DashboardView({
   onOpenRechargeTransactions: () => void;
   onOpenConsumeTransactions: () => void;
   onOpenPendingWithdrawals: () => void;
+  onOpenUsersByStatus: (status: string) => void;
+  onOpenWalletsByStatus: (status: string) => void;
+  onOpenOrdersByStatus: (status: string) => void;
+  onOpenRentalsByStatus: (status: string) => void;
+  onOpenResourcesByStatus: (status: string) => void;
 }) {
   const latestHealth = dashboard?.latestSystemHealth ?? null;
   const criticalChecks = latestHealth?.criticalChecks ?? [];
@@ -2986,6 +3036,17 @@ function DashboardView({
           </button>
         ))}
       </section>
+      {dashboard?.managementOverview && (
+        <DashboardManagementOverviewPanel
+          overview={dashboard.managementOverview}
+          onOpenView={onOpenView}
+          onOpenUsersByStatus={onOpenUsersByStatus}
+          onOpenWalletsByStatus={onOpenWalletsByStatus}
+          onOpenOrdersByStatus={onOpenOrdersByStatus}
+          onOpenRentalsByStatus={onOpenRentalsByStatus}
+          onOpenResourcesByStatus={onOpenResourcesByStatus}
+        />
+      )}
       <section className="content-grid">
         <div className="panel glass-panel">
           <span className="eyebrow">Settlement</span>
@@ -3119,6 +3180,145 @@ function DashboardView({
         </div>
       </section>
     </>
+  );
+}
+
+function DashboardManagementOverviewPanel({ overview, onOpenView, onOpenUsersByStatus, onOpenWalletsByStatus, onOpenOrdersByStatus, onOpenRentalsByStatus, onOpenResourcesByStatus }: {
+  overview: DashboardManagementOverview;
+  onOpenView: (view: View) => void;
+  onOpenUsersByStatus: (status: string) => void;
+  onOpenWalletsByStatus: (status: string) => void;
+  onOpenOrdersByStatus: (status: string) => void;
+  onOpenRentalsByStatus: (status: string) => void;
+  onOpenResourcesByStatus: (status: string) => void;
+}) {
+  const walletRows = [
+    { status: "negative", label: "负余额", count: overview.wallets.negative },
+    { status: "frozen", label: "冻结余额", count: overview.wallets.frozen },
+    { status: "available", label: "可用余额", count: overview.wallets.available },
+    { status: "spent", label: "已有消费", count: overview.wallets.spent }
+  ];
+
+  return (
+    <section className="panel glass-panel wide">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">Management</span>
+          <h2>核心管理摘要</h2>
+        </div>
+      </div>
+      <div className="management-overview-grid">
+        <DashboardManagementStatusBlock
+          title="用户"
+          total={overview.users.total}
+          totalLabel="全部用户"
+          rows={overview.users.statuses}
+          onOpenTotal={() => onOpenView("users")}
+          onOpenStatus={onOpenUsersByStatus}
+        />
+        <DashboardWalletManagementBlock
+          title="余额"
+          total={overview.wallets.total}
+          rows={walletRows}
+          onOpenTotal={() => onOpenView("wallets")}
+          onOpenStatus={onOpenWalletsByStatus}
+        />
+        <DashboardManagementStatusBlock
+          title="售出订单"
+          total={overview.sales.total}
+          totalLabel="全部订单"
+          rows={overview.sales.statuses}
+          showPaidAmount
+          onOpenTotal={() => onOpenView("orders")}
+          onOpenStatus={onOpenOrdersByStatus}
+        />
+        <DashboardManagementStatusBlock
+          title="租赁通道"
+          total={overview.rentals.total}
+          totalLabel="全部租赁"
+          rows={overview.rentals.statuses}
+          onOpenTotal={() => onOpenView("rentals")}
+          onOpenStatus={onOpenRentalsByStatus}
+        />
+        <DashboardManagementStatusBlock
+          title="共享资源"
+          total={overview.sharing.total}
+          totalLabel="全部资源"
+          rows={overview.sharing.statuses}
+          onOpenTotal={() => onOpenView("resources")}
+          onOpenStatus={onOpenResourcesByStatus}
+        />
+      </div>
+    </section>
+  );
+}
+
+function DashboardManagementStatusBlock({ title, total, totalLabel, rows, showPaidAmount = false, onOpenTotal, onOpenStatus }: {
+  title: string;
+  total: number;
+  totalLabel: string;
+  rows: DashboardManagementStatusCount[];
+  showPaidAmount?: boolean;
+  onOpenTotal: () => void;
+  onOpenStatus: (status: string) => void;
+}) {
+  return (
+    <section className="management-overview-block">
+      <div className="management-overview-heading">
+        <div>
+          <h3>{title}</h3>
+          <small>{totalLabel}</small>
+        </div>
+        <button type="button" className="secondary mini" onClick={onOpenTotal}>{total}</button>
+      </div>
+      <MiniTable headers={showPaidAmount ? ["状态", "数量", "已付", "操作"] : ["状态", "数量", "操作"]}>
+        {rows.map((row) => (
+          <tr key={row.status}>
+            <td><StatusPill status={row.status} /></td>
+            <td>{row.count}</td>
+            {showPaidAmount && <td>{money(row.paidAmount)}</td>}
+            <td>
+              <button type="button" className="secondary mini" disabled={row.count <= 0} onClick={() => onOpenStatus(row.status)}>
+                <ChevronRight size={14} />打开
+              </button>
+            </td>
+          </tr>
+        ))}
+      </MiniTable>
+    </section>
+  );
+}
+
+function DashboardWalletManagementBlock({ title, total, rows, onOpenTotal, onOpenStatus }: {
+  title: string;
+  total: number;
+  rows: Array<{ status: string; label: string; count: number }>;
+  onOpenTotal: () => void;
+  onOpenStatus: (status: string) => void;
+}) {
+  return (
+    <section className="management-overview-block">
+      <div className="management-overview-heading">
+        <div>
+          <h3>{title}</h3>
+          <small>全部钱包</small>
+        </div>
+        <button type="button" className="secondary mini" onClick={onOpenTotal}>{total}</button>
+      </div>
+      <MiniTable headers={["类型", "钱包", "操作"]}>
+        {rows.map((row) => (
+          <tr key={row.status}>
+            <td>{row.label}</td>
+            <td>{row.count}</td>
+            <td>
+              <button type="button" className="secondary mini" disabled={row.count <= 0} onClick={() => onOpenStatus(row.status)}>
+                <ChevronRight size={14} />打开
+              </button>
+            </td>
+          </tr>
+        ))}
+      </MiniTable>
+    </section>
   );
 }
 
@@ -3725,6 +3925,7 @@ function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, on
         query={query}
         meta={meta}
         searchPlaceholder="email / user id / wallet id"
+        statusOptions={walletManagementStatusOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}

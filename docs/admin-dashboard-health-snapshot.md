@@ -394,3 +394,24 @@
 - Admin 首页系统状态表新增“交付阻断”行，并在关键巡检列表前展示一条可点击的交付问题摘要。
 
 这样当线上出现“Codex 商品可购买但没有 ready production Codex shared resource”时，管理员首屏即可看到受影响商品、价格、供给方、资源修复入口和目标 Sub2 账号，不需要在商品、共享资源和售出交付多个页面之间来回定位。
+
+## 2026-06-13 扩展：首页核心管理摘要与余额风险筛选
+
+- `GET /api/admin/dashboard` 新增 `managementOverview`。
+- `managementOverview.users` 返回用户总数和 `active`、`disabled`、`banned` 状态分布。
+- `managementOverview.wallets` 返回钱包总数和余额运营风险计数：
+  - `negative`：可用余额小于 0。
+  - `frozen`：冻结余额大于 0。
+  - `available`：可用余额大于 0。
+  - `spent`：累计消费大于 0。
+- `managementOverview.sales` 返回订单总数、订单状态分布，并保留每个状态下的 `totalAmount` 与 `paidAmount`。
+- `managementOverview.rentals` 返回租赁通道总数和状态分布。
+- `managementOverview.sharing` 返回共享资源总数和状态分布。
+- Admin 首页新增“核心管理摘要”面板，用户、余额、售出订单、租赁通道、共享资源每一类都可直接打开对应列表或状态筛选。
+- 余额列表新增运营筛选状态：
+  - `negative`
+  - `frozen`
+  - `available`
+  - `spent`
+
+这样管理员不需要逐个打开用户、余额、售出和共享资源页面，也能在首屏判断哪些核心管理对象需要处理，并可一键进入对应筛选结果。
