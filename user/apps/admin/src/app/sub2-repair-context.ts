@@ -68,6 +68,17 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
   ].filter((item): item is Sub2RepairContextItem => Boolean(item.value));
 }
 
+export function sub2RepairContextShouldRunSmokeTest(context: Sub2RepairContext) {
+  return context.checkId === "localProxySmoke"
+    || context.responsesOk === "false"
+    || context.localProxyOk === "false"
+    || Boolean(context.proxyRequestPath || context.proxyRequestStatusCode || context.proxyRequestErrorCode);
+}
+
+export function sub2RepairContextSmokeModel(context: Sub2RepairContext) {
+  return context.model?.trim() || "";
+}
+
 function healthFlag(label: string, value?: string) {
   if (!value) return undefined;
   if (value === "true") return `${label} 通过`;

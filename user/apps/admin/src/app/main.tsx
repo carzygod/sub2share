@@ -34,7 +34,12 @@ import {
   X
 } from "lucide-react";
 import { api, clearAdminToken, saveAdminToken } from "./api";
-import { sub2RepairContextItems, type Sub2RepairContext } from "./sub2-repair-context";
+import {
+  sub2RepairContextItems,
+  sub2RepairContextShouldRunSmokeTest,
+  sub2RepairContextSmokeModel,
+  type Sub2RepairContext
+} from "./sub2-repair-context";
 import logoUrl from "../assets/zyz-logo.png";
 import "../styles/main.css";
 
@@ -4535,6 +4540,8 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
     ?? openAiAccounts[0];
   const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
   const repairContextItems = sub2RepairContextItems(repairContext);
+  const shouldRunSmokeTest = sub2RepairContextShouldRunSmokeTest(repairContext);
+  const smokeModel = sub2RepairContextSmokeModel(repairContext);
 
   return (
     <section className="stack">
@@ -4626,7 +4633,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
           </div>
         )}
       </div>
-      <form className="panel glass-panel inline-form credential-form" key={`credential-${repairContext.accountId ?? "auto"}-${repairContext.resourceId ?? ""}-${repairContext.supplierEmail ?? ""}`} onSubmit={onApplyRefreshToken}>
+      <form className="panel glass-panel inline-form credential-form" key={`credential-${repairContext.accountId ?? "auto"}-${repairContext.resourceId ?? ""}-${repairContext.supplierEmail ?? ""}-${smokeModel}-${shouldRunSmokeTest ? "smoke" : "manual"}`} onSubmit={onApplyRefreshToken}>
         <span className="eyebrow">Apply OpenAI Credentials</span>
         <select key={`${repairAccount?.id ?? "none"}-${repairContext.accountId ?? "auto"}`} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
           <option value="">选择上游账号</option>
@@ -4642,10 +4649,10 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
           <span>应用后测试账号</span>
         </label>
         <label className="checkbox-line">
-          <input name="runSmokeTest" type="checkbox" />
+          <input name="runSmokeTest" type="checkbox" defaultChecked={shouldRunSmokeTest} />
           <span>应用后端到端自检</span>
         </label>
-        <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
+        <input name="smokeModel" defaultValue={smokeModel} placeholder="自检模型，可选" autoComplete="off" />
         <label className="checkbox-line">
           <input name="saveToResource" type="checkbox" defaultChecked={Boolean(repairContext.resourceId || repairContext.supplierEmail)} />
           <span>保存为共享资源凭据</span>

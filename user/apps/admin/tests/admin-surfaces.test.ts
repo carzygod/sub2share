@@ -8,7 +8,11 @@ import {
   managedListViews,
   requiredAdminSurfaceAreas
 } from "@zyz/shared";
-import { sub2RepairContextItems } from "../src/app/sub2-repair-context";
+import {
+  sub2RepairContextItems,
+  sub2RepairContextShouldRunSmokeTest,
+  sub2RepairContextSmokeModel
+} from "../src/app/sub2-repair-context";
 
 test("admin navigation covers the required management areas", () => {
   const coverage = inspectAdminSurfaceCoverage();
@@ -90,4 +94,18 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
   assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前");
   assert.ok(items.every((item) => item.value.trim().length > 0));
+});
+
+test("sub2 repair context prefills smoke verification after failed proxy evidence", () => {
+  const failedSmokeContext = {
+    checkId: "localProxySmoke",
+    model: "gpt-5.3-codex",
+    responsesOk: "false",
+    proxyRequestPath: "/v1/responses"
+  };
+
+  assert.equal(sub2RepairContextShouldRunSmokeTest(failedSmokeContext), true);
+  assert.equal(sub2RepairContextSmokeModel(failedSmokeContext), "gpt-5.3-codex");
+  assert.equal(sub2RepairContextShouldRunSmokeTest({ checkId: "sub2", accountId: "2" }), false);
+  assert.equal(sub2RepairContextSmokeModel({ model: "  " }), "");
 });
