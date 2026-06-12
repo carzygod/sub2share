@@ -88,7 +88,7 @@
 
 首页关键巡检项继续补齐 Sub2/OpenAI smoke 失败的诊断字段：
 
-- `GET /api/admin/dashboard` 的关键巡检详情预览保留 `actionHint`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`model`、`modelsOk`、`responsesOk`、`localProxyOk`、`smokeTestSkippedReason`、`ageMinutes`、`stale` 和 `staleThresholdMinutes`。
+- `GET /api/admin/dashboard` 的关键巡检详情预览保留 `actionHint`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`model`、`modelsOk`、`responsesOk`、`localProxyOk`、`smokeTestSkippedReason`、`ageMinutes`、`stale`、`staleThresholdMinutes` 和 `freshMinutesRemaining`。
 - 首页摘要可以直接展示 `/v1/responses`、HTTP 状态码、代理错误码、自检模型和 smoke 分段结果。
 - 从首页点击 `sub2`、`localProxySmoke`、`resourceCredentials` 或 `resources` 进入 `反代状态` 时，这些字段会进入 `修复定位` 诊断块。
 - `修复定位` 会同时显示维修建议、目标账号、账号诊断、资源上下文、请求定位、Smoke 分段结果和失败请求，减少管理员在首页、完整巡检页和反代状态页之间来回复核。
@@ -105,6 +105,7 @@
 - 管理员从首页支付巡检 warning 可以优先进入充值流水，快速确认余额入账影响，再按需进入售出情况复核收入口径。
 - 管理员从首页进入反代修复页后，可以直接确认失败路径、HTTP 状态码和 smoke 分段结果，不必再回到完整巡检页二次定位。
 - 管理员从首页进入反代修复页后，可以同时看到 smoke 证据年龄和过期阈值；如果失败 smoke 证据已过期，会直接看到“证据已过期”，便于修复后立即重新运行端到端自检刷新当前 `/v1/responses` 证据。
+- 当 smoke 证据尚未过期时，首页进入反代修复页也会显示剩余多少分钟过期，帮助管理员判断是否需要优先刷新证据。
 
 ## 验收方式
 

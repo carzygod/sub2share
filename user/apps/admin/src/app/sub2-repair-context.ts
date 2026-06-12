@@ -30,6 +30,7 @@ export interface Sub2RepairContext {
   ageMinutes?: string;
   stale?: string;
   staleThresholdMinutes?: string;
+  freshMinutesRemaining?: string;
 }
 
 export interface ResourceCreateDefaults {
@@ -79,6 +80,7 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     context.smokeTestSkippedReason ? `skip ${context.smokeTestSkippedReason}` : undefined,
     context.ageMinutes ? `${context.ageMinutes} 分钟前` : undefined,
     context.staleThresholdMinutes ? `阈值 ${context.staleThresholdMinutes} 分钟` : undefined,
+    context.freshMinutesRemaining && context.stale !== "true" ? `剩余 ${context.freshMinutesRemaining} 分钟过期` : undefined,
     context.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
   const accountDiagnostics = [

@@ -61,11 +61,13 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("productName"));
   assert.ok(adminSystemHealthIssueRefFields.includes("stale"));
   assert.ok(adminSystemHealthIssueRefFields.includes("staleThresholdMinutes"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("freshMinutesRemaining"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("productName"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("proxyRequestLogId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("staleThresholdMinutes"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("freshMinutesRemaining"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("orderId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("rentalId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("apiKeyId"));
@@ -122,6 +124,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     localProxyOk: "false",
     ageMinutes: "12",
     staleThresholdMinutes: "1440",
+    freshMinutesRemaining: "1428",
     stale: "true"
   });
 
@@ -136,6 +139,21 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
   assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前 / 阈值 1440 分钟 / 证据已过期");
   assert.ok(items.every((item) => item.value.trim().length > 0));
+});
+
+test("sub2 repair context shows smoke freshness remaining before stale", () => {
+  const items = sub2RepairContextItems({
+    checkId: "localProxySmoke",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: "503",
+    proxyRequestErrorCode: "upstream_http_503",
+    ageMinutes: "1332",
+    staleThresholdMinutes: "1440",
+    freshMinutesRemaining: "108",
+    stale: "false"
+  });
+
+  assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 1332 分钟前 / 阈值 1440 分钟 / 剩余 108 分钟过期");
 });
 
 test("sub2 repair context prefills smoke verification after failed proxy evidence", () => {

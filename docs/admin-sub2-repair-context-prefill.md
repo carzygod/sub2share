@@ -30,6 +30,7 @@
   - `ageMinutes`
   - `stale`
   - `staleThresholdMinutes`
+  - `freshMinutesRemaining`
 - 首页和完整巡检页也会把 Sub2 账号诊断字段带入修复上下文：
   - `schedulable`
   - `tempUnschedulableReason`
@@ -54,7 +55,7 @@
 - 管理员从可用性巡检进入修复页后，可以直接粘贴有效 OpenAI refresh token。
 - 管理员从首页或完整巡检页进入反代状态页后，可以先确认当前目标账号、资源和推荐维修动作，再应用凭据。
 - 管理员可以直接在反代状态页看到 `schedulable=false`、临时不可调度原因、账号更新时间和 OpenAI 返回的 token invalidated/token revoked 摘要，不必切回完整巡检页查看候选样本。
-- 管理员可以直接在反代状态页确认 `/v1/responses`、HTTP 503、`upstream_http_503`、证据年龄和过期阈值等 smoke 失败证据，不必切回完整巡检页查找。
+- 管理员可以直接在反代状态页确认 `/v1/responses`、HTTP 503、`upstream_http_503`、证据年龄、过期阈值和剩余新鲜时间等 smoke 失败证据，不必切回完整巡检页查找。
 - 管理员从 smoke 失败上下文应用新 refresh token 时，表单默认带上同一个模型并在提交后立即运行端到端验证，降低“已更新凭据但未验证真实 Codex 反代”的风险。
 - 如果健康报告已经定位到供给方或共享资源，保存资源凭据时无需再次查找。
 - 对当前 `openai_group_has_no_active_accounts` 阻断，修复路径从“定位账号 -> 打开反代页 -> 手填资源同步信息”缩短为“打开反代页 -> 粘贴 token -> 确认应用和保存”。

@@ -408,14 +408,59 @@ test("stale failed smoke evidence asks operators to refresh live proof", () => {
     message,
     actionHint,
     true,
-    1_440
+    1_440,
+    0
   );
-  const summary = localProxySmokeEvidenceSummary(direct, 1_500, true, 1_440);
+  const summary = localProxySmokeEvidenceSummary(direct, 1_500, true, 1_440, 0);
 
   assert.equal(issue.stale, true);
   assert.equal(issue.staleThresholdMinutes, 1_440);
+  assert.equal(issue.freshMinutesRemaining, 0);
   assert.equal(summary.staleThresholdMinutes, 1_440);
+  assert.equal(summary.freshMinutesRemaining, 0);
   assert.match(issue.message, /Evidence is 1500 minutes old/);
   assert.match(issue.message, /current \/v1\/responses availability/);
   assert.match(issue.actionHint, /refresh stale \/v1\/responses evidence/);
+});
+
+test("fresh smoke evidence reports minutes remaining before it becomes stale", () => {
+  const direct = normalizeLocalProxySmokeAuditLog({
+    id: "direct-fresh-failed",
+    action: "admin.sub2.proxy_smoke_test",
+    objectId: "sub2-key-1",
+    createdAt: new Date("2026-06-11T04:00:00.000Z"),
+    after: {
+      ok: false,
+      model: "gpt-5.3-codex",
+      keyDisabled: true,
+      models: { ok: true },
+      responses: { ok: false },
+      localProxy: {
+        ok: false,
+        proxyRequestLogCount: 1,
+        proxyRequestLogs: [
+          { id: "proxy-responses", requestId: "req-responses", path: "/v1/responses", statusCode: 503, errorCode: "upstream_http_503" }
+        ]
+      }
+    }
+  });
+  assert.ok(direct);
+
+  const issue = localProxySmokeEvidenceIssue(
+    direct,
+    "local_proxy_smoke_failed",
+    "error",
+    1_332,
+    localProxySmokeFailureSummary(direct),
+    localProxySmokeFailureIssueActionHint(false),
+    false,
+    1_440,
+    108
+  );
+  const summary = localProxySmokeEvidenceSummary(direct, 1_332, false, 1_440, 108);
+
+  assert.equal(issue.stale, false);
+  assert.equal(issue.staleThresholdMinutes, 1_440);
+  assert.equal(issue.freshMinutesRemaining, 108);
+  assert.equal(summary.freshMinutesRemaining, 108);
 });

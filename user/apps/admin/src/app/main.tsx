@@ -289,6 +289,7 @@ interface SystemHealthIssueRow {
   ageMinutes?: string;
   stale?: string;
   staleThresholdMinutes?: string;
+  freshMinutesRemaining?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -339,6 +340,7 @@ interface SystemHealthSampleRow {
   ageMinutes?: string;
   stale?: string;
   staleThresholdMinutes?: string;
+  freshMinutesRemaining?: string;
   userId?: string;
   orderId?: string;
   rentalId?: string;
@@ -5284,7 +5286,8 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     smokeTestSkippedReason: issue.smokeTestSkippedReason,
     ageMinutes: issue.ageMinutes,
     stale: issue.stale,
-    staleThresholdMinutes: issue.staleThresholdMinutes
+    staleThresholdMinutes: issue.staleThresholdMinutes,
+    freshMinutesRemaining: issue.freshMinutesRemaining
   };
 }
 
@@ -5320,7 +5323,8 @@ function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub
     smokeTestSkippedReason: sample.smokeTestSkippedReason,
     ageMinutes: sample.ageMinutes,
     stale: sample.stale,
-    staleThresholdMinutes: sample.staleThresholdMinutes
+    staleThresholdMinutes: sample.staleThresholdMinutes,
+    freshMinutesRemaining: sample.freshMinutesRemaining
   };
 }
 
@@ -6127,7 +6131,8 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
     ageMinutes: textValue(record?.ageMinutes),
     stale: textValue(record?.stale),
-    staleThresholdMinutes: textValue(record?.staleThresholdMinutes)
+    staleThresholdMinutes: textValue(record?.staleThresholdMinutes),
+    freshMinutesRemaining: textValue(record?.freshMinutesRemaining)
   };
 }
 
@@ -6224,6 +6229,7 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "ageMinutes",
     "stale",
     "staleThresholdMinutes",
+    "freshMinutesRemaining",
     "walletTransactionType",
     "walletTransactionId",
     "walletLookup",
@@ -6291,6 +6297,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       ageMinutes: textValue(record.ageMinutes),
       stale: textValue(record.stale),
       staleThresholdMinutes: textValue(record.staleThresholdMinutes),
+      freshMinutesRemaining: textValue(record.freshMinutesRemaining),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
@@ -6351,6 +6358,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       ageMinutes: textValue(record.ageMinutes),
       stale: textValue(record.stale),
       staleThresholdMinutes: textValue(record.staleThresholdMinutes),
+      freshMinutesRemaining: textValue(record.freshMinutesRemaining),
       userId: textValue(record.userId),
       orderId: textValue(record.orderId) ?? refTypeLookup(refType, refId, "order"),
       rentalId: textValue(record.rentalId),
