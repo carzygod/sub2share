@@ -4347,3 +4347,66 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 管理员首页核心经营指标已经从静态数字升级为运营入口。管理员可以从总览直接进入用户、共享资源、余额、售出、租赁、用量、结算和提现管理面，进一步补齐“完整管理员入口”的操作便利性。真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 14:46 管理员首页指标筛选直达发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`e402d39`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=e402d39`
+  - `deployed_at=20260612T064639Z`
+- 本次能力：Admin 首页指标入口进一步对齐统计口径，`有效租赁`、`在线资源`、`累计充值`、`累计消费` 和 `待提现` 会带筛选条件打开对应列表。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：76/76 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*-e402d39` staging 目录已清理。
+- `/tmp/sub2share-user-e402d39.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/dashboard`：200。
+  - `users=1`
+  - `activeRentals=0`
+  - `onlineResources=0`
+  - `pendingWithdrawals=0`
+  - `latestSystemHealth.status=error`
+  - `latestSystemHealth.criticalChecks.length=8`
+  - `criticalChecks`：`sub2,localProxySmoke,resourceCredentials,resources,payments,openAiProxyContract,openAiProxyRuntime,proxy`
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.metrics.commit=e402d39`
+
+### 结论
+
+管理员从 dashboard 指标进入列表时，默认能看到与指标统计口径一致的数据集。`active` 租赁、`online` 共享资源、`recharge/consume` 余额流水和 `pending` 提现不再需要二次筛选。真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
