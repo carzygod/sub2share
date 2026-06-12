@@ -4546,3 +4546,76 @@ Sub2 usage 同步现在能把 pending usage 恢复入账数量长期沉淀到批
 ### 结论
 
 系统健康页现在能在账务对账发现问题时保留具体 issue，管理员可以从统一可用性巡检页直达用量、余额流水、结算、提现或订单管理对象。当前线上账务对账为 ok，没有新增噪声；真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断。
+
+## 2026-06-12 15:47 系统巡检负余额问题直达发布与线上复查
+
+### 发布信息
+
+- 发布 commit：`cf02dd7`
+- GitHub：`main` 已推送到 `github.com:carzygod/sub2share.git`
+- release marker：
+  - path：`/opt/zhisuan-yizhan/user/.release-marker`
+  - `commit=cf02dd7`
+  - `deployed_at=20260612T074729Z`
+- 本次能力：`GET /api/admin/system-health` 的 `wallets` 检查项在发现可用余额或冻结余额为负数时返回 `detail.issues`，Admin 可用性巡检页可直接展示 `walletId`、`walletAccountId`、`userId`、`userEmail`、`availableBalance` 与 `frozenBalance`，并打开异常钱包或用户详情。
+
+### 本地验证
+
+- `pnpm.cmd --filter @zyz/api run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/admin run typecheck`：通过。
+- `pnpm.cmd --filter @zyz/api test`：通过，79/79。
+- `pnpm.cmd --filter @zyz/admin test`：通过，3/3。
+- `pnpm.cmd build`：通过。
+- `git diff --check`：无 whitespace 错误；仅有 Windows LF/CRLF 工作区提示。
+
+### 服务端发布验证
+
+- Prisma migrate deploy：
+  - 识别 16 个 migrations。
+  - 无待应用迁移。
+- 发布脚本完成：
+  - Prisma generate：通过。
+  - API typecheck：通过。
+  - Admin typecheck：通过。
+  - API tests：79/79 通过。
+  - Admin tests：3/3 通过。
+  - workspace build：通过。
+- HTTP 探针：
+  - `GET http://192.168.31.26:4100/health`：200。
+  - `GET http://192.168.31.26:4100/ready`：200。
+  - `GET http://192.168.31.26:3100/`：200。
+  - `GET http://192.168.31.26:3101/`：200。
+  - `GET http://192.168.31.26:8080/health`：200。
+- `/opt/zhisuan-yizhan/user.new-*-cf02dd7` staging 目录已清理。
+- `/tmp/sub2share-user-cf02dd7.tar*` 已清理，本地归档已清理。
+
+### 线上复查
+
+- 管理员登录：`POST /api/auth/login` 200。
+- `GET /api/admin/dashboard`：200。
+  - `users=1`
+  - `activeRentals=0`
+  - `onlineResources=0`
+  - `pendingWithdrawals=0`
+  - `walletAvailable=999.99`
+  - `latestSystemHealth.status=error`
+  - `criticalChecks`：`sub2,localProxySmoke,resourceCredentials,resources,payments,openAiProxyContract,openAiProxyRuntime,proxy`
+- `GET /api/admin/system-health`：200。
+  - status：`error`
+  - totalChecks：`29`
+  - ok：`24`
+  - warning：`2`
+  - error：`3`
+  - `deploymentRuntime.status=ok`
+  - `deploymentRuntime.metrics.commit=cf02dd7`
+  - `wallets.status=ok`
+  - `wallets.metrics.negativeWallets=0`
+  - `wallets.metrics.issueSamples=0`
+  - `wallets.detail` 未返回，说明当前没有负余额问题样本噪声。
+  - `reconciliation.status=ok`
+  - `reconciliation.metrics.totalIssues=0`
+  - non-ok checks：`payments,resources,resourceCredentials,sub2,localProxySmoke`
+
+### 结论
+
+系统健康页现在能在负余额发生时保留具体钱包 issue，并让管理员从统一可用性巡检页直达异常余额账户或用户详情。当前线上余额账户巡检为 ok，没有负余额样本；账务对账也为 ok。真实 OpenAI/Codex `/v1/responses` 仍受有效 OpenAI refresh token / active Sub2 OpenAI 账号缺失阻断，需要补齐上游账号凭据后才能完成最终端到端可用性验收。
