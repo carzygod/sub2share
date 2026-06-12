@@ -269,6 +269,8 @@ const dashboardHealthDetailPreviewFields = [
   "accountStatus",
   "credentialsStatus",
   "schedulable",
+  "tempUnschedulableReason",
+  "updatedAt",
   "resourceId",
   "resourceList",
   "resourceType",

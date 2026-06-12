@@ -3,6 +3,10 @@ export interface Sub2RepairContext {
   sub2AccountName?: string;
   accountStatus?: string;
   credentialsStatus?: string;
+  schedulable?: string;
+  accountMessage?: string;
+  accountUpdatedAt?: string;
+  tempUnschedulableReason?: string;
   checkId?: string;
   checkLabel?: string;
   repairAction?: string;
@@ -77,12 +81,19 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
     context.staleThresholdMinutes ? `阈值 ${context.staleThresholdMinutes} 分钟` : undefined,
     context.stale === "true" ? "证据已过期" : undefined
   ].filter(Boolean).join(" / ");
+  const accountDiagnostics = [
+    context.schedulable ? `schedulable ${context.schedulable}` : undefined,
+    context.tempUnschedulableReason ? `temp ${context.tempUnschedulableReason}` : undefined,
+    context.accountUpdatedAt ? `updated ${context.accountUpdatedAt}` : undefined,
+    context.accountMessage ? context.accountMessage.slice(0, 240) : undefined
+  ].filter(Boolean).join(" / ");
   return [
     { label: "来源", value: [context.checkLabel, context.checkId].filter(Boolean).join(" / ") },
     { label: "维修动作", value: context.repairAction },
     { label: "维修建议", value: context.actionHint },
     { label: "目标账号", value: account },
     { label: "账号状态", value: [context.accountStatus, context.credentialsStatus].filter(Boolean).join(" / ") },
+    { label: "账号诊断", value: accountDiagnostics },
     { label: "资源", value: resource },
     { label: "供给方", value: context.supplierEmail },
     { label: "请求定位", value: request },

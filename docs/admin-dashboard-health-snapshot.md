@@ -91,7 +91,7 @@
 - `GET /api/admin/dashboard` 的关键巡检详情预览保留 `actionHint`、`proxyRequestPath`、`proxyRequestStatusCode`、`proxyRequestErrorCode`、`model`、`modelsOk`、`responsesOk`、`localProxyOk`、`smokeTestSkippedReason`、`ageMinutes`、`stale` 和 `staleThresholdMinutes`。
 - 首页摘要可以直接展示 `/v1/responses`、HTTP 状态码、代理错误码、自检模型和 smoke 分段结果。
 - 从首页点击 `sub2`、`localProxySmoke`、`resourceCredentials` 或 `resources` 进入 `反代状态` 时，这些字段会进入 `修复定位` 诊断块。
-- `修复定位` 会同时显示维修建议、目标账号、资源上下文、请求定位、Smoke 分段结果和失败请求，减少管理员在首页、完整巡检页和反代状态页之间来回复核。
+- `修复定位` 会同时显示维修建议、目标账号、账号诊断、资源上下文、请求定位、Smoke 分段结果和失败请求，减少管理员在首页、完整巡检页和反代状态页之间来回复核。
 
 ## 管理价值
 

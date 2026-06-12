@@ -304,6 +304,13 @@ interface SystemHealthIssueRow {
   settlementLookup?: string;
   withdrawalLookup?: string;
   sub2AccountId?: string;
+  sub2AccountName?: string;
+  accountStatus?: string;
+  credentialsStatus?: string;
+  schedulable?: string;
+  accountMessage?: string;
+  accountUpdatedAt?: string;
+  tempUnschedulableReason?: string;
   sub2Status?: boolean;
   auditLogLookup?: string;
 }
@@ -351,6 +358,13 @@ interface SystemHealthSampleRow {
   productName?: string;
   priceId?: string;
   sub2AccountId?: string;
+  sub2AccountName?: string;
+  accountStatus?: string;
+  credentialsStatus?: string;
+  schedulable?: string;
+  accountMessage?: string;
+  accountUpdatedAt?: string;
+  tempUnschedulableReason?: string;
   sub2Status?: boolean;
   apiKeyLookup?: string;
   usageLookup?: string;
@@ -5241,6 +5255,13 @@ function resourceRepairContext(resource: ResourceRow, supplierEmail?: string): S
 function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2RepairContext {
   return {
     accountId: issue.sub2AccountId,
+    sub2AccountName: issue.sub2AccountName,
+    accountStatus: issue.accountStatus,
+    credentialsStatus: issue.credentialsStatus,
+    schedulable: issue.schedulable,
+    accountMessage: issue.accountMessage,
+    accountUpdatedAt: issue.accountUpdatedAt,
+    tempUnschedulableReason: issue.tempUnschedulableReason,
     checkId: issue.checkId,
     checkLabel: issue.checkLabel,
     repairAction: issue.repairAction,
@@ -5270,6 +5291,13 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
 function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub2RepairContext {
   return {
     accountId: sample.sub2AccountId,
+    sub2AccountName: sample.sub2AccountName,
+    accountStatus: sample.accountStatus,
+    credentialsStatus: sample.credentialsStatus,
+    schedulable: sample.schedulable,
+    accountMessage: sample.accountMessage,
+    accountUpdatedAt: sample.accountUpdatedAt,
+    tempUnschedulableReason: sample.tempUnschedulableReason,
     checkId: sample.checkId,
     checkLabel: sample.sampleType ? `${sample.checkLabel} / ${sample.sampleType}` : sample.checkLabel,
     repairAction: sample.repairAction,
@@ -6073,6 +6101,10 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     sub2AccountName: textValue(record?.sub2AccountName),
     accountStatus: textValue(record?.accountStatus),
     credentialsStatus: textValue(record?.credentialsStatus),
+    schedulable: textValue(record?.schedulable),
+    accountMessage: textValue(record?.message),
+    accountUpdatedAt: textValue(record?.updatedAt),
+    tempUnschedulableReason: textValue(record?.tempUnschedulableReason),
     checkId: check.id,
     checkLabel: check.label,
     repairAction: textValue(record?.repairAction),
@@ -6166,6 +6198,9 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "sub2AccountName",
     "accountStatus",
     "credentialsStatus",
+    "schedulable",
+    "tempUnschedulableReason",
+    "updatedAt",
     "resourceList",
     "resourceType",
     "resourceStatus",
@@ -6270,6 +6305,13 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       settlementLookup: textValue(record.settlementId) ?? textValue(record.settlementRecordId) ?? refTypeLookup(refType, refId, "settlement"),
       withdrawalLookup: textValue(record.withdrawalId) ?? refTypeLookup(refType, refId, "withdrawal"),
       sub2AccountId: textValue(record.sub2AccountId),
+      sub2AccountName: textValue(record.sub2AccountName),
+      accountStatus: textValue(record.accountStatus),
+      credentialsStatus: textValue(record.credentialsStatus),
+      schedulable: textValue(record.schedulable),
+      accountMessage: textValue(record.message),
+      accountUpdatedAt: textValue(record.updatedAt),
+      tempUnschedulableReason: textValue(record.tempUnschedulableReason),
       sub2Status: check.id === "sub2" || sub2StatusFlag || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
       auditLogLookup: textValue(record.auditLogId) ?? textValue(record.auditAction)
     };
@@ -6327,6 +6369,13 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       productName: textValue(record.productName),
       priceId: textValue(record.priceId),
       sub2AccountId: textValue(record.sub2AccountId),
+      sub2AccountName: textValue(record.sub2AccountName),
+      accountStatus: textValue(record.accountStatus),
+      credentialsStatus: textValue(record.credentialsStatus),
+      schedulable: textValue(record.schedulable),
+      accountMessage: textValue(record.message),
+      accountUpdatedAt: textValue(record.updatedAt),
+      tempUnschedulableReason: textValue(record.tempUnschedulableReason),
       sub2Status: sub2StatusFlag,
       apiKeyLookup: textValue(record.apiKeyId) ?? textValue(record.apiKeyPrefix),
       usageLookup: textValue(record.usageId) ?? refTypeLookup(refType, refId, "usage"),

@@ -101,6 +101,10 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     sub2AccountName: "codex-primary",
     accountStatus: "inactive",
     credentialsStatus: "expired",
+    schedulable: "false",
+    accountMessage: "Authentication failed: token_invalidated",
+    accountUpdatedAt: "2026-06-12T22:53:59.925286+08:00",
+    tempUnschedulableReason: "token_invalidated",
     resourceId: "resource-1",
     resourceType: "codex",
     resourceStatus: "online",
@@ -121,11 +125,12 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     stale: "true"
   });
 
-  assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "维修建议", "目标账号", "账号状态", "资源", "供给方", "请求定位", "Smoke", "失败请求"]);
+  assert.deepEqual(items.map((item) => item.label), ["来源", "维修动作", "维修建议", "目标账号", "账号状态", "账号诊断", "资源", "供给方", "请求定位", "Smoke", "失败请求"]);
   assert.equal(items.find((item) => item.label === "来源")?.value, "本地 OpenAI/Codex 反代 smoke / localProxySmoke");
   assert.equal(items.find((item) => item.label === "维修建议")?.value, "Apply a fresh OpenAI refresh token, then rerun smoke.");
   assert.equal(items.find((item) => item.label === "目标账号")?.value, "#2 / codex-primary");
   assert.equal(items.find((item) => item.label === "账号状态")?.value, "inactive / expired");
+  assert.equal(items.find((item) => item.label === "账号诊断")?.value, "schedulable false / temp token_invalidated / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
