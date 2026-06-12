@@ -929,7 +929,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { userId: containsText(query.q) },
           { user: { id: containsText(query.q) } },
           { user: { email: containsText(query.q) } },
-          { user: { displayName: containsText(query.q) } }
+          { user: { displayName: containsText(query.q) } },
+          { items: { some: { productId: containsText(query.q) } } },
+          { items: { some: { priceId: containsText(query.q) } } },
+          { items: { some: { product: { id: containsText(query.q) } } } },
+          { items: { some: { product: { name: containsText(query.q) } } } }
         ]
       } : {})
     };
@@ -1548,13 +1552,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         OR: [
           { id: containsText(query.q) },
           { orderId: containsText(query.q) },
+          { productId: containsText(query.q) },
           { userId: containsText(query.q) },
           { sub2UserId: containsText(query.q) },
           { sub2KeyId: containsText(query.q) },
           { endpointUrl: containsText(query.q) },
           { user: { id: containsText(query.q) } },
           { user: { email: containsText(query.q) } },
+          { product: { id: containsText(query.q) } },
           { product: { name: containsText(query.q) } },
+          { order: { items: { some: { priceId: containsText(query.q) } } } },
+          { order: { items: { some: { productId: containsText(query.q) } } } },
           ...(oneOf(resourceTypes, query.q) ? [{ resourceType: oneOf(resourceTypes, query.q) }] : [])
         ]
       } : {})
@@ -1949,8 +1957,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { user: { id: containsText(query.q) } },
           { user: { email: containsText(query.q) } },
           { user: { displayName: containsText(query.q) } },
+          { items: { some: { productId: containsText(query.q) } } },
+          { items: { some: { priceId: containsText(query.q) } } },
+          { items: { some: { product: { id: containsText(query.q) } } } },
           { items: { some: { product: { name: containsText(query.q) } } } },
           { rentals: { some: { id: containsText(query.q) } } },
+          { rentals: { some: { productId: containsText(query.q) } } },
           { rentals: { some: { sub2KeyId: containsText(query.q) } } },
           { rentals: { some: { endpointUrl: containsText(query.q) } } }
         ]
@@ -2020,9 +2032,13 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { userId: containsText(query.q) },
           { model: containsText(query.q) },
           { rental: { id: containsText(query.q) } },
+          { rental: { productId: containsText(query.q) } },
           { rental: { user: { id: containsText(query.q) } } },
           { rental: { user: { email: containsText(query.q) } } },
+          { rental: { product: { id: containsText(query.q) } } },
           { rental: { product: { name: containsText(query.q) } } },
+          { rental: { order: { items: { some: { priceId: containsText(query.q) } } } } },
+          { rental: { order: { items: { some: { productId: containsText(query.q) } } } } },
           { supplierResource: { id: containsText(query.q) } },
           { supplierResource: { sub2AccountId: containsText(query.q) } },
           { supplierResource: { supplier: { user: { email: containsText(query.q) } } } },
@@ -2928,7 +2944,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           { userAgent: containsText(proxyRequestLookup) },
           { user: { email: containsText(proxyRequestLookup) } },
           { user: { displayName: containsText(proxyRequestLookup) } },
+          { rental: { orderId: containsText(proxyRequestLookup) } },
+          { rental: { productId: containsText(proxyRequestLookup) } },
+          { rental: { product: { id: containsText(proxyRequestLookup) } } },
           { rental: { product: { name: containsText(proxyRequestLookup) } } },
+          { rental: { order: { items: { some: { priceId: containsText(proxyRequestLookup) } } } } },
+          { rental: { order: { items: { some: { productId: containsText(proxyRequestLookup) } } } } },
           { apiKey: { name: containsText(proxyRequestLookup) } }
         ]
       } : {})

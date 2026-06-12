@@ -1696,11 +1696,19 @@ function App() {
     await openFilteredListCandidate("walletTransactions", lookup, "已打开用户关联余额流水");
   }
 
-  async function openSalesCandidate() {
-    const query = { ...defaultListQuery };
+  async function openSalesCandidate(lookup?: string) {
+    const query = { ...defaultListQuery, q: lookup ?? "" };
     setListQueries((current) => ({ ...current, sales: query }));
     await refresh("sales", query);
-    setMessage("已打开巡检关联售出情况");
+    setMessage(lookup ? "已打开关联售出情况" : "已打开巡检关联售出情况");
+  }
+
+  async function openOrderListCandidate(lookup: string) {
+    await openFilteredListCandidate("orders", lookup, "已打开关联订单列表");
+  }
+
+  async function openRentalListCandidate(lookup: string) {
+    await openFilteredListCandidate("rentals", lookup, "已打开关联租赁列表");
   }
 
   async function openOrderCandidate(orderId: string) {
@@ -2252,12 +2260,16 @@ function App() {
             onRefund={refundOrder}
             onRetryProvision={retryProvisionOrder}
             onCloseDetail={() => setSelectedOrder(null)}
+            onOpenSales={openSalesCandidate}
             onOpenUser={openUserCandidate}
             onOpenWalletTransaction={openWalletTransactionCandidate}
             onOpenProxyRequest={openProxyRequestCandidate}
             onOpenRental={openRentalCandidate}
+            onOpenRentals={openRentalListCandidate}
+            onOpenOrders={openOrderListCandidate}
             onOpenApiKey={openApiKeyCandidate}
             onOpenProduct={openProductCandidate}
+            onOpenUsage={openUsageCandidate}
             onDraft={(patch) => updateListDraft("sales", patch)}
             onFilter={(event) => submitListFilters("sales", event)}
             onClear={() => clearListFilters("sales")}
@@ -2298,6 +2310,11 @@ function App() {
             onCreatePrice={createProductPrice}
             onUpdatePrice={updateProductPrice}
             onPriceStatus={setProductPriceStatus}
+            onOpenSales={openSalesCandidate}
+            onOpenOrders={openOrderListCandidate}
+            onOpenRentals={openRentalListCandidate}
+            onOpenUsage={openUsageCandidate}
+            onOpenProxyRequest={openProxyRequestCandidate}
             onDraft={(patch) => updateListDraft("products", patch)}
             onFilter={(event) => submitListFilters("products", event)}
             onClear={() => clearListFilters("products")}
@@ -3335,7 +3352,7 @@ function ReconciliationView({ reconciliation, onRefresh }: {
   );
 }
 
-function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenApiKey, onOpenProduct, onDraft, onFilter, onClear, onPage, onExport }: {
+function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRefund, onRetryProvision, onCloseDetail, onOpenSales, onOpenUser, onOpenWalletTransaction, onOpenProxyRequest, onOpenRental, onOpenRentals, onOpenOrders, onOpenApiKey, onOpenProduct, onOpenUsage, onDraft, onFilter, onClear, onPage, onExport }: {
   sales: SalesData | null;
   selectedOrder: OrderDetailRow | null;
   onDetail: (orderId: string) => void;
@@ -3343,12 +3360,16 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
   onRefund: (orderId: string) => void;
   onRetryProvision: (orderId: string) => void;
   onCloseDetail: () => void;
+  onOpenSales: (lookup: string) => void;
   onOpenUser: (userId: string) => void;
   onOpenWalletTransaction: (lookup: string) => void;
   onOpenProxyRequest: (lookup: string) => void;
   onOpenRental: (rentalId: string) => void;
+  onOpenRentals: (lookup: string) => void;
+  onOpenOrders: (lookup: string) => void;
   onOpenApiKey: (lookup: string) => void;
   onOpenProduct: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
 } & ManagedListProps) {
   const orders = sales?.orders ?? [];
   const breakdown = sales?.breakdown;
@@ -3396,7 +3417,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         </DetailBlock>
 
         <DetailBlock title="商品排行">
-          <MiniTable headers={["商品", "资源", "订单项", "数量", "金额"]}>
+          <MiniTable headers={["商品", "资源", "订单项", "数量", "金额", "操作"]}>
             {(breakdown?.byProduct ?? []).map((row) => (
               <tr key={row.productId}>
                 <td><strong>{row.productName}</strong><small>{row.productId}</small></td>
@@ -3404,10 +3425,19 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
                 <td>{row.orderItemCount}</td>
                 <td>{row.quantity}</td>
                 <td>{money(row.amount)}</td>
+                <td>
+                  <div className="row-actions">
+                    <button type="button" className="secondary mini" onClick={() => onOpenProduct(row.productId)}>商品</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenSales(row.productId)}>售出</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenOrders(row.productId)}>订单</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenRentals(row.productId)}>租赁</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenUsage(row.productId)}>用量</button>
+                  </div>
+                </td>
               </tr>
             ))}
             {(breakdown?.byProduct ?? []).length === 0 && (
-              <tr><td colSpan={5}><small>暂无商品销售数据。</small></td></tr>
+              <tr><td colSpan={6}><small>暂无商品销售数据。</small></td></tr>
             )}
           </MiniTable>
         </DetailBlock>
@@ -3570,7 +3600,7 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onOpenUse
   );
 }
 
-function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStatus, onCreatePrice, onUpdatePrice, onPriceStatus, onDraft, onFilter, onClear, onPage, onExport }: {
+function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStatus, onCreatePrice, onUpdatePrice, onPriceStatus, onOpenSales, onOpenOrders, onOpenRentals, onOpenUsage, onOpenProxyRequest, onDraft, onFilter, onClear, onPage, onExport }: {
   products: ProductRow[];
   onCreate: (event: FormEvent<HTMLFormElement>) => void;
   onUpdate: (event: FormEvent<HTMLFormElement>, productId: string) => void;
@@ -3578,6 +3608,11 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
   onCreatePrice: (event: FormEvent<HTMLFormElement>) => void;
   onUpdatePrice: (event: FormEvent<HTMLFormElement>, priceId: string) => void;
   onPriceStatus: (priceId: string, status: string) => void;
+  onOpenSales: (lookup: string) => void;
+  onOpenOrders: (lookup: string) => void;
+  onOpenRentals: (lookup: string) => void;
+  onOpenUsage: (lookup: string) => void;
+  onOpenProxyRequest: (lookup: string) => void;
 } & ManagedListProps) {
   return (
     <section className="stack">
@@ -3662,8 +3697,13 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
                   <small>{price.tierCode} / {price.durationDays ?? "-"}d / 并发 {price.maxConcurrency} / RPM {price.rpmLimit ?? "-"} / TPM {price.tpmLimit ?? "-"} / 请求 {price.requestLimit ?? "-"} / 消费 {price.spendLimit ?? "-"}</small>
                   <div className="row-actions">
                     <StatusPill status={price.status} />
-                    <button className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>
-                    <button className="secondary mini" onClick={() => onPriceStatus(price.id, "offline")}>下线</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenSales(price.id)}>售出</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenOrders(price.id)}>订单</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenRentals(price.id)}>租赁</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenUsage(price.id)}>用量</button>
+                    <button type="button" className="secondary mini" onClick={() => onOpenProxyRequest(price.id)}>反代</button>
+                    <button type="button" className="secondary mini" onClick={() => onPriceStatus(price.id, "active")}>启用</button>
+                    <button type="button" className="secondary mini" onClick={() => onPriceStatus(price.id, "offline")}>下线</button>
                   </div>
                   <form className="limits-form" key={`${price.id}-${price.updatedAt ?? ""}`} onSubmit={(event) => onUpdatePrice(event, price.id)}>
                     <input name="displayName" defaultValue={price.displayName} placeholder="名称" required />
@@ -3684,12 +3724,22 @@ function ProductsView({ products, query, meta, onCreate, onUpdate, onProductStat
                 </div>
               ))}
             </td>
-            <td>{product._count?.orders ?? 0} / {product._count?.rentals ?? 0}</td>
+            <td>
+              <strong>{product._count?.orders ?? 0} / {product._count?.rentals ?? 0}</strong>
+              <small>订单 / 租赁</small>
+              <div className="row-actions">
+                <button type="button" className="secondary mini" onClick={() => onOpenSales(product.id)}>售出</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenOrders(product.id)}>订单</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenRentals(product.id)}>租赁</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenUsage(product.id)}>用量</button>
+                <button type="button" className="secondary mini" onClick={() => onOpenProxyRequest(product.id)}>反代</button>
+              </div>
+            </td>
             <td>
               <div className="row-actions">
-                <button className="secondary mini" onClick={() => onProductStatus(product.id, "draft")}>草稿</button>
-                <button className="secondary mini" onClick={() => onProductStatus(product.id, "active")}>上架</button>
-                <button className="danger mini" onClick={() => onProductStatus(product.id, "offline")}>下线</button>
+                <button type="button" className="secondary mini" onClick={() => onProductStatus(product.id, "draft")}>草稿</button>
+                <button type="button" className="secondary mini" onClick={() => onProductStatus(product.id, "active")}>上架</button>
+                <button type="button" className="danger mini" onClick={() => onProductStatus(product.id, "offline")}>下线</button>
               </div>
             </td>
           </tr>
