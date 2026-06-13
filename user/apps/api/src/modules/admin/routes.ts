@@ -6644,7 +6644,10 @@ function deploymentRuntimeHealthCheck() {
       : `${result.issues.length} 个部署运行态问题`,
     {
       nodeEnv: result.summary.nodeEnv,
+      cwd: result.summary.cwd,
       releaseRoot: result.summary.releaseRoot,
+      releaseRootName: result.summary.releaseRootName,
+      markerPath: result.summary.markerPath,
       markerPresent: result.summary.markerPresent,
       commit: result.summary.commit,
       deployedAt: result.summary.deployedAt,

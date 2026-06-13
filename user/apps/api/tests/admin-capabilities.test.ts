@@ -845,6 +845,7 @@ test("dashboard latest system health preview prefers live deployment runtime evi
 
   assert.equal(preview.deploymentRuntime?.commit, "58199b7dfa79c83c2d61e323305a1439e8e4f1e0");
   assert.equal(preview.deploymentRuntime?.deployedAt, "20260613T014205Z");
+  assert.equal(preview.deploymentRuntime?.markerPath, "/opt/zhisuan-yizhan/user/.release-marker");
   assert.equal(preview.deploymentRuntime?.summary, "Running current release");
   assert.equal(preview.criticalChecks[0]?.id, "localProxySmoke");
 });
