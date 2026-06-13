@@ -36,6 +36,8 @@ import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } 
 import {
   codexCatalogDeliveryReadinessIssueFields,
   codexDeliveryResourceMissingDetails,
+  inspectLatestCodexProxySmokeDeliveryReadiness,
+  isPurchasableProductPrice,
   publicProductDeliveryReadinessFields,
   readyCodexSupplierResourceDeliveryWhere,
   requireReadySupplierResourceForDelivery,
@@ -2791,7 +2793,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ]
       } : {})
     };
-    const [products, total, readyCodexDeliveryResources] = await Promise.all([
+    const [products, total, deliveryReadiness] = await Promise.all([
       prisma.product.findMany({
         where,
         include: {
@@ -2802,9 +2804,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         ...pageArgs(query)
       }),
       prisma.product.count({ where }),
-      readyCodexDeliveryResourceCount()
+      codexDeliveryReadinessSnapshot()
     ]);
-    return adminOk(reply, paged(products.map((product) => productWithDeliveryReadiness(product, readyCodexDeliveryResources)), total, query));
+    return adminOk(reply, paged(products.map((product) => productWithDeliveryReadiness(product, deliveryReadiness)), total, query));
   });
 
   app.post("/api/admin/products", async (request, reply) => {
@@ -2836,7 +2838,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       status: product.status,
       allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
-    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
+    return adminOk(reply, productWithDeliveryReadiness(product, await codexDeliveryReadinessSnapshot()));
   });
 
   app.get("/api/admin/products/:id", async (request, reply) => {
@@ -2850,7 +2852,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       }
     });
     if (!product) throw new AppError("product_not_found", "Product not found", 404);
-    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
+    return adminOk(reply, productWithDeliveryReadiness(product, await codexDeliveryReadinessSnapshot()));
   });
 
   app.patch("/api/admin/products/:id", async (request, reply) => {
@@ -2891,7 +2893,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       description: product.description,
       allowUnavailableDelivery: input.allowUnavailableDelivery || undefined
     });
-    return adminOk(reply, productWithDeliveryReadiness(product, await readyCodexDeliveryResourceCount()));
+    return adminOk(reply, productWithDeliveryReadiness(product, await codexDeliveryReadinessSnapshot()));
   });
 
   app.post("/api/admin/products/:id/prices", async (request, reply) => {
@@ -7351,12 +7353,26 @@ async function readyCodexDeliveryResourceCount() {
   return prisma.supplierResource.count({ where: readyCodexSupplierResourceDeliveryWhere() });
 }
 
-function productWithDeliveryReadiness<T extends { resourceType: string }>(product: T, readyCodexDeliveryResources: number) {
+type CodexDeliveryReadinessSnapshot = {
+  readyCodexDeliveryResources: number;
+  codexProxySmokeDeliveryReadiness: Awaited<ReturnType<typeof inspectLatestCodexProxySmokeDeliveryReadiness>>;
+};
+
+async function codexDeliveryReadinessSnapshot(): Promise<CodexDeliveryReadinessSnapshot> {
+  const [readyCodexDeliveryResources, codexProxySmokeDeliveryReadiness] = await Promise.all([
+    readyCodexDeliveryResourceCount(),
+    inspectLatestCodexProxySmokeDeliveryReadiness("codex")
+  ]);
+  return { readyCodexDeliveryResources, codexProxySmokeDeliveryReadiness };
+}
+
+function productWithDeliveryReadiness<T extends { resourceType: string }>(product: T, readiness: CodexDeliveryReadinessSnapshot) {
   return {
     ...product,
     ...publicProductDeliveryReadinessFields({
       resourceType: product.resourceType,
-      readyCodexDeliveryResources
+      readyCodexDeliveryResources: readiness.readyCodexDeliveryResources,
+      codexProxySmokeDeliveryReadiness: readiness.codexProxySmokeDeliveryReadiness
     })
   };
 }
@@ -7368,13 +7384,35 @@ async function enforceCodexProductActivationReadiness(input: {
   productStatus: string;
   allowUnavailableDelivery?: boolean;
 }) {
-  const readyCodexDeliveryResources = await readyCodexDeliveryResourceCount();
+  const deliveryReadiness = await codexDeliveryReadinessSnapshot();
   if (!shouldBlockUnavailableCodexProductActivation({
     resourceType: input.resourceType,
     productStatus: input.productStatus,
-    readyCodexDeliveryResources,
+    readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
     allowUnavailableDelivery: input.allowUnavailableDelivery
-  })) return;
+  })) {
+    if (
+      input.resourceType !== "codex"
+      || input.productStatus !== "active"
+      || input.allowUnavailableDelivery === true
+      || deliveryReadiness.codexProxySmokeDeliveryReadiness.ok
+    ) return;
+
+    throw new AppError(
+      "codex_proxy_smoke_failed_for_product_activation",
+      "Cannot activate a Codex product while the latest local OpenAI/Codex proxy smoke test is failing",
+      409,
+      {
+        ...codexDeliveryResourceMissingDetails(input.resourceType),
+        productId: input.productId ?? null,
+        productName: input.productName ?? null,
+        productStatus: input.productStatus,
+        readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
+        proxySmoke: deliveryReadiness.codexProxySmokeDeliveryReadiness,
+        allowUnavailableDelivery: true
+      }
+    );
+  }
 
   throw new AppError(
     "codex_resource_not_ready_for_product_activation",
@@ -7385,7 +7423,7 @@ async function enforceCodexProductActivationReadiness(input: {
       productId: input.productId ?? null,
       productName: input.productName ?? null,
       productStatus: input.productStatus,
-      readyCodexDeliveryResources,
+      readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
       allowUnavailableDelivery: true
     }
   );
@@ -7402,16 +7440,43 @@ async function enforceCodexPriceActivationReadiness(input: {
   fixedPrice: unknown;
   allowUnavailableDelivery?: boolean;
 }) {
-  const readyCodexDeliveryResources = await readyCodexDeliveryResourceCount();
+  const deliveryReadiness = await codexDeliveryReadinessSnapshot();
   if (!shouldBlockUnavailableCodexPriceActivation({
     resourceType: input.resourceType,
     productStatus: input.productStatus,
     priceStatus: input.priceStatus,
     billingMode: input.billingMode,
     fixedPrice: input.fixedPrice,
-    readyCodexDeliveryResources,
+    readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
     allowUnavailableDelivery: input.allowUnavailableDelivery
-  })) return;
+  })) {
+    if (
+      input.resourceType !== "codex"
+      || input.productStatus !== "active"
+      || input.priceStatus !== "active"
+      || input.allowUnavailableDelivery === true
+      || !isPurchasableProductPrice({ billingMode: input.billingMode, fixedPrice: input.fixedPrice })
+      || deliveryReadiness.codexProxySmokeDeliveryReadiness.ok
+    ) return;
+
+    throw new AppError(
+      "codex_proxy_smoke_failed_for_price_activation",
+      "Cannot activate a purchasable Codex price while the latest local OpenAI/Codex proxy smoke test is failing",
+      409,
+      {
+        ...codexDeliveryResourceMissingDetails(input.resourceType),
+        productId: input.productId,
+        productName: input.productName ?? null,
+        priceId: input.priceId ?? null,
+        productStatus: input.productStatus,
+        priceStatus: input.priceStatus,
+        billingMode: input.billingMode,
+        readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
+        proxySmoke: deliveryReadiness.codexProxySmokeDeliveryReadiness,
+        allowUnavailableDelivery: true
+      }
+    );
+  }
 
   throw new AppError(
     "codex_resource_not_ready_for_price_activation",
@@ -7425,7 +7490,7 @@ async function enforceCodexPriceActivationReadiness(input: {
       productStatus: input.productStatus,
       priceStatus: input.priceStatus,
       billingMode: input.billingMode,
-      readyCodexDeliveryResources,
+      readyCodexDeliveryResources: deliveryReadiness.readyCodexDeliveryResources,
       allowUnavailableDelivery: true
     }
   );

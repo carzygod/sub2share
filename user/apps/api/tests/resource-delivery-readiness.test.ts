@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  codexDeliveryLocalProxySmokeFreshMs,
   codexDeliveryResourceMissingDetails,
   codexCatalogDeliveryReadinessIssueFields,
+  inspectCodexProxySmokeDeliveryReadiness,
   isDeliveryResourceReadinessRequired,
   publicProductDeliveryReadinessFields,
   readyCodexSupplierResourceDeliveryWhere,
@@ -91,7 +93,9 @@ test("public product delivery readiness blocks unavailable Codex products", () =
     deliveryRequired: true,
     deliveryReady: false,
     readyDeliveryResources: 0,
-    deliveryBlockedReason: "codex_resource_not_ready_for_delivery"
+    deliveryBlockedReason: "codex_resource_not_ready_for_delivery",
+    codexProxySmokeDeliveryReady: true,
+    codexProxySmokeDeliveryLatest: null
   });
 });
 
@@ -103,7 +107,9 @@ test("public product delivery readiness allows ready Codex and non-Codex product
     deliveryRequired: true,
     deliveryReady: true,
     readyDeliveryResources: 1,
-    deliveryBlockedReason: null
+    deliveryBlockedReason: null,
+    codexProxySmokeDeliveryReady: true,
+    codexProxySmokeDeliveryLatest: null
   });
   assert.deepEqual(publicProductDeliveryReadinessFields({
     resourceType: "gemini",
@@ -112,8 +118,81 @@ test("public product delivery readiness allows ready Codex and non-Codex product
     deliveryRequired: false,
     deliveryReady: true,
     readyDeliveryResources: null,
-    deliveryBlockedReason: null
+    deliveryBlockedReason: null,
+    codexProxySmokeDeliveryReady: null,
+    codexProxySmokeDeliveryLatest: null
   });
+});
+
+test("public product delivery readiness reports fresh Codex proxy smoke failures", () => {
+  const readiness = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "codex",
+    checkedAt: new Date("2026-06-13T12:10:00.000Z"),
+    latest: localProxySmokeEvidence({
+      createdAt: new Date("2026-06-13T12:00:00.000Z"),
+      ok: false,
+      responsesOk: false,
+      responsesStatusCode: 503,
+      responsesErrorType: "api_error",
+      responsesErrorMessage: "Service temporarily unavailable",
+      proxyRequestPath: "/v1/responses",
+      proxyRequestStatusCode: 503
+    })
+  });
+
+  assert.equal(readiness.ok, false);
+  assert.equal(readiness.reason, "codex_proxy_smoke_failed_for_delivery");
+  assert.equal(readiness.latest?.ageMinutes, 10);
+  assert.equal(readiness.latest?.responsesStatusCode, 503);
+  assert.deepEqual(publicProductDeliveryReadinessFields({
+    resourceType: "codex",
+    readyCodexDeliveryResources: 1,
+    codexProxySmokeDeliveryReadiness: readiness
+  }), {
+    deliveryRequired: true,
+    deliveryReady: false,
+    readyDeliveryResources: 1,
+    deliveryBlockedReason: "codex_proxy_smoke_failed_for_delivery",
+    codexProxySmokeDeliveryReady: false,
+    codexProxySmokeDeliveryLatest: readiness.latest
+  });
+});
+
+test("Codex proxy smoke delivery gate ignores stale and skipped failures", () => {
+  const checkedAt = new Date("2026-06-13T12:00:00.000Z");
+  const stale = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "codex",
+    checkedAt,
+    latest: localProxySmokeEvidence({
+      createdAt: new Date(checkedAt.getTime() - codexDeliveryLocalProxySmokeFreshMs - 60_000),
+      ok: false,
+      responsesOk: false
+    })
+  });
+  const skipped = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "codex",
+    checkedAt,
+    latest: localProxySmokeEvidence({
+      createdAt: checkedAt,
+      ok: false,
+      smokeTestSkippedReason: "credential_apply_failed"
+    })
+  });
+  const nonCodex = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "gemini",
+    checkedAt,
+    latest: localProxySmokeEvidence({
+      createdAt: checkedAt,
+      ok: false,
+      responsesOk: false
+    })
+  });
+
+  assert.equal(stale.ok, true);
+  assert.equal(stale.latest?.stale, true);
+  assert.equal(skipped.ok, true);
+  assert.equal(nonCodex.required, false);
+  assert.equal(nonCodex.ok, true);
 });
 
 test("blocks Codex product activation without ready delivery resources unless explicitly overridden", () => {
@@ -196,3 +275,41 @@ test("blocks active purchasable Codex prices on active products without ready de
     readyCodexDeliveryResources: 0
   }), true);
 });
+
+function localProxySmokeEvidence(overrides: Partial<ReturnType<typeof baseLocalProxySmokeEvidence>>) {
+  return {
+    ...baseLocalProxySmokeEvidence(),
+    ...overrides
+  };
+}
+
+function baseLocalProxySmokeEvidence() {
+  return {
+    auditLogId: "audit-smoke",
+    action: "admin.sub2.proxy_smoke_test",
+    objectId: "sub2-key",
+    resourceId: null,
+    sub2AccountId: "2",
+    createdAt: new Date("2026-06-13T12:00:00.000Z"),
+    ok: true,
+    model: "gpt-5.3-codex",
+    modelsOk: true,
+    modelsStatusCode: 200,
+    modelsError: null,
+    responsesOk: true,
+    responsesStatusCode: 200,
+    responsesErrorType: null,
+    responsesErrorMessage: null,
+    localProxyOk: true,
+    keyDisabled: true,
+    smokeTestSkippedReason: null,
+    proxyRequestLogCount: 2,
+    proxyRequestLogs: [],
+    proxyRequestLogId: "proxy-log",
+    requestId: "req-smoke",
+    upstreamRequestId: "upstream-smoke",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: 200,
+    proxyRequestErrorCode: null
+  };
+}
