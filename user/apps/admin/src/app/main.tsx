@@ -154,6 +154,11 @@ interface ListQueryState {
   pageSize: number;
 }
 
+interface ListActionOption {
+  value: string;
+  label: string;
+}
+
 interface DashboardHealthCheckPreview {
   id: string;
   label: string;
@@ -1319,6 +1324,7 @@ interface AuditLogRow {
 const defaultListQuery: ListQueryState = { q: "", status: "", resourceType: "", action: "", page: 1, pageSize: 50 };
 const defaultPageMeta: PageMeta = { total: 0, page: 1, pageSize: 50, totalPages: 1 };
 const csvExportPageSize = 200;
+const internalRecordActionOptions: ListActionOption[] = [{ value: "all", label: "包含内部巡检" }];
 const userStatusOptions = ["active", "disabled", "banned"];
 const productStatusOptions = ["draft", "active", "offline"];
 const billingModeOptions = ["pay_as_you_go", "daily", "weekly", "monthly"];
@@ -3857,6 +3863,7 @@ function UsersView({ users, selectedUser, query, meta, onCreate, onStatus, onUpd
         meta={meta}
         searchPlaceholder="email / user id / role"
         statusOptions={userStatusOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -4137,6 +4144,7 @@ function WalletsView({ wallets, selectedWallet, users, query, meta, onAdjust, on
         meta={meta}
         searchPlaceholder="email / user id / wallet id"
         statusOptions={walletManagementStatusOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -4259,6 +4267,7 @@ function WalletTransactionsView({ transactions, query, meta, onOpenWallet, onOpe
         meta={meta}
         searchPlaceholder="email / tx id / ref / note"
         statusOptions={walletTransactionTypeOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -4477,6 +4486,7 @@ function SalesView({ sales, selectedOrder, query, meta, onDetail, onCancel, onRe
         meta={meta}
         searchPlaceholder="order / email / product / rental"
         statusOptions={orderStatusOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -4568,6 +4578,7 @@ function UsagesView({ usages, summary, syncState, query, meta, onSync, onOpenUse
         searchPlaceholder="request / user / rental / model"
         statusOptions={usageStatusOptions}
         resourceTypeOptions={resourceTypeOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -4800,6 +4811,7 @@ function OrdersView({ orders, title = "订单列表", selectedOrder, query, meta
           meta={meta}
           searchPlaceholder="order id / email / payment ref"
           statusOptions={orderStatusOptions}
+          actionOptions={internalRecordActionOptions}
           onDraft={onDraft}
           onFilter={onFilter}
           onClear={onClear}
@@ -5076,6 +5088,7 @@ function RentalsView({ rentals, selectedRental, query, meta, onDetail, onCloseDe
         searchPlaceholder="rental id / email / endpoint"
         statusOptions={rentalStatusOptions}
         resourceTypeOptions={resourceTypeOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -5202,6 +5215,7 @@ function ApiKeysView({ apiKeys, query, meta, onStatus, onBulkStatus, onOpenUser,
         searchPlaceholder="key / user / rental / product"
         statusOptions={apiKeyStatusOptions}
         resourceTypeOptions={resourceTypeOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}
@@ -6583,12 +6597,13 @@ function auditLogProxyRequestFromLocalProxy(localProxy: Record<string, unknown> 
   return failed ? textValue(failed.requestId) ?? textValue(failed.id) : undefined;
 }
 
-function ListControls({ query, meta, searchPlaceholder, statusOptions = [], resourceTypeOptions = [], actionPlaceholder, onDraft, onFilter, onClear, onPage, onExport }: {
+function ListControls({ query, meta, searchPlaceholder, statusOptions = [], resourceTypeOptions = [], actionOptions = [], actionPlaceholder, onDraft, onFilter, onClear, onPage, onExport }: {
   query: ListQueryState;
   meta: PageMeta;
   searchPlaceholder?: string;
   statusOptions?: string[];
   resourceTypeOptions?: string[];
+  actionOptions?: ListActionOption[];
   actionPlaceholder?: string;
   onDraft: (patch: Partial<ListQueryState>) => void;
   onFilter: (event: FormEvent<HTMLFormElement>) => void;
@@ -6620,7 +6635,13 @@ function ListControls({ query, meta, searchPlaceholder, statusOptions = [], reso
             {resourceTypeOptions.map((resourceType) => <option key={resourceType} value={resourceType}>{resourceType}</option>)}
           </select>
         )}
-        {actionPlaceholder && (
+        {actionOptions.length > 0 && (
+          <select name="action" value={query.action} onChange={(event) => onDraft({ action: event.target.value })}>
+            <option value="">经营口径</option>
+            {actionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        )}
+        {actionPlaceholder && actionOptions.length === 0 && (
           <input
             name="action"
             value={query.action}

@@ -1338,7 +1338,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(userStatuses, query.status);
     const where: Prisma.UserWhereInput = {
-      ...nonSmokeUserWhere(),
+      ...adminListUserScopeWhere(query),
       ...(status ? { status } : {}),
       ...(query.q ? {
         OR: [
@@ -1573,7 +1573,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(orderStatuses, query.status);
     const where: Prisma.OrderWhereInput = {
-      ...nonSmokeOrderWhere(),
+      ...adminListOrderScopeWhere(query),
       ...(status ? { status } : {}),
       ...(query.q ? {
         OR: [
@@ -2207,7 +2207,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const status = oneOf(rentalStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
     const where: Prisma.RentalWhereInput = {
-      ...nonSmokeRentalWhere(),
+      ...adminListRentalScopeWhere(query),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -2503,7 +2503,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(apiKeyStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
-    const where = apiKeyListWhere({ q: query.q, status, resourceType });
+    const where = apiKeyListWhere({ q: query.q, status, resourceType, includeInternal: includeInternalRecords(query) });
     const [apiKeys, total] = await Promise.all([
       prisma.apiKey.findMany({
         where,
@@ -2633,7 +2633,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const walletStatus = oneOf(walletManagementStatuses, query.status);
     const where: Prisma.WalletAccountWhereInput = {
-      ...nonSmokeWalletWhere(),
+      ...adminListWalletScopeWhere(query),
       ...walletManagementStatusWhere(walletStatus),
       ...(query.q ? {
         OR: [
@@ -2683,7 +2683,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     await requireRole(request, ["operator", "admin"]);
     const query = parseListQuery(request.query);
     const where: Prisma.WalletTransactionWhereInput = {
-      ...nonSmokeWalletTransactionWhere(),
+      ...adminListWalletTransactionScopeWhere(query),
       ...(oneOf(["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"] as const, query.status) ? {
         type: oneOf(["recharge", "freeze", "unfreeze", "consume", "refund", "withdrawal_freeze", "withdrawal_paid", "adjustment"] as const, query.status)
       } : {}),
@@ -2715,7 +2715,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(orderStatuses, query.status);
     const where: Prisma.OrderWhereInput = {
-      ...nonSmokeOrderWhere(),
+      ...adminListOrderScopeWhere(query),
       ...(status ? { status } : {}),
       ...(query.q ? {
         OR: [
@@ -2737,9 +2737,9 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       } : {})
     };
     const usageWhere: Prisma.UsageRecordWhereInput = {
-      ...nonSmokeUsageWhere(),
+      ...adminListUsageScopeWhere(query),
       rental: {
-        ...nonSmokeRentalWhere(),
+        ...adminListRentalScopeWhere(query),
         order: where
       }
     };
@@ -2789,7 +2789,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const status = oneOf(usageStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
     const where: Prisma.UsageRecordWhereInput = {
-      ...nonSmokeUsageWhere(),
+      ...adminListUsageScopeWhere(query),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -8515,6 +8515,34 @@ function nonSmokeUsageWhere(): Prisma.UsageRecordWhereInput {
   return { rental: nonSmokeRentalWhere() };
 }
 
+function includeInternalRecords(query: Pick<ListQuery, "action">) {
+  return query.action === "all";
+}
+
+export function adminListUserScopeWhere(query: Pick<ListQuery, "action">): Prisma.UserWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeUserWhere();
+}
+
+export function adminListOrderScopeWhere(query: Pick<ListQuery, "action">): Prisma.OrderWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeOrderWhere();
+}
+
+export function adminListRentalScopeWhere(query: Pick<ListQuery, "action">): Prisma.RentalWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeRentalWhere();
+}
+
+export function adminListWalletScopeWhere(query: Pick<ListQuery, "action">): Prisma.WalletAccountWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeWalletWhere();
+}
+
+export function adminListWalletTransactionScopeWhere(query: Pick<ListQuery, "action">): Prisma.WalletTransactionWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeWalletTransactionWhere();
+}
+
+export function adminListUsageScopeWhere(query: Pick<ListQuery, "action">): Prisma.UsageRecordWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeUsageWhere();
+}
+
 function walletManagementStatusWhere(status: (typeof walletManagementStatuses)[number] | undefined): Prisma.WalletAccountWhereInput {
   if (status === "negative") return { availableBalance: { lt: 0 } };
   if (status === "frozen") return { frozenBalance: { gt: 0 } };
@@ -8579,14 +8607,15 @@ function containsText(value: string) {
   return { contains: value, mode: Prisma.QueryMode.insensitive };
 }
 
-function apiKeyListWhere(input: {
+export function apiKeyListWhere(input: {
   q?: string;
   status?: (typeof apiKeyStatuses)[number];
   resourceType?: (typeof resourceTypes)[number];
+  includeInternal?: boolean;
 }): Prisma.ApiKeyWhereInput {
   const queryResourceType = oneOf(resourceTypes, input.q);
   return {
-    user: nonSmokeUserWhere(),
+    ...(input.includeInternal ? {} : { user: nonSmokeUserWhere() }),
     ...(input.status ? { status: input.status } : {}),
     ...(input.resourceType ? { rental: { resourceType: input.resourceType } } : {}),
     ...(input.q ? {

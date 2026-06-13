@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardInternalExcludedOverview, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
+const { adminListOrderScopeWhere, adminListUsageScopeWhere, adminListUserScopeWhere, apiKeyListWhere, dashboardHealthCheckPreviews, dashboardInternalExcludedOverview, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
 const { openAiProxyCorePathSamples } = await import("../src/modules/openai-proxy/helpers.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
@@ -234,6 +234,22 @@ test("dashboard management overview normalizes core status and wallet risk count
     rentals: 1,
     sharing: 0
   });
+});
+
+test("admin managed lists can explicitly include internal health-check records", () => {
+  assert.ok(Object.prototype.hasOwnProperty.call(adminListUserScopeWhere({ action: "" }), "NOT"));
+  assert.deepEqual(adminListUserScopeWhere({ action: "all" }), {});
+
+  const defaultOrderScope = adminListOrderScopeWhere({ action: "" });
+  assert.ok(Object.prototype.hasOwnProperty.call(defaultOrderScope, "user"));
+  assert.ok(Object.prototype.hasOwnProperty.call(defaultOrderScope, "items"));
+  assert.deepEqual(adminListOrderScopeWhere({ action: "all" }), {});
+
+  assert.ok(Object.prototype.hasOwnProperty.call(adminListUsageScopeWhere({ action: "" }), "rental"));
+  assert.deepEqual(adminListUsageScopeWhere({ action: "all" }), {});
+
+  assert.ok(Object.prototype.hasOwnProperty.call(apiKeyListWhere({}), "user"));
+  assert.equal(Object.prototype.hasOwnProperty.call(apiKeyListWhere({ includeInternal: true }), "user"), false);
 });
 
 test("dashboard health previews prioritize blocking checks and retain critical ok evidence", () => {
