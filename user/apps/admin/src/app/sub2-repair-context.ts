@@ -238,6 +238,19 @@ export function sub2RepairContextSmokeModel(context: Sub2RepairContext) {
   return context.model?.trim() || "";
 }
 
+export function sub2RepairContextShouldSaveToResource(context: Sub2RepairContext) {
+  const resourceType = repairCandidateText(context.resourceType);
+  if (resourceType && resourceType !== "codex") return false;
+
+  if (repairCandidateText(context.resourceId)) return true;
+  if (!repairCandidateText(context.supplierEmail)) return false;
+
+  const repairAction = repairCandidateText(context.repairAction);
+  if (repairAction === "apply_openai_refresh_token_to_sub2_account") return true;
+
+  return ["resources", "resourceCredentials", "productCatalog", "salesDelivery", "localProxySmoke", "sub2", "proxyRequests"].includes(repairCandidateText(context.checkId));
+}
+
 export function resourceCreateDefaultsShouldApplyCredential(defaults: ResourceCreateDefaults) {
   return defaults.repairAction === "apply_openai_refresh_token_to_sub2_account" && Boolean(defaults.sub2AccountId?.trim());
 }

@@ -24,6 +24,7 @@ import {
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
+  sub2RepairContextShouldSaveToResource,
   sub2RepairContextSmokeModel
 } from "../src/app/sub2-repair-context";
 
@@ -197,6 +198,42 @@ test("sub2 repair context prefills smoke verification after failed proxy evidenc
   assert.equal(sub2RepairContextSmokeModel(failedSmokeContext), "gpt-5.3-codex");
   assert.equal(sub2RepairContextShouldRunSmokeTest({ checkId: "sub2", accountId: "2" }), false);
   assert.equal(sub2RepairContextSmokeModel({ model: "  " }), "");
+});
+
+test("sub2 repair context defaults resource credential sync only for Codex targets", () => {
+  assert.equal(sub2RepairContextShouldSaveToResource({
+    checkId: "resources",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    accountId: "2",
+    sub2AccountName: "codex-primary",
+    resourceType: "codex",
+    resourceScope: "production",
+    supplierEmail: "admin@zhisuan.local"
+  }), true);
+  assert.equal(sub2RepairContextShouldSaveToResource({
+    checkId: "resourceCredentials",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    accountId: "2",
+    resourceId: "resource-1",
+    resourceType: "codex"
+  }), true);
+  assert.equal(sub2RepairContextShouldSaveToResource({
+    checkId: "resources",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    accountId: "2",
+    resourceId: "resource-claude",
+    resourceType: "claude_code",
+    supplierEmail: "supplier@example.com"
+  }), false);
+  assert.equal(sub2RepairContextShouldSaveToResource({
+    checkId: "sub2",
+    accountId: "2"
+  }), false);
+  assert.equal(sub2RepairContextShouldSaveToResource({
+    checkId: "localProxySmoke",
+    accountId: "2",
+    supplierEmail: "admin@zhisuan.local"
+  }), true);
 });
 
 test("resource create defaults continue the OpenAI credential repair flow", () => {

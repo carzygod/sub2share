@@ -49,6 +49,7 @@ import {
   resourceRepairCandidateHasResourceFilter,
   sub2RepairContextItems,
   sub2RepairContextShouldRunSmokeTest,
+  sub2RepairContextShouldSaveToResource,
   sub2RepairContextSmokeModel,
   type ResourceCreateDefaults,
   type Sub2RepairContext
@@ -5433,6 +5434,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
   const actionHints = Array.from(new Set((status?.blockingReasons ?? []).map(sub2BlockingReasonActionHint)));
   const repairContextItems = sub2RepairContextItems(repairContext);
   const shouldRunSmokeTest = sub2RepairContextShouldRunSmokeTest(repairContext);
+  const shouldSaveToResource = sub2RepairContextShouldSaveToResource(repairContext);
   const smokeModel = sub2RepairContextSmokeModel(repairContext);
 
   return (
@@ -5525,7 +5527,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
           </div>
         )}
       </div>
-      <form className="panel glass-panel inline-form credential-form" key={`credential-${repairContext.accountId ?? "auto"}-${repairContext.resourceId ?? ""}-${repairContext.supplierEmail ?? ""}-${smokeModel}-${shouldRunSmokeTest ? "smoke" : "manual"}`} onSubmit={onApplyRefreshToken}>
+      <form className="panel glass-panel inline-form credential-form" key={`credential-${repairContext.accountId ?? "auto"}-${repairContext.resourceId ?? ""}-${repairContext.supplierEmail ?? ""}-${smokeModel}-${shouldRunSmokeTest ? "smoke" : "manual"}-${shouldSaveToResource ? "save-resource" : "skip-resource"}`} onSubmit={onApplyRefreshToken}>
         <span className="eyebrow">Apply OpenAI Credentials</span>
         <select key={`${repairAccount?.id ?? "none"}-${repairContext.accountId ?? "auto"}`} name="accountId" required defaultValue={repairAccount ? String(repairAccount.id) : ""}>
           <option value="">选择上游账号</option>
@@ -5546,7 +5548,7 @@ function Sub2StatusView({ status, tests, smoke, bindings, repairContext, onRefre
         </label>
         <input name="smokeModel" defaultValue={smokeModel} placeholder="自检模型，可选" autoComplete="off" />
         <label className="checkbox-line">
-          <input name="saveToResource" type="checkbox" defaultChecked={Boolean(repairContext.resourceId || repairContext.supplierEmail)} />
+          <input name="saveToResource" type="checkbox" defaultChecked={shouldSaveToResource} />
           <span>保存为共享资源凭据</span>
         </label>
         <input name="resourceId" defaultValue={repairContext.resourceId ?? ""} placeholder="目标资源 ID，可选" autoComplete="off" />
