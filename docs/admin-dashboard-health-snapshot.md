@@ -481,3 +481,19 @@
 - 能力矩阵新增 `rentals.assignSupplierResource` 后，Dashboard、系统巡检和能力覆盖检查都能看到这条修复链路已具备后端路由和前端入口。
 
 这样首页交付阻断不只是“提示哪里坏了”，还可以沿着共享资源和租赁两个入口完成闭环维修。
+
+## 2026-06-13 扩展：Dashboard 保留扩展 OpenAI v1 反代路径指标
+
+- `openAiProxyContract` 的 Dashboard 预览继续保留 `corePathSamples` 和 `routesCorePathSamples`。
+- 预览白名单新增：
+  - `routesEmbeddings`
+  - `routesAssistantsApi`
+  - `routesThreadsRuns`
+  - `routesVectorStores`
+  - `routesFileUploadApis`
+  - `routesBatchApis`
+  - `routesAudioImageApis`
+  - `routesFineTuningJobs`
+- 管理员在首页关键巡检里可以看到 Responses、Chat Completions、Embeddings、Assistants、Threads/Runs、Vector Stores、Files/Uploads、Batches、Audio/Images 和 fine-tuning 代表路径都被本地 `/v1/*` 反代契约覆盖。
+
+该摘要仍不触发真实 OpenAI 或 Sub2API 请求，只展示本地静态路由契约；真实 `/v1/responses` 可用性仍以 `localProxySmoke` 与反代请求日志为准。

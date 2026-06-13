@@ -36,9 +36,21 @@ export const openAiProxyCorePathSamples = [
   "/v1/responses/resp_123",
   "/v1/responses/resp_123/input_items?after=item_1",
   "/v1/chat/completions",
+  "/v1/embeddings",
+  "/v1/assistants",
+  "/v1/assistants/asst_123",
+  "/v1/threads",
+  "/v1/threads/thread_123/messages",
+  "/v1/threads/thread_123/runs",
+  "/v1/threads/thread_123/runs/run_123/steps",
+  "/v1/vector_stores",
+  "/v1/vector_stores/vs_123/files",
   "/v1/files",
   "/v1/uploads",
-  "/v1/batches"
+  "/v1/batches",
+  "/v1/audio/transcriptions",
+  "/v1/images/generations",
+  "/v1/fine_tuning/jobs"
 ] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
@@ -253,6 +265,14 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const routesResponsesItems = isOpenAiProxyRoutedPath("/v1/responses/resp_123");
   const routesChatCompletions = isOpenAiProxyRoutedPath("/v1/chat/completions");
   const routesModelMetadata = isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex");
+  const routesEmbeddings = isOpenAiProxyRoutedPath("/v1/embeddings");
+  const routesAssistantsApi = isOpenAiProxyRoutedPath("/v1/assistants/asst_123");
+  const routesThreadsRuns = isOpenAiProxyRoutedPath("/v1/threads/thread_123/runs/run_123/steps");
+  const routesVectorStores = isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/files");
+  const routesFileUploadApis = isOpenAiProxyRoutedPath("/v1/files") && isOpenAiProxyRoutedPath("/v1/uploads");
+  const routesBatchApis = isOpenAiProxyRoutedPath("/v1/batches");
+  const routesAudioImageApis = isOpenAiProxyRoutedPath("/v1/audio/transcriptions") && isOpenAiProxyRoutedPath("/v1/images/generations");
+  const routesFineTuningJobs = isOpenAiProxyRoutedPath("/v1/fine_tuning/jobs");
   const routesCorePathSamples = openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path));
   const sub2UrlWithTrailingBase = buildSub2ProxyUrl("https://sub2.example.com/api/", "/v1/responses/resp_123/input_items?after=item_1&include=output_text");
   const sub2UrlWithoutLeadingPath = buildSub2ProxyUrl("https://sub2.example.com/api", "v1/chat/completions?stream=true");
@@ -386,6 +406,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy route must cover representative Responses, Chat Completions, files, uploads, and batches paths"
     });
   }
+  if (!routesEmbeddings || !routesAssistantsApi || !routesThreadsRuns || !routesVectorStores || !routesFileUploadApis || !routesBatchApis || !routesAudioImageApis || !routesFineTuningJobs) {
+    issues.push({
+      type: "extended_openai_path_samples_not_routed",
+      severity: "error",
+      message: "OpenAI proxy route must cover representative embeddings, Assistants, Threads/Runs, Vector Stores, file/upload, batch, audio/image, and fine-tuning paths"
+    });
+  }
   if (!preservesRawPathAndQuery || !normalizesSub2BaseTrailingSlash) {
     issues.push({
       type: "sub2_proxy_url_forwarding_incomplete",
@@ -470,6 +497,14 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesResponsesItems,
       routesChatCompletions,
       routesModelMetadata,
+      routesEmbeddings,
+      routesAssistantsApi,
+      routesThreadsRuns,
+      routesVectorStores,
+      routesFileUploadApis,
+      routesBatchApis,
+      routesAudioImageApis,
+      routesFineTuningJobs,
       corePathSamples: openAiProxyCorePathSamples.join(","),
       routesCorePathSamples,
       preservesRawPathAndQuery,

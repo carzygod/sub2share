@@ -295,3 +295,12 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 如果 HTML 可达但 JS/CSS 缺失、404、不可达或 MIME 不符合预期，系统健康会返回 `frontendRuntime.status=error`。
 
 这让管理员入口可用性检查更接近真实浏览器体验，避免“入口 HTML 返回 200，但 Admin 应用空白”的情况被误判为健康。
+
+## 2026-06-13 扩展：OpenAI v1 反代契约覆盖更多代表路径
+
+- `openAiProxyContract` 的静态样本不再只覆盖 Responses、Chat Completions、files、uploads 和 batches。
+- 样本集合新增 `/v1/embeddings`、Assistants、Threads/Runs、Vector Stores、Audio transcription、Image generation 和 fine-tuning jobs 等常见 OpenAI v1 路径。
+- 巡检指标新增 `routesEmbeddings`、`routesAssistantsApi`、`routesThreadsRuns`、`routesVectorStores`、`routesFileUploadApis`、`routesBatchApis`、`routesAudioImageApis` 和 `routesFineTuningJobs`。
+- Dashboard 健康预览会保留这些指标，管理员不用展开完整 payload 也能看到本地 `/v1/*` 反代契约覆盖的代表面。
+
+该检查仍是本地静态契约检查，不会主动调用 Sub2API 或 OpenAI；真实上游可用性仍由 `sub2`、`localProxySmoke` 和反代请求日志共同证明。

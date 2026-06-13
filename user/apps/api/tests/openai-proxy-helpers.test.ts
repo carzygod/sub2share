@@ -61,9 +61,21 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
     "/v1/responses/resp_123",
     "/v1/responses/resp_123/input_items?after=item_1",
     "/v1/chat/completions",
+    "/v1/embeddings",
+    "/v1/assistants",
+    "/v1/assistants/asst_123",
+    "/v1/threads",
+    "/v1/threads/thread_123/messages",
+    "/v1/threads/thread_123/runs",
+    "/v1/threads/thread_123/runs/run_123/steps",
+    "/v1/vector_stores",
+    "/v1/vector_stores/vs_123/files",
     "/v1/files",
     "/v1/uploads",
-    "/v1/batches"
+    "/v1/batches",
+    "/v1/audio/transcriptions",
+    "/v1/images/generations",
+    "/v1/fine_tuning/jobs"
   ]);
   assert.equal(openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path)), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1"), true);
@@ -72,6 +84,13 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123/input_items?after=item_1"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/chat/completions"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/embeddings"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/assistants/asst_123"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/threads/thread_123/runs/run_123/steps"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/files"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/audio/transcriptions"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/images/generations"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/fine_tuning/jobs"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v10/responses"), false);
   assert.equal(isOpenAiProxyRoutedPath("/api/admin/system-health"), false);
@@ -373,8 +392,16 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesResponsesItems, true);
   assert.equal(result.summary.routesChatCompletions, true);
   assert.equal(result.summary.routesModelMetadata, true);
-  assert.equal(result.summary.corePathSamples, "/v1,/v1/models,/v1/models/gpt-5.3-codex,/v1/responses,/v1/responses/resp_123,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/files,/v1/uploads,/v1/batches");
+  assert.equal(result.summary.corePathSamples, "/v1,/v1/models,/v1/models/gpt-5.3-codex,/v1/responses,/v1/responses/resp_123,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/embeddings,/v1/assistants,/v1/assistants/asst_123,/v1/threads,/v1/threads/thread_123/messages,/v1/threads/thread_123/runs,/v1/threads/thread_123/runs/run_123/steps,/v1/vector_stores,/v1/vector_stores/vs_123/files,/v1/files,/v1/uploads,/v1/batches,/v1/audio/transcriptions,/v1/images/generations,/v1/fine_tuning/jobs");
   assert.equal(result.summary.routesCorePathSamples, true);
+  assert.equal(result.summary.routesEmbeddings, true);
+  assert.equal(result.summary.routesAssistantsApi, true);
+  assert.equal(result.summary.routesThreadsRuns, true);
+  assert.equal(result.summary.routesVectorStores, true);
+  assert.equal(result.summary.routesFileUploadApis, true);
+  assert.equal(result.summary.routesBatchApis, true);
+  assert.equal(result.summary.routesAudioImageApis, true);
+  assert.equal(result.summary.routesFineTuningJobs, true);
   assert.equal(result.summary.preservesRawPathAndQuery, true);
   assert.equal(result.summary.normalizesSub2BaseTrailingSlash, true);
   assert.equal(result.summary.forwardsUpstreamHeaders, true);

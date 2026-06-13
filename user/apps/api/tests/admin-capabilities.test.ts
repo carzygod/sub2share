@@ -212,8 +212,16 @@ test("dashboard health previews prioritize blocking checks and retain critical o
         preservesRawPathAndQuery: true,
         normalizesSub2BaseTrailingSlash: true,
         forwardsUpstreamHeaders: true,
-        corePathSamples: "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions",
+        corePathSamples: "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/embeddings,/v1/assistants/asst_123,/v1/threads/thread_123/runs/run_123/steps,/v1/vector_stores/vs_123/files,/v1/files,/v1/uploads,/v1/batches,/v1/audio/transcriptions,/v1/images/generations,/v1/fine_tuning/jobs",
         routesResponsesItems: true,
+        routesEmbeddings: true,
+        routesAssistantsApi: true,
+        routesThreadsRuns: true,
+        routesVectorStores: true,
+        routesFileUploadApis: true,
+        routesBatchApis: true,
+        routesAudioImageApis: true,
+        routesFineTuningJobs: true,
         requestIdHeader: "x-proxy-request-id",
         upstreamRequestIdHeaders: "x-request-id,openai-request-id,x-openai-request-id,request-id",
         rateLimitHeaders: "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens",
@@ -328,7 +336,15 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[4].metrics?.normalizesSub2BaseTrailingSlash, true);
   assert.equal(previews[4].metrics?.forwardsUpstreamHeaders, true);
   assert.equal(previews[4].metrics?.routesResponsesItems, true);
-  assert.equal(previews[4].metrics?.corePathSamples, "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions");
+  assert.equal(previews[4].metrics?.routesEmbeddings, true);
+  assert.equal(previews[4].metrics?.routesAssistantsApi, true);
+  assert.equal(previews[4].metrics?.routesThreadsRuns, true);
+  assert.equal(previews[4].metrics?.routesVectorStores, true);
+  assert.equal(previews[4].metrics?.routesFileUploadApis, true);
+  assert.equal(previews[4].metrics?.routesBatchApis, true);
+  assert.equal(previews[4].metrics?.routesAudioImageApis, true);
+  assert.equal(previews[4].metrics?.routesFineTuningJobs, true);
+  assert.equal(previews[4].metrics?.corePathSamples, "/v1,/v1/responses,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/embeddings,/v1/assistants/asst_123,/v1/threads/thread_123/runs/run_123/steps,/v1/vector_stores/vs_123/files,/v1/files,/v1/uploads,/v1/batches,/v1/audio/transcriptions,/v1/images/generations,/v1/fine_tuning/jobs");
   assert.equal(previews[4].metrics?.requestIdHeader, "x-proxy-request-id");
   assert.equal(previews[4].metrics?.upstreamRequestIdHeaders, "x-request-id,openai-request-id,x-openai-request-id,request-id");
   assert.equal(previews[4].metrics?.rateLimitHeaders, "retry-after,retry-after-ms,x-ratelimit-limit-requests,x-ratelimit-limit-tokens,x-ratelimit-remaining-requests,x-ratelimit-remaining-tokens,x-ratelimit-reset-requests,x-ratelimit-reset-tokens");
