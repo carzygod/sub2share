@@ -256,3 +256,5 @@ pnpm.cmd --filter @zyz/api run build
   - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`
 
 这项补齐仍然不新增逐端点代理逻辑；真实转发继续由 `/v1` 与 `/v1/*` 统一进入 Sub2API。新增的是可测试、可巡检、可在管理员入口展示的代表路径证据，降低未来路由收窄时漏掉新 OpenAI API surface 的风险。
+
+生产部署 `986af2f83f12744de114bbac3f78cba03bdbfbaf` 后，服务器侧 API 139/139、Admin 15/15、workspace build 和 `/health`、`/ready`、Web、Admin 入口检查均通过。线上 `openAiProxyContract` 保持 `ok`，并返回 `routesResponsesLifecycle=true`、`routesConversationsApi=true`、`routesVideoApis=true`、`routesModerationsApi=true`、`routesEvalsApi=true`、`routesContainersApi=true`、`routesRealtimeApi=true`。

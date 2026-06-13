@@ -369,3 +369,5 @@ Dashboard 的 `latestSystemHealth.upstreamBlocker` 会把这些字段映射为 `
 巡检摘要新增 `routesResponsesLifecycle`、`routesConversationsApi`、`routesVideoApis`、`routesModerationsApi`、`routesEvalsApi`、`routesContainersApi` 和 `routesRealtimeApi`。Dashboard 健康预览白名单也保留这些字段。
 
 该检查仍是本地静态契约检查，不主动调用 OpenAI 或 Sub2API；真实上游可用性仍由 `sub2`、`localProxySmoke` 和反代请求日志证明。
+
+2026-06-13 部署 `986af2f83f12744de114bbac3f78cba03bdbfbaf` 后，生产 `openAiProxyContract.status=ok`，上述新增指标均为 `true`，Dashboard 关键巡检预览也保留 `routesRealtimeApi=true`。生产总体仍为 `status=error`，原因仍是 `/v1/responses` 503 与 Sub2/OpenAI `token_invalidated`，不是本地 `/v1/*` 反代契约缺失。
