@@ -4809,9 +4809,11 @@ function productCatalogRepairContextFields(checks: SystemHealthCheck[]) {
     for (const row of rows) {
       const record = jsonObject(row);
       if (!record || ![
+        "empty_active_product_catalog",
         "active_codex_product_without_ready_delivery_resource",
         "active_codex_product_proxy_smoke_failed"
       ].includes(String(record.type ?? ""))) continue;
+      if (textJsonValue(record.resourceType) !== "codex") continue;
       const productId = textJsonValue(record.productId);
       const productName = textJsonValue(record.productName);
       const priceId = textJsonValue(record.priceId);
@@ -7556,6 +7558,15 @@ export function emptyProductCatalogIssue(candidate?: {
   priceId?: string | null;
 } | null): Omit<ProductCatalogIssue, "id" | "severity"> {
   if (candidate) {
+    const codexRepairFields = candidate.resourceType === "codex"
+      ? {
+        resourceList: true,
+        resourceScope: "production" as const,
+        resourceStatus: "online",
+        repairAction: "apply_openai_refresh_token_to_sub2_account",
+        actionHint: "Create or repair a ready production Codex shared resource, then activate the inactive product candidate after delivery readiness is satisfied."
+      }
+      : {};
     return {
       type: "empty_active_product_catalog",
       productId: candidate.id,
@@ -7564,6 +7575,7 @@ export function emptyProductCatalogIssue(candidate?: {
       priceId: candidate.priceId ?? null,
       resourceType: candidate.resourceType,
       actionHint: "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.",
+      ...codexRepairFields,
       message: `No active public product exists. Candidate product ${candidate.name} is ${candidate.status}.`
     };
   }

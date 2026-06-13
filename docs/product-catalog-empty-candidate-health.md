@@ -33,3 +33,16 @@
 - `pnpm.cmd --filter @zyz/api typecheck`
 - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`
 - `pnpm.cmd --filter @zyz/api test -- --runInBand`
+
+## 2026-06-13 扩展：Codex 空目录候选继承上游修复上下文
+
+生产复查显示，当前 `productCatalog` 的主要 warning 是 `Codex 标准租赁` 仍为 `offline`，同时系统已经能在 `resources`、`resourceCredentials`、`sub2` 和 `localProxySmoke` 中定位同一条 OpenAI refresh token 失效链路。为了避免商品入口只显示“商品未激活”，Codex 类型的 `empty_active_product_catalog` 候选现在也会携带共享资源修复字段：
+
+- `resourceList=true`
+- `resourceScope=production`
+- `resourceStatus=online`
+- `repairAction=apply_openai_refresh_token_to_sub2_account`
+
+系统健康的 Sub2 修复上下文补齐逻辑也会把 `empty_active_product_catalog` 作为 Codex 商品上下文来源。当它携带 `productId`、`productName` 和 `priceId` 时，`resourceCredentials`、`resources`、`sub2` 等上游修复问题可以继承同一个商品定位；反过来，商品 warning 也会继承唯一供给方、优先 Sub2 账号、账号错误诊断和最新 `/v1/responses` smoke 失败证据。
+
+这样管理员从商品目录、共享资源或反代状态任一入口进入维修时，看到的都是同一组商品、价格、供给方、Sub2 账号和 token invalidated 证据。

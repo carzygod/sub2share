@@ -1021,6 +1021,13 @@ test("empty product catalog warnings remain actionable on the dashboard", () => 
     resourceType: "codex",
     priceId: "price-monthly"
   });
+  const nonCodexCandidateIssue = emptyProductCatalogIssue({
+    id: "prod-draft-other",
+    name: "Other Draft",
+    status: "draft",
+    resourceType: "sub2",
+    priceId: "price-other"
+  });
 
   assert.equal(issue.type, "empty_active_product_catalog");
   assert.equal(issue.productId, null);
@@ -1033,7 +1040,13 @@ test("empty product catalog warnings remain actionable on the dashboard", () => 
   assert.equal(candidateIssue.productStatus, "draft");
   assert.equal(candidateIssue.priceId, "price-monthly");
   assert.equal(candidateIssue.resourceType, "codex");
-  assert.equal(candidateIssue.actionHint, "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.");
+  assert.equal(candidateIssue.resourceList, true);
+  assert.equal(candidateIssue.resourceScope, "production");
+  assert.equal(candidateIssue.resourceStatus, "online");
+  assert.equal(candidateIssue.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(candidateIssue.actionHint, "Create or repair a ready production Codex shared resource, then activate the inactive product candidate after delivery readiness is satisfied.");
+  assert.equal(nonCodexCandidateIssue.resourceList, undefined);
+  assert.equal(nonCodexCandidateIssue.repairAction, undefined);
 
   const checks: unknown[] = Array.from({ length: 8 }, (_, index) => ({
     id: `customWarning${index}`,
@@ -1063,7 +1076,9 @@ test("empty product catalog warnings remain actionable on the dashboard", () => 
   assert.equal(previews[0].primaryIssue?.productName, "Codex Draft");
   assert.equal(previews[0].primaryIssue?.productStatus, "draft");
   assert.equal(previews[0].primaryIssue?.priceId, "price-monthly");
-  assert.equal(previews[0].primaryIssue?.actionHint, "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.");
+  assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(previews[0].primaryIssue?.resourceList, true);
+  assert.equal(previews[0].primaryIssue?.actionHint, "Create or repair a ready production Codex shared resource, then activate the inactive product candidate after delivery readiness is satisfied.");
 });
 
 test("sub2 repair context enrichment fills product catalog repair candidates", () => {
@@ -1100,6 +1115,67 @@ test("sub2 repair context enrichment fills product catalog repair candidates", (
   assert.equal(issue.credentialsStatus, "configured(3)");
   assert.equal(issue.schedulable, false);
   assert.equal(issue.productId, "prod-codex");
+});
+
+test("sub2 repair context enrichment treats empty Codex catalog candidates as upstream repair context", () => {
+  const productIssue = emptyProductCatalogIssue({
+    id: "prod-offline-codex",
+    name: "Codex Standard",
+    status: "offline",
+    resourceType: "codex",
+    priceId: "price-monthly"
+  });
+  const checks = enrichSub2RepairContextChecks([
+    {
+      id: "productCatalog",
+      label: "鍟嗗搧鐩綍",
+      status: "warning",
+      summary: "Empty active catalog",
+      detail: {
+        issues: [{
+          id: "empty_active_product_catalog:prod-offline-codex:price-monthly",
+          severity: "warning",
+          ...productIssue
+        }]
+      }
+    },
+    {
+      id: "resourceCredentials",
+      label: "璧勬簮鍑嵁",
+      status: "error",
+      summary: "No applicable credential",
+      detail: {
+        issues: [{
+          id: "openai-refresh-token-candidate-missing",
+          type: "openai_refresh_token_candidate_missing",
+          repairAction: "apply_openai_refresh_token_to_sub2_account"
+        }]
+      }
+    }
+  ], "admin@zhisuan.local", [{
+    sub2AccountId: 2,
+    sub2AccountName: "codex-primary",
+    accountStatus: "error",
+    credentialsStatus: "configured(3)",
+    schedulable: false
+  }]);
+
+  const enrichedProductIssue = (checks[0].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  assert.equal(enrichedProductIssue.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(enrichedProductIssue.supplierEmail, "admin@zhisuan.local");
+  assert.equal(enrichedProductIssue.sub2AccountId, 2);
+  assert.equal(enrichedProductIssue.sub2AccountName, "codex-primary");
+  assert.equal(enrichedProductIssue.accountStatus, "error");
+  assert.equal(enrichedProductIssue.credentialsStatus, "configured(3)");
+  assert.equal(enrichedProductIssue.schedulable, false);
+
+  const credentialIssue = (checks[1].detail as { issues: Array<Record<string, unknown>> }).issues[0];
+  assert.equal(credentialIssue.productId, "prod-offline-codex");
+  assert.equal(credentialIssue.productName, "Codex Standard");
+  assert.equal(credentialIssue.priceId, "price-monthly");
+  assert.equal(credentialIssue.resourceType, "codex");
+  assert.equal(credentialIssue.supplierEmail, "admin@zhisuan.local");
+  assert.equal(credentialIssue.sub2AccountId, 2);
 });
 
 test("sub2 repair context enrichment shares product context with resource repairs", () => {

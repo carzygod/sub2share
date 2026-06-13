@@ -498,6 +498,14 @@
 
 该摘要仍不触发真实 OpenAI 或 Sub2API 请求，只展示本地静态路由契约；真实 `/v1/responses` 可用性仍以 `localProxySmoke` 与反代请求日志为准。
 
+## 2026-06-13 扩展：空 active Codex 商品目录也进入上游维修链路
+
+- 当 `productCatalog.primaryIssue.type=empty_active_product_catalog` 且候选商品 `resourceType=codex` 时，问题项会携带 `resourceList=true`、`resourceScope=production`、`resourceStatus=online` 和 `repairAction=apply_openai_refresh_token_to_sub2_account`。
+- Dashboard 关键巡检、`deliveryBlocker`、共享资源创建默认值和 Sub2 修复上下文可以继续透传候选商品的 `productId`、`productName`、`productStatus` 与 `priceId`。
+- 同一轮健康报告中的 `resourceCredentials`、`resources`、`sub2` 和 `localProxySmoke` 修复问题会继承该候选商品上下文，避免商品 warning 与真实 OpenAI/Codex 上游阻断分离。
+
+当前生产形态下，这意味着 `Codex 标准租赁` 即使仍处于 `offline`，管理员也能从商品问题直接看到需要先修复 production Codex shared resource、Sub2 OpenAI account 与有效 refresh token，而不是只看到“没有 active 商品”。
+
 ## 2026-06-13 扩展：最新系统健康固定展示当前发布
 
 - `GET /api/admin/dashboard` 的 `latestSystemHealth` 新增固定字段 `deploymentRuntime`。
