@@ -320,3 +320,25 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - 当 Sub2 账号没有有效错误摘要时，样本会返回默认可读 message，而不是把空字符串透传到完整健康 payload。
 
 这让完整 `GET /api/admin/system-health`、Dashboard 摘要和 Admin 修复表单对“字段为空”的判断一致，减少空字符串在运维排障中的噪声。该处理只影响只读诊断输出，不改变 Sub2API 状态、凭据写入或真实反代请求。
+
+## 2026-06-13 Update: Sub2 Account Error Diagnostics
+
+`sub2`、`resourceCredentials`、`resources` 与 `localProxySmoke` 现在会把 Sub2/OpenAI 账号错误从长文本 `accountMessage` 中提取为结构化字段：
+
+- `accountErrorStatusCode`
+- `accountErrorType`
+- `accountErrorCode`
+- `accountErrorMessage`
+
+当 Sub2 返回类似 `Authentication failed (401): {"error":...,"status":401}` 的 OpenAI 错误体时，系统健康会解析出 HTTP 401、`invalid_request_error`、`token_invalidated` 和上游 message。Dashboard 的 `latestSystemHealth.upstreamBlocker`、完整系统健康 issue/sample、共享资源创建默认值以及 Sub2 修复上下文都会保留这些字段。
+
+这让管理员可以直接判断当前阻断是凭据失效、额度不足、限流还是其他上游账号错误，而不需要人工解析多行 JSON 字符串。该检查只消费 Sub2 已经返回的诊断消息，不读取 refresh token 明文、不解密资源凭据，也不主动写入 Sub2API。
+
+2026-06-13 的生产复查显示，当前 `/v1/responses` 阻断已经被结构化为：
+
+- `accountErrorStatusCode=401`
+- `accountErrorType=invalid_request_error`
+- `accountErrorCode=token_invalidated`
+- `accountErrorMessage=Your authentication token has been invalidated. Please try signing in again.`
+
+因此，系统内核与管理员入口已经能够证明本地 OpenAI/Codex 反代契约、Sub2API 依赖和管理员入口覆盖均正常；剩余不可用性来自真实上游凭据失效，以及缺少 ready production Codex shared resource。
