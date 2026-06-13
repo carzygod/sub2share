@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
 const { openAiProxyCorePathSamples } = await import("../src/modules/openai-proxy/helpers.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
@@ -49,6 +49,41 @@ test("admin capability operations include frontend management targets", () => {
   assert.equal(targetById.get("systemHealth.read")?.view, "systemHealth");
   assert.equal(targetById.get("auditLogs.list")?.view, "audit");
   assert.ok(operations.every((operation) => operation.target?.label.startsWith("打开")));
+});
+
+test("initial resource credential apply requires a Sub2 account before creating resources", () => {
+  assert.doesNotThrow(() => validateInitialResourceCredentialApplyRequest({
+    applyCredentialToSub2: true,
+    credentialRunSmokeTest: true,
+    credentialSecret: "valid-refresh-token",
+    credentialType: "openai_refresh_token",
+    credentialStatus: "active",
+    sub2AccountId: "2"
+  }));
+
+  assert.throws(
+    () => validateInitialResourceCredentialApplyRequest({
+      applyCredentialToSub2: true,
+      credentialSecret: "valid-refresh-token",
+      credentialType: "openai_refresh_token",
+      credentialStatus: "active"
+    }),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, "initial_credential_sub2_account_required");
+      assert.equal((error as { statusCode?: number }).statusCode, 400);
+      return true;
+    }
+  );
+
+  assert.throws(
+    () => validateInitialResourceCredentialApplyRequest({
+      credentialRunSmokeTest: true
+    }),
+    (error: unknown) => {
+      assert.equal((error as { code?: string }).code, "initial_credential_apply_required");
+      return true;
+    }
+  );
 });
 
 test("proxy request status filters expose operational failure buckets", () => {

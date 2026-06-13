@@ -949,6 +949,32 @@ const applyResourceCredentialToSub2Schema = z.object({
 });
 type ApplyResourceCredentialToSub2Input = z.infer<typeof applyResourceCredentialToSub2Schema>;
 
+export function validateInitialResourceCredentialApplyRequest(input: {
+  applyCredentialToSub2?: boolean;
+  credentialRunSmokeTest?: boolean;
+  credentialSecret?: string | null;
+  credentialType?: string | null;
+  credentialStatus?: string | null;
+  sub2AccountId?: string | null;
+}) {
+  if (input.credentialRunSmokeTest && !input.applyCredentialToSub2) {
+    throw new AppError("initial_credential_apply_required", "Run smoke test requires applying the initial credential to Sub2", 400);
+  }
+  if (!input.applyCredentialToSub2) return;
+  if (!input.credentialSecret) {
+    throw new AppError("initial_credential_required", "Initial credential secret is required before applying it to Sub2", 400);
+  }
+  if (!input.sub2AccountId) {
+    throw new AppError("initial_credential_sub2_account_required", "Sub2 account id is required before applying the initial credential to Sub2", 400);
+  }
+  if ((input.credentialType ?? "openai_refresh_token") !== "openai_refresh_token") {
+    throw new AppError("initial_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
+  }
+  if ((input.credentialStatus ?? "active") !== "active") {
+    throw new AppError("initial_credential_not_active", "Initial credential must be active before applying it to Sub2", 400);
+  }
+}
+
 const updateSupplierSchema = z.object({
   displayName: nullableProfileText(64),
   status: z.enum(supplierStatuses).optional(),
@@ -3108,18 +3134,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const actor = await requireRole(request, ["admin"]);
     const input = createResourceSchema.parse(request.body);
     const email = input.supplierEmail.toLowerCase();
-    if (input.credentialRunSmokeTest && !input.applyCredentialToSub2) {
-      throw new AppError("initial_credential_apply_required", "Run smoke test requires applying the initial credential to Sub2", 400);
-    }
-    if (input.applyCredentialToSub2 && !input.credentialSecret) {
-      throw new AppError("initial_credential_required", "Initial credential secret is required before applying it to Sub2", 400);
-    }
-    if (input.applyCredentialToSub2 && (input.credentialType ?? "openai_refresh_token") !== "openai_refresh_token") {
-      throw new AppError("initial_credential_unsupported", "Only openai_refresh_token credentials can be applied to Sub2 OpenAI accounts", 400);
-    }
-    if (input.applyCredentialToSub2 && (input.credentialStatus ?? "active") !== "active") {
-      throw new AppError("initial_credential_not_active", "Initial credential must be active before applying it to Sub2", 400);
-    }
+    validateInitialResourceCredentialApplyRequest(input);
     if (input.credentialSecret && !env.API_KEY_ENCRYPTION_SECRET) {
       throw new AppError("credential_encryption_secret_missing", "API_KEY_ENCRYPTION_SECRET must be configured before storing resource credentials", 500);
     }
