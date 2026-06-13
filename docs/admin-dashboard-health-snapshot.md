@@ -361,7 +361,7 @@
 - 新增保留的指标包括：
   - request id、upstream request id、rate limit header 和 proxy request lookup header 契约。
   - CORS 是否暴露 request id、上游 request id 与 OpenAI rate limit headers。
-  - 原始 body 透传模式、body limit、上游超时、stream idle timeout。
+  - 原始 body 透传模式、二进制 body Blob 实测、GET/HEAD body 丢弃、文本/JSON body 转发、body limit、上游超时、stream idle timeout。
   - multipart、form-urlencoded、URL model 提取能力。
   - 上游 header 转发、forwarded host/proto、客户端断开 abort、流式完成与错误日志。
   - OpenAI 兼容错误类型与 `error.param` 兼容字段。

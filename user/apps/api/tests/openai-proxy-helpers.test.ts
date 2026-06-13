@@ -23,6 +23,7 @@ import {
   openAiProxyRouteMethods,
   openAiProxyRoutePath,
   openAiProxyRoutePaths,
+  openAiProxyUpstreamBody,
   proxyBodyByteLength,
   proxyRequestLookupHeaderNames,
   proxyRequestIdHeaderName,
@@ -254,6 +255,30 @@ test("measures proxy body text and bytes for buffers and json objects", () => {
   assert.equal(proxyBodyByteLength(objectBody), Buffer.byteLength(JSON.stringify(objectBody)));
 });
 
+test("builds upstream bodies without corrupting OpenAI payload bytes", async () => {
+  assert.equal(openAiProxyUpstreamBody("GET", Buffer.from("ignored")), undefined);
+  assert.equal(openAiProxyUpstreamBody("HEAD", "ignored"), undefined);
+  assert.equal(openAiProxyUpstreamBody("POST", undefined), undefined);
+  assert.equal(openAiProxyUpstreamBody("POST", "plain text"), "plain text");
+  assert.equal(openAiProxyUpstreamBody("POST", { model: "gpt-5.3-codex" }), JSON.stringify({ model: "gpt-5.3-codex" }));
+
+  const rawBuffer = Buffer.from([0, 1, 2, 255]);
+  const bufferBody = openAiProxyUpstreamBody("POST", rawBuffer);
+  assert.ok(bufferBody instanceof Blob);
+  assert.deepEqual([...new Uint8Array(await bufferBody.arrayBuffer())], [...rawBuffer]);
+
+  const rawBytes = new Uint8Array([3, 4, 5, 250]);
+  const byteBody = openAiProxyUpstreamBody("PATCH", rawBytes);
+  assert.ok(byteBody instanceof Blob);
+  rawBytes[0] = 99;
+  assert.deepEqual([...new Uint8Array(await byteBody.arrayBuffer())], [3, 4, 5, 250]);
+
+  const rawArrayBuffer = new Uint8Array([7, 8, 9]).buffer;
+  const arrayBufferBody = openAiProxyUpstreamBody("PUT", rawArrayBuffer);
+  assert.ok(arrayBufferBody instanceof Blob);
+  assert.deepEqual([...new Uint8Array(await arrayBufferBody.arrayBuffer())], [7, 8, 9]);
+});
+
 test("extracts a top-level proxy model without retaining request bodies", () => {
   assert.equal(proxyRequestModel(Buffer.from(JSON.stringify({ model: "gpt-5.3-codex", input: "ping" }))), "gpt-5.3-codex");
   assert.equal(proxyRequestModel({ model: " o4-mini ", input: "ping" }), "o4-mini");
@@ -456,6 +481,9 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.parsesAllContentTypesAsBuffer, true);
   assert.equal(result.summary.forwardsOriginalBodyBytes, true);
   assert.equal(result.summary.bodylessMethods, "GET,HEAD");
+  assert.equal(result.summary.forwardsRawBinaryBodyAsBlob, true);
+  assert.equal(result.summary.dropsBodylessMethodBodies, true);
+  assert.equal(result.summary.forwardsTextAndJsonBodies, true);
   assert.equal(result.summary.bodyLimitBytes, 52_428_800);
   assert.equal(result.summary.upstreamTimeoutMs, 300_000);
   assert.equal(result.summary.streamIdleTimeoutMs, 300_000);

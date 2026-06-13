@@ -333,6 +333,12 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
     && upstreamHeaderSample.get("x-request-id") === "req-contract"
     && upstreamHeaderSample.get("host") === null
     && upstreamHeaderSample.get("content-length") === null;
+  const binaryBodyProbe = openAiProxyUpstreamBody("POST", Buffer.from([0, 1, 2, 255]));
+  const forwardsRawBinaryBodyAsBlob = binaryBodyProbe instanceof Blob && binaryBodyProbe.size === 4;
+  const dropsBodylessMethodBodies = openAiProxyUpstreamBody("GET", Buffer.from("ignored")) === undefined
+    && openAiProxyUpstreamBody("HEAD", "ignored") === undefined;
+  const forwardsTextAndJsonBodies = openAiProxyUpstreamBody("POST", "hello") === "hello"
+    && openAiProxyUpstreamBody("POST", { model: "gpt-5.3-codex" }) === JSON.stringify({ model: "gpt-5.3-codex" });
 
   let endpointProtocol: string | null = null;
   try {
@@ -456,6 +462,13 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy must strip local hop-by-hop/auth headers, reinject the sold Sub2 key, and preserve diagnostic forwarding headers"
     });
   }
+  if (!forwardsRawBinaryBodyAsBlob || !dropsBodylessMethodBodies || !forwardsTextAndJsonBodies) {
+    issues.push({
+      type: "upstream_body_forwarding_incomplete",
+      severity: "error",
+      message: "OpenAI proxy must forward mutation bodies as raw bytes where possible and omit request bodies for GET/HEAD"
+    });
+  }
 
   validatePositiveIntegerRuntimeOption(issues, "bodyLimitBytes", runtimeOptions.bodyLimitBytes, "invalid_body_limit", "OpenAI proxy body limit must be a positive integer");
   validatePositiveIntegerRuntimeOption(issues, "upstreamTimeoutMs", runtimeOptions.upstreamTimeoutMs, "invalid_upstream_timeout", "OpenAI proxy upstream timeout must be a positive integer");
@@ -559,6 +572,9 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       parsesAllContentTypesAsBuffer: openAiProxyForwardingContract.parsesAllContentTypesAsBuffer,
       forwardsOriginalBodyBytes: openAiProxyForwardingContract.forwardsOriginalBodyBytes,
       bodylessMethods: openAiProxyForwardingContract.bodylessMethods,
+      forwardsRawBinaryBodyAsBlob,
+      dropsBodylessMethodBodies,
+      forwardsTextAndJsonBodies,
       bodyLimitBytes: runtimeOptions.bodyLimitBytes ?? null,
       upstreamTimeoutMs: runtimeOptions.upstreamTimeoutMs ?? null,
       streamIdleTimeoutMs: runtimeOptions.streamIdleTimeoutMs ?? null,
@@ -693,6 +709,17 @@ export function proxyBodyByteLength(body: unknown) {
   return Buffer.byteLength(JSON.stringify(body));
 }
 
+export function openAiProxyUpstreamBody(method: string, body: unknown): BodyInit | undefined {
+  if (["GET", "HEAD"].includes(method.toUpperCase())) return undefined;
+  if (body === undefined || body === null) return undefined;
+  if (typeof body === "string") return body;
+  if (body instanceof Blob) return body;
+  if (body instanceof ArrayBuffer) return new Blob([body.slice(0)]);
+  if (Buffer.isBuffer(body)) return new Blob([arrayBufferFromBytes(body)]);
+  if (body instanceof Uint8Array) return new Blob([arrayBufferFromBytes(body)]);
+  return JSON.stringify(body);
+}
+
 export function proxyRequestModel(body: unknown, url?: string, contentType?: unknown) {
   const record = proxyBodyRecord(body);
   const model = record && typeof record.model === "string" ? normalizeProxyModel(record.model) : "";
@@ -776,6 +803,12 @@ function proxyUrlPath(url: string | undefined) {
 function normalizeProxyModel(value: string | undefined) {
   const model = value?.trim() ?? "";
   return model ? model.slice(0, 160) : null;
+}
+
+function arrayBufferFromBytes(bytes: Uint8Array) {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 export function evaluateProxyRateLimitWindow(options: {

@@ -17,6 +17,7 @@ import {
   openAiProxyRateLimitHeaders,
   openAiProxyRouteMethods,
   openAiProxyRoutePaths,
+  openAiProxyUpstreamBody,
   proxyBodyByteLength,
   proxyBodyText,
   proxyRequestModel,
@@ -634,7 +635,7 @@ async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: 
     ip: request.ip,
     requestId: request.id
   });
-  const body = bodyForUpstream(request);
+  const body = openAiProxyUpstreamBody(request.method, request.body);
   const controller = new AbortController();
   const abort = () => {
     if (!controller.signal.aborted) {
@@ -665,22 +666,6 @@ async function forwardToSub2(request: FastifyRequest, reply: FastifyReply, url: 
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function bodyForUpstream(request: FastifyRequest): BodyInit | undefined {
-  if (["GET", "HEAD"].includes(request.method)) return undefined;
-  const body = request.body;
-  if (body === undefined || body === null) return undefined;
-  if (typeof body === "string") return body;
-  if (Buffer.isBuffer(body)) return new Blob([arrayBufferFromBytes(body)]);
-  if (body instanceof Uint8Array) return new Blob([arrayBufferFromBytes(body)]);
-  return JSON.stringify(body);
-}
-
-function arrayBufferFromBytes(bytes: Uint8Array) {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer;
 }
 
 function copyResponseHeaders(upstream: Response, reply: FastifyReply) {

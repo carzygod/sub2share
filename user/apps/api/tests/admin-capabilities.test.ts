@@ -313,6 +313,9 @@ test("dashboard health previews prioritize blocking checks and retain critical o
         setsLocalRateLimitHeaders: true,
         normalizesProxyRequestLookupHeaders: true,
         requestBodyMode: "raw-buffer",
+        forwardsRawBinaryBodyAsBlob: true,
+        dropsBodylessMethodBodies: true,
+        forwardsTextAndJsonBodies: true,
         bodyLimitBytes: 52_428_800,
         upstreamTimeoutMs: 300_000,
         streamIdleTimeoutMs: 300_000,
@@ -453,6 +456,9 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[4].metrics?.setsLocalRateLimitHeaders, true);
   assert.equal(previews[4].metrics?.normalizesProxyRequestLookupHeaders, true);
   assert.equal(previews[4].metrics?.requestBodyMode, "raw-buffer");
+  assert.equal(previews[4].metrics?.forwardsRawBinaryBodyAsBlob, true);
+  assert.equal(previews[4].metrics?.dropsBodylessMethodBodies, true);
+  assert.equal(previews[4].metrics?.forwardsTextAndJsonBodies, true);
   assert.equal(previews[4].metrics?.bodyLimitBytes, 52_428_800);
   assert.equal(previews[4].metrics?.upstreamTimeoutMs, 300_000);
   assert.equal(previews[4].metrics?.streamIdleTimeoutMs, 300_000);
