@@ -2181,7 +2181,7 @@ function App() {
     const query = {
       ...defaultListQuery,
       q: filter?.supplierEmail ?? "",
-      action: resourceScope === "production" ? "production" : "",
+      action: "",
       resourceType,
       status: filter?.status ?? filter?.resourceStatus ?? ""
     };
@@ -5857,6 +5857,7 @@ function ResourcesView({ resources, selectedResource, createDefaults, query, met
         searchPlaceholder="supplier / resource id / sub2 account"
         statusOptions={resourceStatusOptions}
         resourceTypeOptions={resourceTypeOptions}
+        actionOptions={internalRecordActionOptions}
         onDraft={onDraft}
         onFilter={onFilter}
         onClear={onClear}

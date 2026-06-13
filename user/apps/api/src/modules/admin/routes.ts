@@ -3176,9 +3176,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const query = parseListQuery(request.query);
     const status = oneOf(resourceStatuses, query.status);
     const resourceType = oneOf(resourceTypes, query.resourceType);
-    const productionScope = query.action === "production";
     const where: Prisma.SupplierResourceWhereInput = {
-      ...(productionScope ? nonSmokeSupplierResourceWhere() : {}),
+      ...adminListSupplierResourceScopeWhere(query),
       ...(status ? { status } : {}),
       ...(resourceType ? { resourceType } : {}),
       ...(query.q ? {
@@ -8537,6 +8536,10 @@ export function adminListWalletScopeWhere(query: Pick<ListQuery, "action">): Pri
 
 export function adminListWalletTransactionScopeWhere(query: Pick<ListQuery, "action">): Prisma.WalletTransactionWhereInput {
   return includeInternalRecords(query) ? {} : nonSmokeWalletTransactionWhere();
+}
+
+export function adminListSupplierResourceScopeWhere(query: Pick<ListQuery, "action">): Prisma.SupplierResourceWhereInput {
+  return includeInternalRecords(query) ? {} : nonSmokeSupplierResourceWhere();
 }
 
 export function adminListUsageScopeWhere(query: Pick<ListQuery, "action">): Prisma.UsageRecordWhereInput {

@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { adminListOrderScopeWhere, adminListUsageScopeWhere, adminListUserScopeWhere, apiKeyListWhere, dashboardHealthCheckPreviews, dashboardInternalExcludedOverview, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
+const { adminListOrderScopeWhere, adminListSupplierResourceScopeWhere, adminListUsageScopeWhere, adminListUserScopeWhere, apiKeyListWhere, dashboardHealthCheckPreviews, dashboardInternalExcludedOverview, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
 const { openAiProxyCorePathSamples } = await import("../src/modules/openai-proxy/helpers.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
@@ -247,6 +247,9 @@ test("admin managed lists can explicitly include internal health-check records",
 
   assert.ok(Object.prototype.hasOwnProperty.call(adminListUsageScopeWhere({ action: "" }), "rental"));
   assert.deepEqual(adminListUsageScopeWhere({ action: "all" }), {});
+
+  assert.ok(Object.prototype.hasOwnProperty.call(adminListSupplierResourceScopeWhere({ action: "" }), "NOT"));
+  assert.deepEqual(adminListSupplierResourceScopeWhere({ action: "all" }), {});
 
   assert.ok(Object.prototype.hasOwnProperty.call(apiKeyListWhere({}), "user"));
   assert.equal(Object.prototype.hasOwnProperty.call(apiKeyListWhere({ includeInternal: true }), "user"), false);
