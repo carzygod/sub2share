@@ -68,6 +68,8 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("staleThresholdMinutes"));
   assert.ok(adminSystemHealthIssueRefFields.includes("freshMinutesRemaining"));
   assert.ok(adminSystemHealthIssueRefFields.includes("staleAt"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("accountErrorStatusCode"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("accountErrorCode"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("productName"));
@@ -80,6 +82,8 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthSampleSummaryFields.includes("apiKeyId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("usageId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("walletTransactionId"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("accountErrorStatusCode"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("accountErrorCode"));
 });
 
 test("system health product lookup falls back to product names", () => {
@@ -112,6 +116,10 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     credentialsStatus: "expired",
     schedulable: "false",
     accountMessage: "Authentication failed: token_invalidated",
+    accountErrorStatusCode: "401",
+    accountErrorType: "invalid_request_error",
+    accountErrorCode: "token_invalidated",
+    accountErrorMessage: "Your authentication token has been invalidated.",
     accountUpdatedAt: "2026-06-12T22:53:59.925286+08:00",
     tempUnschedulableReason: "token_invalidated",
     resourceId: "resource-1",
@@ -141,7 +149,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "维修建议")?.value, "Apply a fresh OpenAI refresh token, then rerun smoke.");
   assert.equal(items.find((item) => item.label === "目标账号")?.value, "#2 / codex-primary");
   assert.equal(items.find((item) => item.label === "账号状态")?.value, "inactive / expired");
-  assert.equal(items.find((item) => item.label === "账号诊断")?.value, "schedulable false / temp token_invalidated / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
+  assert.equal(items.find((item) => item.label === "账号诊断")?.value, "schedulable false / temp token_invalidated / HTTP 401 / token_invalidated / invalid_request_error / Your authentication token has been invalidated. / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
   assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
@@ -338,6 +346,10 @@ test("resource create defaults expose repair context for operators", () => {
     schedulable: "false",
     tempUnschedulableReason: "token_invalidated",
     accountMessage: "Authentication failed: token_invalidated",
+    accountErrorStatusCode: "401",
+    accountErrorType: "invalid_request_error",
+    accountErrorCode: "token_invalidated",
+    accountErrorMessage: "Your authentication token has been invalidated.",
     accountUpdatedAt: "2026-06-12T22:53:59.925286+08:00",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     model: "gpt-5.3-codex",
@@ -370,7 +382,7 @@ test("resource create defaults expose repair context for operators", () => {
   assert.equal(items.find((item) => item.label === "Resource")?.value, "codex / production");
   assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2 / codex-primary");
   assert.equal(items.find((item) => item.label === "Account status")?.value, "error / configured(3)");
-  assert.equal(items.find((item) => item.label === "Account diagnostics")?.value, "schedulable false / temp token_invalidated / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
+  assert.equal(items.find((item) => item.label === "Account diagnostics")?.value, "schedulable false / temp token_invalidated / HTTP 401 / token_invalidated / invalid_request_error / Your authentication token has been invalidated. / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
   assert.match(items.find((item) => item.label === "Smoke")?.value ?? "", /model gpt-5.3-codex/);
   assert.equal(items.find((item) => item.label === "Failure")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 1341 分钟前 / 阈值 1440 分钟 / 剩余 99 分钟过期 / staleAt 2026-06-12T04:00:00.000Z");

@@ -6,6 +6,7 @@ import {
 } from "../src/modules/admin/sub2-upstream-health.js";
 
 test("sub2 upstream samples expose failed OpenAI account repair candidates", () => {
+  const authMessage = 'Authentication failed (401): {"error":{"message":"Your authentication token has been invalidated.","type":"invalid_request_error","code":"token_invalidated"},"status":401}';
   const samples = sub2AccountHealthSamples([
     {
       id: 1,
@@ -34,7 +35,7 @@ test("sub2 upstream samples expose failed OpenAI account repair candidates", () 
       concurrency: 1,
       tempUnschedulableReason: "token_invalidated",
       updatedAt: "2026-06-12T14:53:59.925Z",
-      errorMessage: "token invalidated"
+      errorMessage: authMessage
     }
   ]);
 
@@ -45,7 +46,11 @@ test("sub2 upstream samples expose failed OpenAI account repair candidates", () 
   assert.equal(samples[0].schedulable, false);
   assert.equal(samples[0].tempUnschedulableReason, "token_invalidated");
   assert.equal(samples[0].updatedAt, "2026-06-12T14:53:59.925Z");
-  assert.equal(samples[0].message, "token invalidated");
+  assert.equal(samples[0].message, authMessage);
+  assert.equal(samples[0].accountErrorStatusCode, 401);
+  assert.equal(samples[0].accountErrorType, "invalid_request_error");
+  assert.equal(samples[0].accountErrorCode, "token_invalidated");
+  assert.equal(samples[0].accountErrorMessage, "Your authentication token has been invalidated.");
 });
 
 test("sub2 upstream samples prioritize configured auth failures for repair", () => {
@@ -125,6 +130,7 @@ test("sub2 upstream samples prioritize configured auth failures for repair", () 
   assert.equal(issues[0].sub2AccountId, 3);
   assert.equal(issues[0].sub2AccountName, "new-revoked");
   assert.equal(issues[0].tempUnschedulableReason, "token_invalidated");
+  assert.equal(issues[0].accountErrorCode, "token_invalidated");
   assert.equal(issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
 });
 
@@ -193,6 +199,7 @@ test("sub2 upstream issues point no-active-account repairs to the first account 
   assert.equal(issues[0].schedulable, false);
   assert.equal(issues[0].tempUnschedulableReason, "token_invalidated");
   assert.equal(issues[0].accountMessage, "token invalidated");
+  assert.equal(issues[0].accountErrorCode, "token_invalidated");
   assert.equal(issues[0].updatedAt, "2026-06-12T14:53:59.925Z");
   assert.equal(issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(issues[0].message, "oai #2 has 2 OpenAI account(s), but 0 active account(s).");

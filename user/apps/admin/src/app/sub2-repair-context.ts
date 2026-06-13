@@ -5,6 +5,10 @@ export interface Sub2RepairContext {
   credentialsStatus?: string;
   schedulable?: string;
   accountMessage?: string;
+  accountErrorStatusCode?: string;
+  accountErrorType?: string;
+  accountErrorCode?: string;
+  accountErrorMessage?: string;
   accountUpdatedAt?: string;
   tempUnschedulableReason?: string;
   checkId?: string;
@@ -55,6 +59,10 @@ export interface ResourceCreateDefaults {
   schedulable?: string;
   tempUnschedulableReason?: string;
   accountMessage?: string;
+  accountErrorStatusCode?: string;
+  accountErrorType?: string;
+  accountErrorCode?: string;
+  accountErrorMessage?: string;
   accountUpdatedAt?: string;
   model?: string;
   responsesOk?: string;
@@ -172,6 +180,7 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
   const accountDiagnostics = [
     context.schedulable ? `schedulable ${context.schedulable}` : undefined,
     context.tempUnschedulableReason ? `temp ${context.tempUnschedulableReason}` : undefined,
+    accountErrorSummary(context),
     context.accountUpdatedAt ? `updated ${context.accountUpdatedAt}` : undefined,
     context.accountMessage ? context.accountMessage.slice(0, 240) : undefined
   ].filter(Boolean).join(" / ");
@@ -333,6 +342,7 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
   const accountDiagnostics = [
     defaults.schedulable ? `schedulable ${defaults.schedulable}` : undefined,
     defaults.tempUnschedulableReason ? `temp ${defaults.tempUnschedulableReason}` : undefined,
+    accountErrorSummary(defaults),
     defaults.accountUpdatedAt ? `updated ${defaults.accountUpdatedAt}` : undefined,
     defaults.accountMessage ? defaults.accountMessage.slice(0, 240) : undefined
   ].filter(Boolean).join(" / ");
@@ -357,6 +367,20 @@ function healthFlag(label: string, value?: string) {
   if (value === "true") return `${label} 通过`;
   if (value === "false") return `${label} 失败`;
   return `${label} ${value}`;
+}
+
+function accountErrorSummary(source: {
+  accountErrorStatusCode?: string;
+  accountErrorType?: string;
+  accountErrorCode?: string;
+  accountErrorMessage?: string;
+}) {
+  return [
+    source.accountErrorStatusCode ? `HTTP ${source.accountErrorStatusCode}` : undefined,
+    source.accountErrorCode,
+    source.accountErrorType,
+    source.accountErrorMessage
+  ].filter(Boolean).join(" / ");
 }
 
 function repairCandidateText(value: unknown) {

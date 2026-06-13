@@ -1,4 +1,8 @@
-import { resourceCredentialRepairCandidateFields, type ResourceCredentialSub2AccountCandidate } from "./resource-credential-health.js";
+import {
+  resourceCredentialAccountErrorFields,
+  resourceCredentialRepairCandidateFields,
+  type ResourceCredentialSub2AccountCandidate
+} from "./resource-credential-health.js";
 
 export interface Sub2AccountHealthSource {
   id: number | string;
@@ -37,6 +41,10 @@ export interface Sub2AccountHealthSample extends ResourceCredentialSub2AccountCa
   overloadUntil: string | null;
   tempUnschedulableUntil: string | null;
   tempUnschedulableReason: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   updatedAt: string | null;
   message: string;
 }
@@ -57,6 +65,10 @@ export interface Sub2UpstreamIssue {
   schedulable?: boolean | null;
   tempUnschedulableReason?: string | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   updatedAt?: string | null;
   repairAction?: string;
   sub2AccountCount: number;
@@ -76,6 +88,9 @@ export function sub2AccountHealthSamples(accounts: Sub2AccountHealthSource[]) {
     .map((account): Sub2AccountHealthSample => {
       const tempUnschedulableReason = nullableText(account.tempUnschedulableReason);
       const errorMessage = nullableText(account.errorMessage);
+      const message = errorMessage
+        ?? tempUnschedulableReason
+        ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`;
       return {
         id: `sub2_account:${account.id}`,
         sub2AccountId: account.id,
@@ -94,9 +109,11 @@ export function sub2AccountHealthSamples(accounts: Sub2AccountHealthSource[]) {
         tempUnschedulableUntil: nullableText(account.tempUnschedulableUntil),
         tempUnschedulableReason,
         updatedAt: nullableText(account.updatedAt),
-        message: errorMessage
-          ?? tempUnschedulableReason
-          ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`
+        message,
+        ...resourceCredentialAccountErrorFields({
+          message,
+          tempUnschedulableReason
+        })
       };
     });
 }

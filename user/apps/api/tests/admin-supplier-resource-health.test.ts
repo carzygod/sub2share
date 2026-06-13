@@ -94,6 +94,10 @@ test("prefills missing Codex resource issues from Sub2 repair candidates", () =>
     accountStatus: "error",
     credentialsStatus: "configured(3)",
     schedulable: false,
+    accountErrorStatusCode: null,
+    accountErrorType: null,
+    accountErrorCode: null,
+    accountErrorMessage: null,
     repairAction: "apply_openai_refresh_token_to_sub2_account"
   });
 });

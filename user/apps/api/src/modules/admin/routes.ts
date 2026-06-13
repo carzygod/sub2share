@@ -305,6 +305,10 @@ interface DashboardUpstreamBlockerPreview {
   schedulable?: boolean | null;
   tempUnschedulableReason?: string | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   accountUpdatedAt?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
@@ -364,6 +368,10 @@ interface DashboardDeliveryBlockerPreview {
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   proxyRequestFilterStatus?: string | null;
   proxyRequestFilterLookup?: string | null;
   check: DashboardHealthCheckPreview;
@@ -399,6 +407,10 @@ const dashboardHealthDetailPreviewFields = [
   "schedulable",
   "tempUnschedulableReason",
   "accountMessage",
+  "accountErrorStatusCode",
+  "accountErrorType",
+  "accountErrorCode",
+  "accountErrorMessage",
   "updatedAt",
   "resourceId",
   "resourceList",
@@ -6224,6 +6236,10 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     schedulable: dashboardDetailBoolean(detail, "schedulable"),
     tempUnschedulableReason: textJsonValue(detail.tempUnschedulableReason) ?? null,
     accountMessage: textJsonValue(detail.accountMessage) ?? null,
+    accountErrorStatusCode: dashboardDetailNumber(detail, "accountErrorStatusCode"),
+    accountErrorType: textJsonValue(detail.accountErrorType) ?? null,
+    accountErrorCode: textJsonValue(detail.accountErrorCode) ?? null,
+    accountErrorMessage: textJsonValue(detail.accountErrorMessage) ?? null,
     accountUpdatedAt: textJsonValue(detail.updatedAt) ?? null,
     resourceId: dashboardHealthScalarValue(detail.resourceId) ?? null,
     resourceList: dashboardHealthScalarValue(detail.resourceList) ?? null,
@@ -6307,6 +6323,10 @@ function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBloc
     credentialsStatus: textJsonValue(detail.credentialsStatus) ?? null,
     schedulable: dashboardDetailBoolean(detail, "schedulable"),
     accountMessage: textJsonValue(detail.accountMessage) ?? null,
+    accountErrorStatusCode: dashboardDetailNumber(detail, "accountErrorStatusCode"),
+    accountErrorType: textJsonValue(detail.accountErrorType) ?? null,
+    accountErrorCode: textJsonValue(detail.accountErrorCode) ?? null,
+    accountErrorMessage: textJsonValue(detail.accountErrorMessage) ?? null,
     proxyRequestFilterStatus: proxyRequestFilter.status,
     proxyRequestFilterLookup: proxyRequestFilter.lookup,
     check

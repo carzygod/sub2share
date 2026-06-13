@@ -484,6 +484,10 @@ test("dashboard latest system health preview exposes actionable upstream blocker
             schedulable: false,
             tempUnschedulableReason: "",
             accountMessage: 'Authentication failed (401): {"error":{"message":"Your authentication token has been invalidated.","code":"token_invalidated"},"status":401}',
+            accountErrorStatusCode: 401,
+            accountErrorType: "invalid_request_error",
+            accountErrorCode: "token_invalidated",
+            accountErrorMessage: "Your authentication token has been invalidated.",
             updatedAt: "2026-06-12T22:53:59.925286+08:00",
             resourceList: true,
             resourceType: "codex",
@@ -526,6 +530,10 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.schedulable, false);
   assert.equal(preview.upstreamBlocker?.tempUnschedulableReason, null);
   assert.equal(preview.upstreamBlocker?.accountMessage, 'Authentication failed (401): {"error":{"message":"Your authentication token has been invalidated.","code":"token_invalidated"},"status":401}');
+  assert.equal(preview.upstreamBlocker?.accountErrorStatusCode, 401);
+  assert.equal(preview.upstreamBlocker?.accountErrorType, "invalid_request_error");
+  assert.equal(preview.upstreamBlocker?.accountErrorCode, "token_invalidated");
+  assert.equal(preview.upstreamBlocker?.accountErrorMessage, "Your authentication token has been invalidated.");
   assert.equal(preview.upstreamBlocker?.accountUpdatedAt, "2026-06-12T22:53:59.925286+08:00");
   assert.equal(preview.upstreamBlocker?.resourceList, true);
   assert.equal(preview.upstreamBlocker?.resourceType, "codex");
@@ -551,6 +559,7 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.activeMissingSub2Account, 1);
   assert.equal(preview.upstreamBlocker?.credentialReadiness?.metrics?.inactiveOpenAiRefreshTokens, 1);
   assert.equal(preview.upstreamBlocker?.check.primaryIssue?.actionHint, "Create or update a Codex shared resource with an active OpenAI refresh token and a Sub2 account id.");
+  assert.equal(preview.upstreamBlocker?.check.primaryIssue?.accountErrorCode, "token_invalidated");
 });
 
 test("dashboard latest system health preview exposes actionable delivery blocker", () => {

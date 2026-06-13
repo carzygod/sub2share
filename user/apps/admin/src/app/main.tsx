@@ -196,6 +196,10 @@ interface DashboardUpstreamBlocker {
   schedulable?: boolean | null;
   tempUnschedulableReason?: string | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   accountUpdatedAt?: string | null;
   resourceId?: string | number | boolean | null;
   resourceList?: string | number | boolean | null;
@@ -255,6 +259,10 @@ interface DashboardDeliveryBlocker {
   credentialsStatus?: string | null;
   schedulable?: boolean | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   proxyRequestFilterStatus?: string | null;
   proxyRequestFilterLookup?: string | null;
   check: DashboardHealthCheckPreview;
@@ -301,6 +309,10 @@ interface DashboardAccountDiagnosisSource {
   schedulable?: boolean | null;
   tempUnschedulableReason?: string | null;
   accountMessage?: string | null;
+  accountErrorStatusCode?: number | null;
+  accountErrorType?: string | null;
+  accountErrorCode?: string | null;
+  accountErrorMessage?: string | null;
   accountUpdatedAt?: string | null;
 }
 
@@ -459,6 +471,10 @@ interface SystemHealthIssueRow {
   credentialsStatus?: string;
   schedulable?: string;
   accountMessage?: string;
+  accountErrorStatusCode?: string;
+  accountErrorType?: string;
+  accountErrorCode?: string;
+  accountErrorMessage?: string;
   accountUpdatedAt?: string;
   tempUnschedulableReason?: string;
   sub2Status?: boolean;
@@ -515,6 +531,10 @@ interface SystemHealthSampleRow {
   credentialsStatus?: string;
   schedulable?: string;
   accountMessage?: string;
+  accountErrorStatusCode?: string;
+  accountErrorType?: string;
+  accountErrorCode?: string;
+  accountErrorMessage?: string;
   accountUpdatedAt?: string;
   tempUnschedulableReason?: string;
   sub2Status?: boolean;
@@ -2123,6 +2143,10 @@ function App() {
       schedulable: filter?.schedulable,
       tempUnschedulableReason: filter?.tempUnschedulableReason,
       accountMessage: filter?.accountMessage,
+      accountErrorStatusCode: filter?.accountErrorStatusCode,
+      accountErrorType: filter?.accountErrorType,
+      accountErrorCode: filter?.accountErrorCode,
+      accountErrorMessage: filter?.accountErrorMessage,
       accountUpdatedAt: filter?.accountUpdatedAt,
       repairAction: filter?.repairAction,
       checkId: filter?.checkId,
@@ -3524,7 +3548,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthIssueSub2RepairContext(issue))}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, sub2AccountName: issue.sub2AccountName, accountStatus: issue.accountStatus, credentialsStatus: issue.credentialsStatus, schedulable: issue.schedulable, tempUnschedulableReason: issue.tempUnschedulableReason, accountMessage: issue.accountMessage, accountUpdatedAt: issue.accountUpdatedAt, repairAction: issue.repairAction, productId: issue.productId, productName: issue.productName, priceId: issue.priceId, model: issue.model, responsesOk: issue.responsesOk, localProxyOk: issue.localProxyOk, smokeTestSkippedReason: issue.smokeTestSkippedReason, proxyRequestPath: issue.proxyRequestPath, proxyRequestStatusCode: issue.proxyRequestStatusCode, proxyRequestErrorCode: issue.proxyRequestErrorCode, ageMinutes: issue.ageMinutes, stale: issue.stale, staleThresholdMinutes: issue.staleThresholdMinutes, freshMinutesRemaining: issue.freshMinutesRemaining, staleAt: issue.staleAt })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, sub2AccountName: issue.sub2AccountName, accountStatus: issue.accountStatus, credentialsStatus: issue.credentialsStatus, schedulable: issue.schedulable, tempUnschedulableReason: issue.tempUnschedulableReason, accountMessage: issue.accountMessage, accountErrorStatusCode: issue.accountErrorStatusCode, accountErrorType: issue.accountErrorType, accountErrorCode: issue.accountErrorCode, accountErrorMessage: issue.accountErrorMessage, accountUpdatedAt: issue.accountUpdatedAt, repairAction: issue.repairAction, productId: issue.productId, productName: issue.productName, priceId: issue.priceId, model: issue.model, responsesOk: issue.responsesOk, localProxyOk: issue.localProxyOk, smokeTestSkippedReason: issue.smokeTestSkippedReason, proxyRequestPath: issue.proxyRequestPath, proxyRequestStatusCode: issue.proxyRequestStatusCode, proxyRequestErrorCode: issue.proxyRequestErrorCode, ageMinutes: issue.ageMinutes, stale: issue.stale, staleThresholdMinutes: issue.staleThresholdMinutes, freshMinutesRemaining: issue.freshMinutesRemaining, staleAt: issue.staleAt })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -3562,7 +3586,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 <div className="row-actions">
                   {sample.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(sample.proxyRequestLookup!)}>打开反代请求</button>}
-                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, sub2AccountName: sample.sub2AccountName, accountStatus: sample.accountStatus, credentialsStatus: sample.credentialsStatus, schedulable: sample.schedulable, tempUnschedulableReason: sample.tempUnschedulableReason, accountMessage: sample.accountMessage, accountUpdatedAt: sample.accountUpdatedAt, repairAction: sample.repairAction, productId: sample.productId, productName: sample.productName, priceId: sample.priceId, model: sample.model, responsesOk: sample.responsesOk, localProxyOk: sample.localProxyOk, smokeTestSkippedReason: sample.smokeTestSkippedReason, proxyRequestPath: sample.proxyRequestPath, proxyRequestStatusCode: sample.proxyRequestStatusCode, proxyRequestErrorCode: sample.proxyRequestErrorCode, ageMinutes: sample.ageMinutes, stale: sample.stale, staleThresholdMinutes: sample.staleThresholdMinutes, freshMinutesRemaining: sample.freshMinutesRemaining, staleAt: sample.staleAt })}>打开共享资源</button>}
+                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, sub2AccountName: sample.sub2AccountName, accountStatus: sample.accountStatus, credentialsStatus: sample.credentialsStatus, schedulable: sample.schedulable, tempUnschedulableReason: sample.tempUnschedulableReason, accountMessage: sample.accountMessage, accountErrorStatusCode: sample.accountErrorStatusCode, accountErrorType: sample.accountErrorType, accountErrorCode: sample.accountErrorCode, accountErrorMessage: sample.accountErrorMessage, accountUpdatedAt: sample.accountUpdatedAt, repairAction: sample.repairAction, productId: sample.productId, productName: sample.productName, priceId: sample.priceId, model: sample.model, responsesOk: sample.responsesOk, localProxyOk: sample.localProxyOk, smokeTestSkippedReason: sample.smokeTestSkippedReason, proxyRequestPath: sample.proxyRequestPath, proxyRequestStatusCode: sample.proxyRequestStatusCode, proxyRequestErrorCode: sample.proxyRequestErrorCode, ageMinutes: sample.ageMinutes, stale: sample.stale, staleThresholdMinutes: sample.staleThresholdMinutes, freshMinutesRemaining: sample.freshMinutesRemaining, staleAt: sample.staleAt })}>打开共享资源</button>}
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
                   {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
                   {sample.orderId && <button className="secondary mini" onClick={() => onOpenOrder(sample.orderId!)}>打开订单</button>}
@@ -5817,6 +5841,10 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     credentialsStatus: issue.credentialsStatus,
     schedulable: issue.schedulable,
     accountMessage: issue.accountMessage,
+    accountErrorStatusCode: issue.accountErrorStatusCode,
+    accountErrorType: issue.accountErrorType,
+    accountErrorCode: issue.accountErrorCode,
+    accountErrorMessage: issue.accountErrorMessage,
     accountUpdatedAt: issue.accountUpdatedAt,
     tempUnschedulableReason: issue.tempUnschedulableReason,
     checkId: issue.checkId,
@@ -5855,6 +5883,10 @@ function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub
     credentialsStatus: sample.credentialsStatus,
     schedulable: sample.schedulable,
     accountMessage: sample.accountMessage,
+    accountErrorStatusCode: sample.accountErrorStatusCode,
+    accountErrorType: sample.accountErrorType,
+    accountErrorCode: sample.accountErrorCode,
+    accountErrorMessage: sample.accountErrorMessage,
     accountUpdatedAt: sample.accountUpdatedAt,
     tempUnschedulableReason: sample.tempUnschedulableReason,
     checkId: sample.checkId,
@@ -6674,6 +6706,7 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
 }
 
 function dashboardUpstreamAccountDiagnosisText(blocker: DashboardAccountDiagnosisSource) {
+  const accountError = dashboardAccountErrorText(blocker);
   if (
     blocker.sub2AccountId === undefined
     && !blocker.sub2AccountName
@@ -6682,6 +6715,7 @@ function dashboardUpstreamAccountDiagnosisText(blocker: DashboardAccountDiagnosi
     && typeof blocker.schedulable !== "boolean"
     && !blocker.tempUnschedulableReason
     && !blocker.accountMessage
+    && !accountError
     && !blocker.accountUpdatedAt
   ) return "";
 
@@ -6693,11 +6727,21 @@ function dashboardUpstreamAccountDiagnosisText(blocker: DashboardAccountDiagnosi
     blocker.credentialsStatus ? `凭据 ${blocker.credentialsStatus}` : "",
     typeof blocker.schedulable === "boolean" ? `调度 ${blocker.schedulable ? "可用" : "不可用"}` : "",
     blocker.tempUnschedulableReason ? `原因 ${blocker.tempUnschedulableReason}` : "",
+    accountError ? `错误 ${accountError}` : "",
     blocker.accountMessage ? `消息 ${dashboardUpstreamAccountMessageText(blocker.accountMessage)}` : "",
     blocker.accountUpdatedAt ? `更新 ${blocker.accountUpdatedAt}` : ""
   ].filter(Boolean);
 
   return parts.length ? `账号诊断 ${parts.join(" / ")}` : "";
+}
+
+function dashboardAccountErrorText(source: DashboardAccountDiagnosisSource) {
+  return [
+    typeof source.accountErrorStatusCode === "number" ? `HTTP ${source.accountErrorStatusCode}` : "",
+    source.accountErrorCode ?? "",
+    source.accountErrorType ?? "",
+    source.accountErrorMessage ?? ""
+  ].filter(Boolean).join(" / ");
 }
 
 function dashboardUpstreamAccountMessageText(message: string) {
@@ -6796,6 +6840,10 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     credentialsStatus: textValue(record?.credentialsStatus),
     schedulable: textValue(record?.schedulable),
     accountMessage: textValue(record?.accountMessage) ?? textValue(record?.message),
+    accountErrorStatusCode: textValue(record?.accountErrorStatusCode),
+    accountErrorType: textValue(record?.accountErrorType),
+    accountErrorCode: textValue(record?.accountErrorCode),
+    accountErrorMessage: textValue(record?.accountErrorMessage),
     accountUpdatedAt: textValue(record?.updatedAt),
     tempUnschedulableReason: textValue(record?.tempUnschedulableReason),
     checkId: check.id,
@@ -6855,6 +6903,10 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     schedulable: textValue(record?.schedulable),
     tempUnschedulableReason: textValue(record?.tempUnschedulableReason),
     accountMessage: textValue(record?.accountMessage) ?? textValue(record?.message),
+    accountErrorStatusCode: textValue(record?.accountErrorStatusCode),
+    accountErrorType: textValue(record?.accountErrorType),
+    accountErrorCode: textValue(record?.accountErrorCode),
+    accountErrorMessage: textValue(record?.accountErrorMessage),
     accountUpdatedAt: textValue(record?.updatedAt),
     repairAction: textValue(record?.repairAction),
     checkId,
@@ -6919,6 +6971,10 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "schedulable",
     "tempUnschedulableReason",
     "accountMessage",
+    "accountErrorStatusCode",
+    "accountErrorType",
+    "accountErrorCode",
+    "accountErrorMessage",
     "updatedAt",
     "resourceList",
     "resourceType",
@@ -7037,6 +7093,10 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       credentialsStatus: textValue(record.credentialsStatus),
       schedulable: textValue(record.schedulable),
       accountMessage: textValue(record.accountMessage) ?? textValue(record.message),
+      accountErrorStatusCode: textValue(record.accountErrorStatusCode),
+      accountErrorType: textValue(record.accountErrorType),
+      accountErrorCode: textValue(record.accountErrorCode),
+      accountErrorMessage: textValue(record.accountErrorMessage),
       accountUpdatedAt: textValue(record.updatedAt),
       tempUnschedulableReason: textValue(record.tempUnschedulableReason),
       sub2Status: check.id === "sub2" || sub2StatusFlag || Boolean(textValue(record.sub2BlockingReason) ?? textValue(record.sub2GroupId)),
@@ -7103,6 +7163,10 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       credentialsStatus: textValue(record.credentialsStatus),
       schedulable: textValue(record.schedulable),
       accountMessage: textValue(record.accountMessage) ?? textValue(record.message),
+      accountErrorStatusCode: textValue(record.accountErrorStatusCode),
+      accountErrorType: textValue(record.accountErrorType),
+      accountErrorCode: textValue(record.accountErrorCode),
+      accountErrorMessage: textValue(record.accountErrorMessage),
       accountUpdatedAt: textValue(record.updatedAt),
       tempUnschedulableReason: textValue(record.tempUnschedulableReason),
       sub2Status: sub2StatusFlag,
