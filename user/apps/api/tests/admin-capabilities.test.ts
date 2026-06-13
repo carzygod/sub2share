@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
 const { openAiProxyCorePathSamples } = await import("../src/modules/openai-proxy/helpers.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
@@ -966,6 +966,44 @@ test("dashboard health previews keep product catalog warnings in the critical sl
   assert.equal(previews.length, 8);
   assert.equal(previews[0].id, "productCatalog");
   assert.ok(previews.some((item) => item.id === "productCatalog"));
+});
+
+test("empty product catalog warnings remain actionable on the dashboard", () => {
+  const issue = emptyProductCatalogIssue();
+
+  assert.equal(issue.type, "empty_active_product_catalog");
+  assert.equal(issue.productId, null);
+  assert.equal(issue.productName, null);
+  assert.equal(issue.priceId, null);
+  assert.equal(issue.actionHint, "Create or activate at least one purchasable product before treating the storefront as sellable.");
+
+  const checks: unknown[] = Array.from({ length: 8 }, (_, index) => ({
+    id: `customWarning${index}`,
+    label: `Custom warning ${index}`,
+    status: "warning",
+    summary: "Non-priority warning"
+  }));
+  checks.push({
+    id: "productCatalog",
+    label: "商品目录",
+    status: "warning",
+    summary: "1 个商品目录可购买性问题",
+    metrics: {
+      matched: 0,
+      scanned: 0,
+      emptyActiveProductCatalog: 1
+    },
+    detail: { issues: [{ id: "empty_active_product_catalog:catalog:catalog", severity: "warning", ...issue }] }
+  });
+
+  const previews = dashboardHealthCheckPreviews(checks);
+
+  assert.equal(previews.length, 8);
+  assert.equal(previews[0].id, "productCatalog");
+  assert.equal(previews[0].primaryIssue?.type, "empty_active_product_catalog");
+  assert.equal(previews[0].primaryIssue?.productId, null);
+  assert.equal(previews[0].primaryIssue?.productName, null);
+  assert.equal(previews[0].primaryIssue?.actionHint, "Create or activate at least one purchasable product before treating the storefront as sellable.");
 });
 
 test("sub2 repair context enrichment fills product catalog repair candidates", () => {

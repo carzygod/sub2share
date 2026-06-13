@@ -694,9 +694,9 @@ interface ProductCatalogIssue {
   id: string;
   type: string;
   severity: "warning";
-  productId: string;
-  productName: string;
-  priceId?: string;
+  productId?: string | null;
+  productName?: string | null;
+  priceId?: string | null;
   resourceType?: string;
   resourceList?: boolean;
   resourceScope?: "production";
@@ -7348,6 +7348,7 @@ async function inspectProductCatalogReadiness() {
     productsWithoutPurchasablePrices: 0,
     activePricesWithoutFixedPrice: 0,
     readyCodexDeliveryResources,
+    emptyActiveProductCatalog: 0,
     codexProductsWithoutReadyDeliveryResources: 0,
     codexProductsBlockedByProxySmoke: 0
   };
@@ -7357,11 +7358,16 @@ async function inspectProductCatalogReadiness() {
     warnings += 1;
     if (issues.length >= systemHealthProductCatalogIssueLimit) return;
     issues.push({
-      id: `${issue.type}:${issue.productId}:${issue.priceId ?? "product"}`,
+      id: `${issue.type}:${issue.productId ?? "catalog"}:${issue.priceId ?? "catalog"}`,
       severity: "warning",
       ...issue
     });
   };
+
+  if (matched === 0) {
+    counters.emptyActiveProductCatalog = 1;
+    addIssue(emptyProductCatalogIssue());
+  }
 
   for (const product of products) {
     if (product.prices.length === 0) {
@@ -7430,6 +7436,17 @@ async function inspectProductCatalogReadiness() {
       ...counters
     },
     issues
+  };
+}
+
+export function emptyProductCatalogIssue(): Omit<ProductCatalogIssue, "id" | "severity"> {
+  return {
+    type: "empty_active_product_catalog",
+    productId: null,
+    productName: null,
+    priceId: null,
+    actionHint: "Create or activate at least one purchasable product before treating the storefront as sellable.",
+    message: "No active public product exists, so buyers cannot purchase access from the catalog."
   };
 }
 
