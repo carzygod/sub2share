@@ -506,3 +506,21 @@
 - Admin 首页“系统状态”表新增“当前发布”行，管理员可以直接确认当前运行版本，再决定是否继续查看完整巡检。
 
 该能力不改变部署脚本或健康判断，只减少“线上到底跑的是哪个 commit”的排障跳转。
+
+## 2026-06-13 修复：当前发布摘要优先使用实时 deployment runtime
+
+部署后线上复查发现，Dashboard 的 `latestSystemHealth` 仍会保留快照的创建时间与总体健康状态。如果快照来自上一轮发布，固定字段 `deploymentRuntime` 也可能跟着显示旧 commit。为了让首页“当前发布”真正回答“当前 API 进程跑的是哪个 release”，后端已调整为：
+
+- Dashboard 路由每次请求时实时执行 `deploymentRuntimeHealthCheck()`。
+- `dashboardLatestSystemHealthPreview(snapshot, now, liveDeploymentRuntimeCheck)` 优先用实时检查构造 `deploymentRuntime`。
+- 其他字段仍来自最新健康快照，例如 `status`、`summary`、`upstreamBlocker`、`deliveryBlocker`、`criticalChecks` 和快照 stale 信息。
+- `deploymentRuntime.metrics` 增加 `cwd`、`releaseRootName`、`markerPath`，首页摘要可以稳定展示 `.release-marker` 路径。
+
+线上验收结果：
+
+- release marker：`commit=5419ec56b9199e8b3956ee4ed2d5e15e3edbd1a6`，`deployed_at=20260613T015001Z`。
+- Dashboard：`latestSystemHealth.deploymentRuntime.commit=5419ec56b9199e8b3956ee4ed2d5e15e3edbd1a6`。
+- Dashboard：`latestSystemHealth.deploymentRuntime.markerPath=/opt/zhisuan-yizhan/user/.release-marker`。
+- Dashboard：`runningFromReplacedRelease=false`，`runningFromStagingRelease=false`。
+
+这样 Dashboard 首页可以同时表达两件事：最新健康快照仍显示上游阻断，但当前服务进程已经运行在最新发布版本。

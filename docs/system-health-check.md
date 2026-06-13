@@ -384,3 +384,21 @@ Dashboard 的 `latestSystemHealth.upstreamBlocker` 会把这些字段映射为 `
 - `runningFromStagingRelease`
 
 Admin 首页“系统状态”表新增“当前发布”行，用于把当前 Git commit 与部署时间直接展示给管理员。完整诊断仍保留在 `deploymentRuntime` 系统健康检查详情中。
+
+## 2026-06-13 Update: Live Dashboard Deployment Runtime Override
+
+Dashboard 的 `latestSystemHealth` 仍表示最新系统健康快照，但其中的 `deploymentRuntime` 现在由实时检查覆盖。这样部署后即使数据库里的最新健康快照还来自上一轮发布，首页“当前发布”也会显示当前 API 进程读取到的 `.release-marker`。
+
+实现约束：
+
+- `dashboardLatestSystemHealthPreview()` 保持兼容旧签名，并新增第三个可选参数 `liveDeploymentRuntimeCheck`。
+- 传入实时检查时，`deploymentRuntime` 优先取实时值；否则回退到快照 checks。
+- `deploymentRuntime.metrics` 现在包含 `cwd`、`releaseRootName`、`markerPath`、`commit`、`deployedAt`、`releaseRoot`、`markerPresent`、旧 release 标志和 staging release 标志。
+- Dashboard 其余健康摘要仍来自快照，不会因为读取发布态而额外执行完整系统健康巡检。
+
+2026-06-13 线上验收：
+
+- `GET /api/admin/dashboard`：`deploymentRuntime.commit=5419ec56b9199e8b3956ee4ed2d5e15e3edbd1a6`
+- `GET /api/admin/dashboard`：`deploymentRuntime.markerPath=/opt/zhisuan-yizhan/user/.release-marker`
+- `GET /api/admin/system-health`：`deploymentRuntime.status=ok`
+- 系统总体仍为 `status=error`，错误检查为 `resourceCredentials`、`sub2`、`localProxySmoke`；这说明当前发布态正常，但 OpenAI/Sub2 上游凭据仍阻断 `/v1/responses`。
