@@ -288,6 +288,21 @@ interface DashboardAdminEntryCoveragePreview {
   frontend?: DashboardAdminEntryCoverageSide;
 }
 
+interface DashboardDeploymentRuntimePreview {
+  ok: boolean;
+  status: SystemHealthStatus;
+  summary: string;
+  issueCount: number;
+  metrics: DashboardHealthMetricPreview;
+  commit?: string | null;
+  deployedAt?: string | null;
+  releaseRoot?: string | null;
+  markerPath?: string | null;
+  runningFromReplacedRelease?: boolean | null;
+  runningFromStagingRelease?: boolean | null;
+  check: DashboardHealthCheckPreview;
+}
+
 interface DashboardUpstreamBlockerPreview {
   blocked: boolean;
   status: SystemHealthStatus;
@@ -550,6 +565,16 @@ const dashboardHealthMetricPreviewFields = [
   "rateLimitErrorType",
   "apiErrorType",
   "localErrorPayloadIncludesParam",
+  "nodeEnv",
+  "cwd",
+  "releaseRoot",
+  "releaseRootName",
+  "markerPath",
+  "markerPresent",
+  "commit",
+  "deployedAt",
+  "runningFromReplacedRelease",
+  "runningFromStagingRelease",
   "encryptionSecretConfigured",
   "encryptionVersion",
   "totalCredentials",
@@ -6146,6 +6171,7 @@ export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSyst
     staleThresholdMinutes,
     upstreamBlocker: dashboardUpstreamBlockerPreview(snapshot.checks),
     deliveryBlocker: dashboardDeliveryBlockerPreview(snapshot.checks),
+    deploymentRuntime: dashboardDeploymentRuntimePreview(snapshot.checks),
     adminEntryCoverage: dashboardAdminEntryCoveragePreview(snapshot.checks),
     criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
   };
@@ -6184,6 +6210,31 @@ function dashboardAdminEntryCoveragePreview(checks: unknown): DashboardAdminEntr
     summary,
     ...(api ? { api } : {}),
     ...(frontend ? { frontend } : {})
+  };
+}
+
+function dashboardDeploymentRuntimePreview(checks: unknown): DashboardDeploymentRuntimePreview | null {
+  if (!Array.isArray(checks)) return null;
+  const previews = checks
+    .map(dashboardHealthCheckPreview)
+    .filter((item): item is DashboardHealthCheckPreview => Boolean(item));
+  const check = previews.find((item) => item.id === "deploymentRuntime");
+  if (!check) return null;
+
+  const metrics = check.metrics ?? {};
+  return {
+    ok: check.status === "ok",
+    status: check.status,
+    summary: check.summary,
+    issueCount: check.issueCount,
+    metrics,
+    commit: textJsonValue(metrics.commit) ?? null,
+    deployedAt: textJsonValue(metrics.deployedAt) ?? null,
+    releaseRoot: textJsonValue(metrics.releaseRoot) ?? null,
+    markerPath: textJsonValue(metrics.markerPath) ?? null,
+    runningFromReplacedRelease: dashboardDetailBoolean(metrics, "runningFromReplacedRelease"),
+    runningFromStagingRelease: dashboardDetailBoolean(metrics, "runningFromStagingRelease"),
+    check
   };
 }
 

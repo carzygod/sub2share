@@ -46,3 +46,18 @@
 - `pnpm --filter @zyz/api run build`
 - 线上 `GET /api/admin/system-health` 中 `deploymentRuntime.status=ok`。
 - 线上 `deploymentRuntime.metrics.commit` 与 `/opt/zhisuan-yizhan/user/.release-marker` 一致。
+
+## 2026-06-13 扩展：首页固定发布态摘要
+
+Dashboard 最新系统健康摘要现在会固定返回 `deploymentRuntime`，不再依赖 `criticalChecks` 前 8 个槽位是否刚好包含部署运行态。该摘要包含：
+
+- `status` / `ok`
+- `commit`
+- `deployedAt`
+- `releaseRoot`
+- `markerPath`
+- `runningFromReplacedRelease`
+- `runningFromStagingRelease`
+- 原始 `deploymentRuntime` 检查预览 `check`
+
+Admin 首页“系统状态”表新增“当前发布”行，展示当前 commit、部署时间、release root，以及是否运行在旧 release 或 staging release。这样管理员在看到上游 `/v1/responses` 阻断时，也能同时确认当前页面和 API 是否已经运行在预期发布版本。

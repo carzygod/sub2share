@@ -179,6 +179,21 @@ interface DashboardAdminEntryCoverage {
   frontend?: DashboardAdminEntryCoverageSide;
 }
 
+interface DashboardDeploymentRuntime {
+  ok: boolean;
+  status: "ok" | "warning" | "error";
+  summary: string;
+  issueCount: number;
+  metrics?: Record<string, string | number | boolean | null>;
+  commit?: string | null;
+  deployedAt?: string | null;
+  releaseRoot?: string | null;
+  markerPath?: string | null;
+  runningFromReplacedRelease?: boolean | null;
+  runningFromStagingRelease?: boolean | null;
+  check: DashboardHealthCheckPreview;
+}
+
 interface DashboardUpstreamBlocker {
   blocked: boolean;
   status: "ok" | "warning" | "error";
@@ -353,6 +368,7 @@ interface Dashboard {
     staleThresholdMinutes?: number;
     upstreamBlocker?: DashboardUpstreamBlocker | null;
     deliveryBlocker?: DashboardDeliveryBlocker | null;
+    deploymentRuntime?: DashboardDeploymentRuntime | null;
     adminEntryCoverage?: DashboardAdminEntryCoverage | null;
   } | null;
 }
@@ -3144,6 +3160,7 @@ function DashboardView({
   const deliveryAccountDiagnosis = deliveryBlocker ? dashboardUpstreamAccountDiagnosisText(deliveryBlocker) : "";
   const deliveryResourceRepairTarget = deliveryBlocker ? dashboardHealthCanOpenResourceRepair(deliveryBlocker.check) : false;
   const deliveryProxyRequestTarget = deliveryBlocker ? proxyRequestFilterTarget(deliveryBlocker) : null;
+  const deploymentRuntime = latestHealth?.deploymentRuntime ?? null;
   const cards: Array<{ label: string; value: string | number; icon: ReactElement; onClick: () => void }> = [
     { label: "用户数", value: dashboard?.users ?? 0, icon: <Users size={20} />, onClick: () => onOpenView("users") },
     { label: "有效租赁", value: dashboard?.activeRentals ?? 0, icon: <KeyRound size={20} />, onClick: onOpenActiveRentals },
@@ -3203,6 +3220,12 @@ function DashboardView({
                 <tbody>
                   <tr><td>最近巡检</td><td>{dateTime(latestHealth.createdAt)} / {dashboardSnapshotAgeText(latestHealth.ageMinutes)}</td></tr>
                   <tr><td>快照状态</td><td>{dashboardSnapshotFreshnessText(latestHealth)}</td></tr>
+                  {deploymentRuntime && (
+                    <tr>
+                      <td>当前发布</td>
+                      <td>{dashboardDeploymentRuntimeText(deploymentRuntime)}</td>
+                    </tr>
+                  )}
                   <tr><td>来源</td><td>{latestHealth.source}</td></tr>
                   <tr><td>摘要</td><td>{latestHealth.summary.ok ?? 0} ok / {latestHealth.summary.warning ?? 0} warning / {latestHealth.summary.error ?? 0} error</td></tr>
                   {upstreamBlocker && (
@@ -6668,6 +6691,18 @@ function dashboardAdminEntryCoverageText(coverage: DashboardAdminEntryCoverage) 
   return `${status} / ${coverage.summary || [coverage.api?.summary, coverage.frontend?.summary].filter(Boolean).join(" / ") || "-"}`;
 }
 
+function dashboardDeploymentRuntimeText(runtime: DashboardDeploymentRuntime) {
+  const status = runtime.ok ? "ok" : healthStatusText(runtime.status);
+  const commit = runtime.commit ? runtime.commit.slice(0, 12) : "-";
+  const deployedAt = deploymentMarkerTime(runtime.deployedAt);
+  const flags = [
+    runtime.runningFromReplacedRelease ? "旧 release" : "",
+    runtime.runningFromStagingRelease ? "staging release" : ""
+  ].filter(Boolean).join(" / ");
+  const release = runtime.releaseRoot ? ` / ${runtime.releaseRoot}` : "";
+  return `${status} / ${commit} / ${deployedAt}${flags ? ` / ${flags}` : ""}${release}`;
+}
+
 function dashboardUpstreamBlockerText(blocker: DashboardUpstreamBlocker) {
   const status = blocker.blocked ? "阻断" : "警告";
   const evidence = dashboardUpstreamBlockerEvidenceText(blocker);
@@ -7903,6 +7938,16 @@ function auditSummary(value: unknown) {
   if (!value) return "-";
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return text.length > 220 ? `${text.slice(0, 220)}...` : text;
+}
+
+function deploymentMarkerTime(value?: string | null) {
+  if (!value) return "-";
+  const compact = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/);
+  const normalized = compact
+    ? `${compact[1]}-${compact[2]}-${compact[3]}T${compact[4]}:${compact[5]}:${compact[6]}Z`
+    : value;
+  const date = new Date(normalized);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
 function dateTime(value?: string | null) {

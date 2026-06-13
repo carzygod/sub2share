@@ -371,3 +371,16 @@ Dashboard 的 `latestSystemHealth.upstreamBlocker` 会把这些字段映射为 `
 该检查仍是本地静态契约检查，不主动调用 OpenAI 或 Sub2API；真实上游可用性仍由 `sub2`、`localProxySmoke` 和反代请求日志证明。
 
 2026-06-13 部署 `986af2f83f12744de114bbac3f78cba03bdbfbaf` 后，生产 `openAiProxyContract.status=ok`，上述新增指标均为 `true`，Dashboard 关键巡检预览也保留 `routesRealtimeApi=true`。生产总体仍为 `status=error`，原因仍是 `/v1/responses` 503 与 Sub2/OpenAI `token_invalidated`，不是本地 `/v1/*` 反代契约缺失。
+
+## 2026-06-13 Update: Dashboard Deployment Runtime Summary
+
+`latestSystemHealth` 现在固定携带 `deploymentRuntime` 摘要，即使部署运行态是 `ok` 且没有进入首页前 8 个关键检查槽位，Dashboard 也能直接显示当前 release：
+
+- `commit`
+- `deployedAt`
+- `releaseRoot`
+- `markerPath`
+- `runningFromReplacedRelease`
+- `runningFromStagingRelease`
+
+Admin 首页“系统状态”表新增“当前发布”行，用于把当前 Git commit 与部署时间直接展示给管理员。完整诊断仍保留在 `deploymentRuntime` 系统健康检查详情中。

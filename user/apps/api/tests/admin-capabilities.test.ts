@@ -723,6 +723,24 @@ test("dashboard latest system health preview always exposes admin entry coverage
       { id: "openAiProxyContract", label: "OpenAI 反代契约", status: "ok", summary: "契约正常" },
       { id: "openAiProxyRuntime", label: "OpenAI 反代运行态", status: "ok", summary: "运行态正常" },
       {
+        id: "deploymentRuntime",
+        label: "部署运行态",
+        status: "ok",
+        summary: "当前进程运行在 release 986af2f83f12744de114bbac3f78cba03bdbfbaf",
+        metrics: {
+          nodeEnv: "production",
+          cwd: "/opt/zhisuan-yizhan/user/apps/api",
+          releaseRoot: "/opt/zhisuan-yizhan/user",
+          releaseRootName: "user",
+          markerPath: "/opt/zhisuan-yizhan/user/.release-marker",
+          markerPresent: true,
+          commit: "986af2f83f12744de114bbac3f78cba03bdbfbaf",
+          deployedAt: "20260613T012534Z",
+          runningFromReplacedRelease: false,
+          runningFromStagingRelease: false
+        }
+      },
+      {
         id: "adminCapabilities",
         label: "管理员入口覆盖",
         status: "ok",
@@ -760,6 +778,17 @@ test("dashboard latest system health preview always exposes admin entry coverage
   assert.equal(preview.criticalChecks.length, 8);
   assert.equal(preview.criticalChecks.some((check) => check.id === "adminCapabilities"), false);
   assert.equal(preview.criticalChecks.some((check) => check.id === "adminSurfaceCoverage"), false);
+  assert.equal(preview.criticalChecks.some((check) => check.id === "deploymentRuntime"), false);
+  assert.equal(preview.deploymentRuntime?.ok, true);
+  assert.equal(preview.deploymentRuntime?.status, "ok");
+  assert.equal(preview.deploymentRuntime?.commit, "986af2f83f12744de114bbac3f78cba03bdbfbaf");
+  assert.equal(preview.deploymentRuntime?.deployedAt, "20260613T012534Z");
+  assert.equal(preview.deploymentRuntime?.releaseRoot, "/opt/zhisuan-yizhan/user");
+  assert.equal(preview.deploymentRuntime?.markerPath, "/opt/zhisuan-yizhan/user/.release-marker");
+  assert.equal(preview.deploymentRuntime?.runningFromReplacedRelease, false);
+  assert.equal(preview.deploymentRuntime?.runningFromStagingRelease, false);
+  assert.equal(preview.deploymentRuntime?.metrics.markerPresent, true);
+  assert.equal(preview.deploymentRuntime?.check.id, "deploymentRuntime");
   assert.equal(preview.adminEntryCoverage?.ok, true);
   assert.equal(preview.adminEntryCoverage?.summary, "API 5/5 核心范围，66/66 路由，66/66 入口 / 前端 5/5 核心范围，18 个列表入口，5 个关键入口");
   assert.equal(preview.adminEntryCoverage?.api?.metrics.missingRoutes, 0);

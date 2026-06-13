@@ -497,3 +497,12 @@
 - 管理员在首页关键巡检里可以看到 Responses、Chat Completions、Embeddings、Assistants、Threads/Runs、Vector Stores、Files/Uploads、Batches、Audio/Images 和 fine-tuning 代表路径都被本地 `/v1/*` 反代契约覆盖。
 
 该摘要仍不触发真实 OpenAI 或 Sub2API 请求，只展示本地静态路由契约；真实 `/v1/responses` 可用性仍以 `localProxySmoke` 与反代请求日志为准。
+
+## 2026-06-13 扩展：最新系统健康固定展示当前发布
+
+- `GET /api/admin/dashboard` 的 `latestSystemHealth` 新增固定字段 `deploymentRuntime`。
+- 该字段从 `deploymentRuntime` 系统健康检查中提取 commit、deployedAt、releaseRoot、markerPath、旧 release 标志和 staging release 标志。
+- 即使首页 `criticalChecks` 因上游阻断、支付、资源或交付问题已经占满前 8 个槽位，当前发布态仍会保留在 Dashboard 摘要中。
+- Admin 首页“系统状态”表新增“当前发布”行，管理员可以直接确认当前运行版本，再决定是否继续查看完整巡检。
+
+该能力不改变部署脚本或健康判断，只减少“线上到底跑的是哪个 commit”的排障跳转。
