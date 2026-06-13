@@ -41,6 +41,8 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  resourceCredentialApplyShouldRunSmokeTest,
+  resourceCredentialApplySmokeModel,
   proxyRequestFilterTarget,
   proxyRequestRepairContext,
   resourceRepairActionShouldOpenResources,
@@ -5992,6 +5994,8 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
   const settlementCount = resource.settlementSummary?._count ?? settlements.length;
   const supplierUserId = resource.supplier?.user?.id;
   const supplierEmail = resource.supplier?.user?.email;
+  const shouldRunCredentialApplySmoke = resourceCredentialApplyShouldRunSmokeTest(resource);
+  const credentialApplySmokeModel = resourceCredentialApplySmokeModel(resource);
 
   return (
     <section className="panel glass-panel wide detail-panel">
@@ -6077,10 +6081,10 @@ function ResourceDetailPanel({ resource, onUpdate, onCredential, onDeleteCredent
               <input name="clientId" placeholder="client_id，可选" autoComplete="off" />
               <input name="proxyId" type="number" min={1} placeholder="proxy_id，可选" />
               <label className="checkbox-line">
-                <input name="runSmokeTest" type="checkbox" />
+                <input name="runSmokeTest" type="checkbox" defaultChecked={shouldRunCredentialApplySmoke} />
                 <span>应用后端到端自检</span>
               </label>
-              <input name="smokeModel" placeholder="自检模型，可选" autoComplete="off" />
+              <input name="smokeModel" defaultValue={credentialApplySmokeModel} placeholder="自检模型，可选" autoComplete="off" />
               <button disabled={!resource.sub2AccountId || resource.credential.status !== "active"}>应用到 Sub2</button>
             </form>
           )}

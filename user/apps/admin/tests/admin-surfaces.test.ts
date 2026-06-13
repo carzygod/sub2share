@@ -15,6 +15,8 @@ import {
   resourceCreateDefaultsShouldApplyCredential,
   resourceCreateDefaultsShouldRunSmokeTest,
   resourceCreateDefaultsSmokeModel,
+  resourceCredentialApplyShouldRunSmokeTest,
+  resourceCredentialApplySmokeModel,
   proxyRequestFilterTarget,
   proxyRequestRepairContext,
   proxyRequestShouldOpenSub2Repair,
@@ -226,6 +228,45 @@ test("resource create defaults continue the OpenAI credential repair flow", () =
   }), true);
   assert.equal(resourceCreateDefaultsShouldApplyCredential({ resourceType: "codex", sub2AccountId: "2" }), false);
   assert.equal(resourceCreateDefaultsShouldRunSmokeTest({ ...repairDefaults, sub2AccountId: "" }), false);
+});
+
+test("resource credential apply defaults verify ready Codex credential repairs", () => {
+  const readyCodexResource = {
+    resourceType: "codex",
+    sub2AccountId: "2",
+    credential: {
+      credentialType: "openai_refresh_token",
+      status: "active"
+    },
+    credentialApplyLogs: [{
+      after: {
+        smokeTest: {
+          model: "gpt-5.3-codex",
+          ok: false
+        }
+      }
+    }]
+  };
+
+  assert.equal(resourceCredentialApplyShouldRunSmokeTest(readyCodexResource), true);
+  assert.equal(resourceCredentialApplySmokeModel(readyCodexResource), "gpt-5.3-codex");
+  assert.equal(resourceCredentialApplyShouldRunSmokeTest({
+    ...readyCodexResource,
+    sub2AccountId: ""
+  }), false);
+  assert.equal(resourceCredentialApplyShouldRunSmokeTest({
+    ...readyCodexResource,
+    credential: { credentialType: "openai_refresh_token", status: "inactive" }
+  }), false);
+  assert.equal(resourceCredentialApplyShouldRunSmokeTest({
+    ...readyCodexResource,
+    resourceType: "claude_code"
+  }), false);
+  assert.equal(resourceCredentialApplySmokeModel({
+    ...readyCodexResource,
+    credentialApplyLogs: [{ after: { model: " gpt-4.1 " } }]
+  }), "gpt-4.1");
+  assert.equal(resourceCredentialApplySmokeModel({ ...readyCodexResource, credentialApplyLogs: [] }), "");
 });
 
 test("catalog and sales delivery repair actions expose shared resource drilldown", () => {

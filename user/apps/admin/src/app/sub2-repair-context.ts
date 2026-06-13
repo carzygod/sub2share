@@ -99,6 +99,18 @@ export interface ResourceRepairActionCandidate {
   sub2AccountId?: unknown;
 }
 
+export interface ResourceCredentialApplyCandidate {
+  resourceType?: string | null;
+  sub2AccountId?: string | null;
+  credential?: {
+    credentialType?: string | null;
+    status?: string | null;
+  } | null;
+  credentialApplyLogs?: Array<{
+    after?: unknown;
+  }> | null;
+}
+
 export interface ProxyRequestFilterCandidate {
   proxyRequestFilterLookup?: unknown;
   proxyRequestFilterStatus?: unknown;
@@ -243,6 +255,26 @@ export function resourceCreateDefaultsShouldRunSmokeTest(defaults: ResourceCreat
 
 export function resourceCreateDefaultsSmokeModel(defaults: ResourceCreateDefaults) {
   return defaults.model?.trim() || "";
+}
+
+export function resourceCredentialApplyShouldRunSmokeTest(resource: ResourceCredentialApplyCandidate) {
+  return resource.resourceType === "codex"
+    && Boolean(resource.sub2AccountId?.trim())
+    && resource.credential?.credentialType === "openai_refresh_token"
+    && resource.credential.status === "active";
+}
+
+export function resourceCredentialApplySmokeModel(resource: ResourceCredentialApplyCandidate) {
+  for (const log of resource.credentialApplyLogs ?? []) {
+    const after = plainRecord(log.after);
+    const directModel = repairCandidateText(after?.model);
+    if (directModel) return directModel;
+
+    const smokeTest = plainRecord(after?.smokeTest);
+    const smokeModel = repairCandidateText(smokeTest?.model);
+    if (smokeModel) return smokeModel;
+  }
+  return "";
 }
 
 export function resourceRepairCandidateHasResourceFilter(candidate: ResourceRepairActionCandidate) {
@@ -411,6 +443,10 @@ function accountErrorSummary(source: {
 
 function repairCandidateText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+function plainRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function repairCandidateScalarText(value: unknown) {
