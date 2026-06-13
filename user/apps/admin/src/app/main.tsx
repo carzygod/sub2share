@@ -265,6 +265,7 @@ interface DashboardDeliveryBlocker {
   repairAction?: string | null;
   productId?: string | null;
   productName?: string | null;
+  productStatus?: string | null;
   priceId?: string | null;
   orderId?: string | null;
   rentalId?: string | null;
@@ -457,6 +458,7 @@ interface SystemHealthIssueRow {
   supplierEmail?: string;
   productId?: string;
   productName?: string;
+  productStatus?: string;
   priceId?: string;
   proxyRequestLookup?: string;
   requestId?: string;
@@ -558,6 +560,7 @@ interface SystemHealthSampleRow {
   supplierEmail?: string;
   productId?: string;
   productName?: string;
+  productStatus?: string;
   priceId?: string;
   sub2AccountId?: string;
   sub2AccountName?: string;
@@ -7157,6 +7160,7 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       supplierEmail: textValue(record.supplierEmail),
       productId: textValue(record.productId),
       productName: textValue(record.productName),
+      productStatus: textValue(record.productStatus),
       priceId: textValue(record.priceId),
       proxyRequestLookup: proxyRequestIssueLookup(record, check.id),
       requestId: textValue(record.requestId),
@@ -7268,6 +7272,7 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       supplierEmail: textValue(record.supplierEmail),
       productId: textValue(record.productId),
       productName: textValue(record.productName),
+      productStatus: textValue(record.productStatus),
       priceId: textValue(record.priceId),
       sub2AccountId: textValue(record.sub2AccountId),
       sub2AccountName: textValue(record.sub2AccountName),

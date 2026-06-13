@@ -67,6 +67,7 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("sub2AccountId"));
   assert.ok(adminSystemHealthIssueRefFields.includes("resourceScope"));
   assert.ok(adminSystemHealthIssueRefFields.includes("productName"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("productStatus"));
   assert.ok(adminSystemHealthIssueRefFields.includes("stale"));
   assert.ok(adminSystemHealthIssueRefFields.includes("staleThresholdMinutes"));
   assert.ok(adminSystemHealthIssueRefFields.includes("freshMinutesRemaining"));
@@ -79,6 +80,7 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("productName"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("productStatus"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("proxyRequestLogId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("staleThresholdMinutes"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("freshMinutesRemaining"));

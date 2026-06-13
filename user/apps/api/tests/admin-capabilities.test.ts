@@ -970,12 +970,26 @@ test("dashboard health previews keep product catalog warnings in the critical sl
 
 test("empty product catalog warnings remain actionable on the dashboard", () => {
   const issue = emptyProductCatalogIssue();
+  const candidateIssue = emptyProductCatalogIssue({
+    id: "prod-draft-codex",
+    name: "Codex Draft",
+    status: "draft",
+    resourceType: "codex",
+    priceId: "price-monthly"
+  });
 
   assert.equal(issue.type, "empty_active_product_catalog");
   assert.equal(issue.productId, null);
   assert.equal(issue.productName, null);
+  assert.equal(issue.productStatus, null);
   assert.equal(issue.priceId, null);
   assert.equal(issue.actionHint, "Create or activate at least one purchasable product before treating the storefront as sellable.");
+  assert.equal(candidateIssue.productId, "prod-draft-codex");
+  assert.equal(candidateIssue.productName, "Codex Draft");
+  assert.equal(candidateIssue.productStatus, "draft");
+  assert.equal(candidateIssue.priceId, "price-monthly");
+  assert.equal(candidateIssue.resourceType, "codex");
+  assert.equal(candidateIssue.actionHint, "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.");
 
   const checks: unknown[] = Array.from({ length: 8 }, (_, index) => ({
     id: `customWarning${index}`,
@@ -993,7 +1007,7 @@ test("empty product catalog warnings remain actionable on the dashboard", () => 
       scanned: 0,
       emptyActiveProductCatalog: 1
     },
-    detail: { issues: [{ id: "empty_active_product_catalog:catalog:catalog", severity: "warning", ...issue }] }
+    detail: { issues: [{ id: "empty_active_product_catalog:prod-draft-codex:price-monthly", severity: "warning", ...candidateIssue }] }
   });
 
   const previews = dashboardHealthCheckPreviews(checks);
@@ -1001,9 +1015,11 @@ test("empty product catalog warnings remain actionable on the dashboard", () => 
   assert.equal(previews.length, 8);
   assert.equal(previews[0].id, "productCatalog");
   assert.equal(previews[0].primaryIssue?.type, "empty_active_product_catalog");
-  assert.equal(previews[0].primaryIssue?.productId, null);
-  assert.equal(previews[0].primaryIssue?.productName, null);
-  assert.equal(previews[0].primaryIssue?.actionHint, "Create or activate at least one purchasable product before treating the storefront as sellable.");
+  assert.equal(previews[0].primaryIssue?.productId, "prod-draft-codex");
+  assert.equal(previews[0].primaryIssue?.productName, "Codex Draft");
+  assert.equal(previews[0].primaryIssue?.productStatus, "draft");
+  assert.equal(previews[0].primaryIssue?.priceId, "price-monthly");
+  assert.equal(previews[0].primaryIssue?.actionHint, "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.");
 });
 
 test("sub2 repair context enrichment fills product catalog repair candidates", () => {

@@ -374,6 +374,7 @@ interface DashboardDeliveryBlockerPreview {
   repairAction?: string | null;
   productId?: string | null;
   productName?: string | null;
+  productStatus?: string | null;
   priceId?: string | null;
   orderId?: string | null;
   rentalId?: string | null;
@@ -443,6 +444,7 @@ const dashboardHealthDetailPreviewFields = [
   "supplierEmail",
   "productId",
   "productName",
+  "productStatus",
   "priceId",
   "orderId",
   "rentalId",
@@ -696,6 +698,7 @@ interface ProductCatalogIssue {
   severity: "warning";
   productId?: string | null;
   productName?: string | null;
+  productStatus?: string | null;
   priceId?: string | null;
   resourceType?: string;
   resourceList?: boolean;
@@ -6484,6 +6487,7 @@ function dashboardDeliveryBlockerPreview(checks: unknown): DashboardDeliveryBloc
     repairAction: textJsonValue(detail.repairAction) ?? null,
     productId: textJsonValue(detail.productId) ?? null,
     productName: textJsonValue(detail.productName) ?? null,
+    productStatus: textJsonValue(detail.productStatus) ?? null,
     priceId: textJsonValue(detail.priceId) ?? null,
     orderId: textJsonValue(detail.orderId) ?? null,
     rentalId: textJsonValue(detail.rentalId) ?? null,
@@ -7316,7 +7320,7 @@ async function inspectProductCatalogReadiness() {
     status: "active",
     ...nonSmokeProductWhere()
   };
-  const [matched, products, deliveryReadiness] = await Promise.all([
+  const [matched, products, deliveryReadiness, totalProducts, inactiveProductCandidates] = await Promise.all([
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
@@ -7338,7 +7342,32 @@ async function inspectProductCatalogReadiness() {
       orderBy: { updatedAt: "desc" },
       take: systemHealthProductCatalogScanLimit
     }),
-    codexDeliveryReadinessSnapshot()
+    codexDeliveryReadinessSnapshot(),
+    prisma.product.count({ where: nonSmokeProductWhere() }),
+    prisma.product.findMany({
+      where: {
+        ...nonSmokeProductWhere(),
+        status: { not: "active" }
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        resourceType: true,
+        billingMode: true,
+        prices: {
+          where: { status: "active" },
+          select: {
+            id: true,
+            fixedPrice: true
+          },
+          orderBy: { updatedAt: "desc" },
+          take: 5
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 10
+    })
   ]);
   const readyCodexDeliveryResources = deliveryReadiness.readyCodexDeliveryResources;
 
@@ -7366,7 +7395,7 @@ async function inspectProductCatalogReadiness() {
 
   if (matched === 0) {
     counters.emptyActiveProductCatalog = 1;
-    addIssue(emptyProductCatalogIssue());
+    addIssue(emptyProductCatalogIssue(selectEmptyCatalogProductCandidate(inactiveProductCandidates)));
   }
 
   for (const product of products) {
@@ -7430,6 +7459,7 @@ async function inspectProductCatalogReadiness() {
     warnings,
     summary: {
       matched,
+      totalProducts,
       scanned: products.length,
       truncated: matched > products.length,
       returnedIssues: issues.length,
@@ -7439,11 +7469,57 @@ async function inspectProductCatalogReadiness() {
   };
 }
 
-export function emptyProductCatalogIssue(): Omit<ProductCatalogIssue, "id" | "severity"> {
+type EmptyCatalogProductCandidate = {
+  id: string;
+  name: string;
+  status: string;
+  resourceType: string;
+  billingMode: string;
+  prices: Array<{
+    id: string;
+    fixedPrice: unknown | null;
+  }>;
+};
+
+function selectEmptyCatalogProductCandidate<T extends EmptyCatalogProductCandidate>(products: T[]) {
+  const hasPurchasablePrice = (product: T) => product.prices.some((price) => product.billingMode === "pay_as_you_go" || price.fixedPrice !== null);
+  const candidate = products.find(hasPurchasablePrice) ?? products[0] ?? null;
+  if (!candidate) return null;
+  const price = candidate.prices.find((item) => candidate.billingMode === "pay_as_you_go" || item.fixedPrice !== null) ?? candidate.prices[0];
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    status: candidate.status,
+    resourceType: candidate.resourceType,
+    priceId: price?.id ?? null
+  };
+}
+
+export function emptyProductCatalogIssue(candidate?: {
+  id: string;
+  name: string;
+  status: string;
+  resourceType: string;
+  priceId?: string | null;
+} | null): Omit<ProductCatalogIssue, "id" | "severity"> {
+  if (candidate) {
+    return {
+      type: "empty_active_product_catalog",
+      productId: candidate.id,
+      productName: candidate.name,
+      productStatus: candidate.status,
+      priceId: candidate.priceId ?? null,
+      resourceType: candidate.resourceType,
+      actionHint: "Open the inactive product candidate, add a purchasable price if needed, then activate it after delivery readiness is satisfied.",
+      message: `No active public product exists. Candidate product ${candidate.name} is ${candidate.status}.`
+    };
+  }
+
   return {
     type: "empty_active_product_catalog",
     productId: null,
     productName: null,
+    productStatus: null,
     priceId: null,
     actionHint: "Create or activate at least one purchasable product before treating the storefront as sellable.",
     message: "No active public product exists, so buyers cannot purchase access from the catalog."
