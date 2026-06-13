@@ -115,7 +115,7 @@ export function publicProductDeliveryReadinessFields(input: {
     readyDeliveryResources: deliveryRequired ? input.readyCodexDeliveryResources : null,
     deliveryBlockedReason: deliveryReady
       ? null
-      : proxyReady ? "codex_resource_not_ready_for_delivery" : "codex_proxy_smoke_failed_for_delivery",
+      : input.readyCodexDeliveryResources <= 0 ? "codex_resource_not_ready_for_delivery" : "codex_proxy_smoke_failed_for_delivery",
     codexProxySmokeDeliveryReady: deliveryRequired ? proxyReady : null,
     codexProxySmokeDeliveryLatest: deliveryRequired ? input.codexProxySmokeDeliveryReadiness?.latest ?? null : null
   };

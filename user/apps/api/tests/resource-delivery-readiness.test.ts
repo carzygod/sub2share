@@ -158,6 +158,28 @@ test("public product delivery readiness reports fresh Codex proxy smoke failures
   });
 });
 
+test("public product delivery readiness prioritizes missing resources before proxy smoke failures", () => {
+  const readiness = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "codex",
+    checkedAt: new Date("2026-06-13T12:10:00.000Z"),
+    latest: localProxySmokeEvidence({
+      createdAt: new Date("2026-06-13T12:00:00.000Z"),
+      ok: false,
+      responsesOk: false
+    })
+  });
+
+  const fields = publicProductDeliveryReadinessFields({
+    resourceType: "codex",
+    readyCodexDeliveryResources: 0,
+    codexProxySmokeDeliveryReadiness: readiness
+  });
+
+  assert.equal(fields.deliveryReady, false);
+  assert.equal(fields.deliveryBlockedReason, "codex_resource_not_ready_for_delivery");
+  assert.equal(fields.codexProxySmokeDeliveryReady, false);
+});
+
 test("Codex proxy smoke delivery gate ignores stale and skipped failures", () => {
   const checkedAt = new Date("2026-06-13T12:00:00.000Z");
   const stale = inspectCodexProxySmokeDeliveryReadiness({
