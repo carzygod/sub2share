@@ -36,6 +36,7 @@ import { decryptSupplierResourceCredential, encryptSupplierResourceCredential } 
 import {
   codexCatalogDeliveryReadinessIssueFields,
   codexDeliveryResourceMissingDetails,
+  codexProxySmokeDeliveryIssueFields,
   inspectLatestCodexProxySmokeDeliveryReadiness,
   isPurchasableProductPrice,
   publicProductDeliveryReadinessFields,
@@ -661,6 +662,29 @@ interface SalesDeliveryIssue {
   resourceStatus?: string | null;
   supplierEmail?: string | null;
   sub2AccountId?: string | null;
+  auditLogId?: string | null;
+  auditAction?: string | null;
+  model?: string | null;
+  modelsOk?: boolean | null;
+  modelsStatusCode?: number | null;
+  modelsError?: string | null;
+  responsesOk?: boolean | null;
+  responsesStatusCode?: number | null;
+  responsesErrorType?: string | null;
+  responsesErrorMessage?: string | null;
+  localProxyOk?: boolean | null;
+  smokeTestSkippedReason?: string | null;
+  proxyRequestLogId?: string | null;
+  requestId?: string | null;
+  upstreamRequestId?: string | null;
+  proxyRequestPath?: string | null;
+  proxyRequestStatusCode?: number | null;
+  proxyRequestErrorCode?: string | null;
+  ageMinutes?: number | null;
+  stale?: boolean | null;
+  staleThresholdMinutes?: number | null;
+  freshMinutesRemaining?: number | null;
+  staleAt?: string | null;
   repairAction?: string;
   actionHint?: string;
   message: string;
@@ -677,6 +701,30 @@ interface ProductCatalogIssue {
   resourceList?: boolean;
   resourceScope?: "production";
   resourceStatus?: string | null;
+  auditLogId?: string | null;
+  auditAction?: string | null;
+  sub2AccountId?: string | null;
+  model?: string | null;
+  modelsOk?: boolean | null;
+  modelsStatusCode?: number | null;
+  modelsError?: string | null;
+  responsesOk?: boolean | null;
+  responsesStatusCode?: number | null;
+  responsesErrorType?: string | null;
+  responsesErrorMessage?: string | null;
+  localProxyOk?: boolean | null;
+  smokeTestSkippedReason?: string | null;
+  proxyRequestLogId?: string | null;
+  requestId?: string | null;
+  upstreamRequestId?: string | null;
+  proxyRequestPath?: string | null;
+  proxyRequestStatusCode?: number | null;
+  proxyRequestErrorCode?: string | null;
+  ageMinutes?: number | null;
+  stale?: boolean | null;
+  staleThresholdMinutes?: number | null;
+  freshMinutesRemaining?: number | null;
+  staleAt?: string | null;
   repairAction?: string;
   actionHint?: string;
   message: string;
@@ -4729,7 +4777,10 @@ function productCatalogRepairContextFields(checks: SystemHealthCheck[]) {
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
       const record = jsonObject(row);
-      if (!record || record.type !== "active_codex_product_without_ready_delivery_resource") continue;
+      if (!record || ![
+        "active_codex_product_without_ready_delivery_resource",
+        "active_codex_product_proxy_smoke_failed"
+      ].includes(String(record.type ?? ""))) continue;
       const productId = textJsonValue(record.productId);
       const productName = textJsonValue(record.productName);
       const priceId = textJsonValue(record.priceId);
@@ -5262,7 +5313,7 @@ async function inspectSalesDeliveryReadiness() {
     ...nonSmokeOrderWhere(),
     status: { in: ["paid", "provisioning", "active"] }
   };
-  const [matched, orders] = await Promise.all([
+  const [matched, orders, deliveryReadiness] = await Promise.all([
     prisma.order.count({ where }),
     prisma.order.findMany({
       where,
@@ -5294,8 +5345,10 @@ async function inspectSalesDeliveryReadiness() {
       },
       orderBy: { createdAt: "desc" },
       take: systemHealthSalesDeliveryScanLimit
-    })
+    }),
+    codexDeliveryReadinessSnapshot()
   ]);
+  const proxySmokeIssueFields = codexProxySmokeDeliveryIssueFields(deliveryReadiness.codexProxySmokeDeliveryReadiness);
 
   const issues: SalesDeliveryIssue[] = [];
   const ordersWithIssues = new Set<string>();
@@ -5306,7 +5359,8 @@ async function inspectSalesDeliveryReadiness() {
     rentalsMissingSub2Key: 0,
     rentalsMissingActiveApiKey: 0,
     rentalsMissingSupplierResource: 0,
-    rentalsWithUnavailableSupplierResource: 0
+    rentalsWithUnavailableSupplierResource: 0,
+    activeCodexRentalsBlockedByProxySmoke: 0
   };
   let errors = 0;
 
@@ -5381,6 +5435,28 @@ async function inspectSalesDeliveryReadiness() {
             repairAction: "repair_supplier_resource_delivery_readiness",
             actionHint: "Bring the linked Codex shared resource online with a Sub2 account and active OpenAI credential.",
             message: `Codex rental ${rental.id} is linked to shared resource ${rental.supplierResource.id}, but the resource is not ready for delivery.`
+          });
+        }
+
+        if (rental.status === "active" && proxySmokeIssueFields) {
+          counters.activeCodexRentalsBlockedByProxySmoke += 1;
+          addIssue({
+            type: "active_codex_rental_proxy_smoke_failed",
+            orderId: order.id,
+            rentalId: rental.id,
+            userId: order.userId,
+            userEmail: order.user.email,
+            ...proxySmokeIssueFields,
+            resourceId: rental.supplierResource?.id ?? proxySmokeIssueFields.resourceId ?? null,
+            resourceList: true,
+            resourceScope: "production",
+            resourceType: "codex",
+            resourceStatus: rental.supplierResource?.status ?? "online",
+            supplierEmail: rental.supplierResource?.supplier?.user?.email ?? null,
+            sub2AccountId: rental.supplierResource?.sub2AccountId ?? proxySmokeIssueFields.sub2AccountId ?? null,
+            repairAction: "apply_openai_refresh_token_to_sub2_account",
+            actionHint: "Repair the failing Sub2/OpenAI account or Codex shared resource, then rerun local proxy smoke before leaving sold Codex rentals active.",
+            message: `Active Codex rental ${rental.id} is affected by the latest local OpenAI/Codex proxy smoke failure.`
           });
         }
       }
@@ -7240,7 +7316,7 @@ async function inspectProductCatalogReadiness() {
     status: "active",
     ...nonSmokeProductWhere()
   };
-  const [matched, products, readyCodexDeliveryResources] = await Promise.all([
+  const [matched, products, deliveryReadiness] = await Promise.all([
     prisma.product.count({ where }),
     prisma.product.findMany({
       where,
@@ -7262,8 +7338,9 @@ async function inspectProductCatalogReadiness() {
       orderBy: { updatedAt: "desc" },
       take: systemHealthProductCatalogScanLimit
     }),
-    prisma.supplierResource.count({ where: readyCodexSupplierResourceDeliveryWhere() })
+    codexDeliveryReadinessSnapshot()
   ]);
+  const readyCodexDeliveryResources = deliveryReadiness.readyCodexDeliveryResources;
 
   const issues: ProductCatalogIssue[] = [];
   const counters = {
@@ -7271,7 +7348,8 @@ async function inspectProductCatalogReadiness() {
     productsWithoutPurchasablePrices: 0,
     activePricesWithoutFixedPrice: 0,
     readyCodexDeliveryResources,
-    codexProductsWithoutReadyDeliveryResources: 0
+    codexProductsWithoutReadyDeliveryResources: 0,
+    codexProductsBlockedByProxySmoke: 0
   };
   let warnings = 0;
 
@@ -7313,10 +7391,16 @@ async function inspectProductCatalogReadiness() {
       productName: product.name,
       priceId: purchasablePrices[0]?.id,
       resourceType: product.resourceType,
-      readyCodexDeliveryResources
+      readyCodexDeliveryResources,
+      codexProxySmokeDeliveryReadiness: deliveryReadiness.codexProxySmokeDeliveryReadiness
     });
     if (purchasablePrices.length > 0 && deliveryReadinessIssue) {
-      counters.codexProductsWithoutReadyDeliveryResources += 1;
+      if (deliveryReadinessIssue.type === "active_codex_product_without_ready_delivery_resource") {
+        counters.codexProductsWithoutReadyDeliveryResources += 1;
+      }
+      if (deliveryReadinessIssue.type === "active_codex_product_proxy_smoke_failed") {
+        counters.codexProductsBlockedByProxySmoke += 1;
+      }
       addIssue(deliveryReadinessIssue);
     }
 

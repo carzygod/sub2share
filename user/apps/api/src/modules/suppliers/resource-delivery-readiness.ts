@@ -127,8 +127,27 @@ export function codexCatalogDeliveryReadinessIssueFields(input: {
   priceId?: string;
   resourceType: string;
   readyCodexDeliveryResources: number;
+  codexProxySmokeDeliveryReadiness?: CodexProxySmokeDeliveryReadiness | null;
 }) {
-  if (input.resourceType !== "codex" || input.readyCodexDeliveryResources > 0) return null;
+  if (input.resourceType !== "codex") return null;
+  const proxySmokeIssueFields = codexProxySmokeDeliveryIssueFields(input.codexProxySmokeDeliveryReadiness);
+  if (input.readyCodexDeliveryResources > 0 && !proxySmokeIssueFields) return null;
+  if (input.readyCodexDeliveryResources > 0 && proxySmokeIssueFields) {
+    return {
+      type: "active_codex_product_proxy_smoke_failed",
+      productId: input.productId,
+      productName: input.productName,
+      priceId: input.priceId,
+      resourceType: "codex",
+      resourceList: true,
+      resourceScope: "production" as const,
+      resourceStatus: "online",
+      repairAction: "apply_openai_refresh_token_to_sub2_account",
+      actionHint: "Repair the failing Sub2/OpenAI account or Codex shared resource, then rerun the local proxy smoke test before selling Codex access.",
+      message: `Active Codex product ${input.productName} is purchasable but the latest local OpenAI/Codex proxy smoke test is failing.`,
+      ...proxySmokeIssueFields
+    };
+  }
 
   return {
     type: "active_codex_product_without_ready_delivery_resource",
@@ -141,7 +160,8 @@ export function codexCatalogDeliveryReadinessIssueFields(input: {
     resourceStatus: "online",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     actionHint: "Create or repair a production Codex shared resource with a Sub2 account id and an active OpenAI refresh token credential before selling Codex access.",
-    message: `Active Codex product ${input.productName} is purchasable but no ready production Codex shared resource is available for delivery.`
+    message: `Active Codex product ${input.productName} is purchasable but no ready production Codex shared resource is available for delivery.`,
+    ...(proxySmokeIssueFields ?? {})
   };
 }
 
@@ -237,6 +257,38 @@ export async function inspectLatestCodexProxySmokeDeliveryReadiness(resourceType
     resourceType,
     latest: latestLocalProxySmokeEvidence(logs as LocalProxySmokeAuditLog[])
   });
+}
+
+export function codexProxySmokeDeliveryIssueFields(readiness?: CodexProxySmokeDeliveryReadiness | null) {
+  if (!readiness || readiness.ok || !readiness.latest) return null;
+  const latest = readiness.latest;
+  return {
+    auditLogId: latest.auditLogId,
+    auditAction: latest.auditAction,
+    resourceId: latest.resourceId,
+    sub2AccountId: latest.sub2AccountId,
+    model: latest.model,
+    modelsOk: latest.modelsOk,
+    modelsStatusCode: latest.modelsStatusCode,
+    modelsError: latest.modelsError,
+    responsesOk: latest.responsesOk,
+    responsesStatusCode: latest.responsesStatusCode,
+    responsesErrorType: latest.responsesErrorType,
+    responsesErrorMessage: latest.responsesErrorMessage,
+    localProxyOk: latest.localProxyOk,
+    smokeTestSkippedReason: latest.smokeTestSkippedReason,
+    proxyRequestLogId: latest.proxyRequestLogId,
+    requestId: latest.requestId,
+    upstreamRequestId: latest.upstreamRequestId,
+    proxyRequestPath: latest.proxyRequestPath,
+    proxyRequestStatusCode: latest.proxyRequestStatusCode,
+    proxyRequestErrorCode: latest.proxyRequestErrorCode,
+    ageMinutes: latest.ageMinutes,
+    stale: latest.stale,
+    staleThresholdMinutes: latest.staleThresholdMinutes,
+    freshMinutesRemaining: latest.freshMinutesRemaining,
+    staleAt: latest.staleAt
+  };
 }
 
 export async function requireReadySupplierResourceForDelivery(resourceType: string) {

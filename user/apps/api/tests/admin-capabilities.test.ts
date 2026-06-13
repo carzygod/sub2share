@@ -904,6 +904,18 @@ test("dashboard health previews retain product catalog drilldown fields", () => 
           resourceList: true,
           resourceScope: "production",
           repairAction: "apply_openai_refresh_token_to_sub2_account",
+          model: "gpt-5.3-codex",
+          modelsOk: true,
+          modelsStatusCode: 200,
+          responsesOk: false,
+          responsesStatusCode: 503,
+          responsesErrorType: "api_error",
+          responsesErrorMessage: "Service temporarily unavailable",
+          localProxyOk: false,
+          proxyRequestPath: "/v1/responses",
+          proxyRequestStatusCode: 503,
+          ageMinutes: 10,
+          stale: false,
           message: "Active Codex product is purchasable but no ready production Codex shared resource is available."
         }]
       }
@@ -919,6 +931,18 @@ test("dashboard health previews retain product catalog drilldown fields", () => 
   assert.equal(previews[0].primaryIssue?.resourceType, "codex");
   assert.equal(previews[0].primaryIssue?.resourceScope, "production");
   assert.equal(previews[0].primaryIssue?.repairAction, "apply_openai_refresh_token_to_sub2_account");
+  assert.equal(previews[0].primaryIssue?.model, "gpt-5.3-codex");
+  assert.equal(previews[0].primaryIssue?.modelsOk, true);
+  assert.equal(previews[0].primaryIssue?.modelsStatusCode, 200);
+  assert.equal(previews[0].primaryIssue?.responsesOk, false);
+  assert.equal(previews[0].primaryIssue?.responsesStatusCode, 503);
+  assert.equal(previews[0].primaryIssue?.responsesErrorType, "api_error");
+  assert.equal(previews[0].primaryIssue?.responsesErrorMessage, "Service temporarily unavailable");
+  assert.equal(previews[0].primaryIssue?.localProxyOk, false);
+  assert.equal(previews[0].primaryIssue?.proxyRequestPath, "/v1/responses");
+  assert.equal(previews[0].primaryIssue?.proxyRequestStatusCode, 503);
+  assert.equal(previews[0].primaryIssue?.ageMinutes, 10);
+  assert.equal(previews[0].primaryIssue?.stale, false);
 });
 
 test("dashboard health previews keep product catalog warnings in the critical slice", () => {

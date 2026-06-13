@@ -85,6 +85,67 @@ test("catalog delivery readiness ignores ready Codex resources and non-Codex pro
   }), null);
 });
 
+test("catalog delivery readiness reports ready Codex resources blocked by proxy smoke", () => {
+  const readiness = inspectCodexProxySmokeDeliveryReadiness({
+    resourceType: "codex",
+    checkedAt: new Date("2026-06-13T12:10:00.000Z"),
+    latest: localProxySmokeEvidence({
+      createdAt: new Date("2026-06-13T12:00:00.000Z"),
+      ok: false,
+      responsesOk: false,
+      responsesStatusCode: 503,
+      responsesErrorType: "api_error",
+      responsesErrorMessage: "Service temporarily unavailable"
+    })
+  });
+
+  assert.deepEqual(codexCatalogDeliveryReadinessIssueFields({
+    productId: "product-1",
+    productName: "Codex Monthly",
+    priceId: "price-monthly",
+    resourceType: "codex",
+    readyCodexDeliveryResources: 1,
+    codexProxySmokeDeliveryReadiness: readiness
+  }), {
+    type: "active_codex_product_proxy_smoke_failed",
+    productId: "product-1",
+    productName: "Codex Monthly",
+    priceId: "price-monthly",
+    resourceType: "codex",
+    resourceList: true,
+    resourceScope: "production",
+    resourceStatus: "online",
+    repairAction: "apply_openai_refresh_token_to_sub2_account",
+    actionHint: "Repair the failing Sub2/OpenAI account or Codex shared resource, then rerun the local proxy smoke test before selling Codex access.",
+    message: "Active Codex product Codex Monthly is purchasable but the latest local OpenAI/Codex proxy smoke test is failing.",
+    auditLogId: "audit-smoke",
+    auditAction: "admin.sub2.proxy_smoke_test",
+    resourceId: null,
+    sub2AccountId: "2",
+    model: "gpt-5.3-codex",
+    modelsOk: true,
+    modelsStatusCode: 200,
+    modelsError: null,
+    responsesOk: false,
+    responsesStatusCode: 503,
+    responsesErrorType: "api_error",
+    responsesErrorMessage: "Service temporarily unavailable",
+    localProxyOk: true,
+    smokeTestSkippedReason: null,
+    proxyRequestLogId: "proxy-log",
+    requestId: "req-smoke",
+    upstreamRequestId: "upstream-smoke",
+    proxyRequestPath: "/v1/responses",
+    proxyRequestStatusCode: 200,
+    proxyRequestErrorCode: null,
+    ageMinutes: 10,
+    stale: false,
+    staleThresholdMinutes: 1440,
+    freshMinutesRemaining: 1430,
+    staleAt: "2026-06-14T12:00:00.000Z"
+  });
+});
+
 test("public product delivery readiness blocks unavailable Codex products", () => {
   assert.deepEqual(publicProductDeliveryReadinessFields({
     resourceType: "codex",
