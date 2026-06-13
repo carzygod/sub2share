@@ -230,3 +230,29 @@ pnpm.cmd --filter @zyz/api run build
   - `openai-beta`、`content-type`、自定义 trace header 和 forwarded headers 被保留/补齐。
 
 这项补齐让“完整 OpenAI/Codex 反代”不仅证明 path/query 进入 Sub2API，也证明请求头不会泄漏本地密钥且保留客户端诊断上下文。
+
+## 2026-06-13 追加：OpenAI v1 代表路径扩展到 Realtime、Containers 与 Evals
+
+- `openAiProxyCorePathSamples` 继续扩展完整 OpenAI v1 代表面，新增覆盖：
+  - Responses 生命周期：`/v1/responses/input_tokens`、`/v1/responses/:id/cancel`。
+  - Chat/Conversations：`/v1/chat/completions/:id`、`/v1/conversations`、`/v1/conversations/:id/items`。
+  - Vector Stores search、Uploads parts/complete。
+  - Audio translations/speech、Videos content。
+  - Moderations、Evals runs/output items。
+  - Containers files/content。
+  - Realtime client secrets 与 calls accept。
+- `inspectOpenAiProxyContract()` 摘要新增：
+  - `routesResponsesLifecycle`
+  - `routesConversationsApi`
+  - `routesVideoApis`
+  - `routesModerationsApi`
+  - `routesEvalsApi`
+  - `routesContainersApi`
+  - `routesRealtimeApi`
+- `extended_openai_path_samples_not_routed` 的巡检语义同步扩展到上述路径族。
+- Dashboard 健康预览白名单同步保留这些新指标，管理员可以在首页关键巡检摘要里看到更完整的 `/v1/*` 反代覆盖证据。
+- 本轮验证命令：
+  - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/openai-proxy-helpers.test.ts`
+  - `pnpm.cmd --filter @zyz/api exec node --import tsx --test tests/admin-capabilities.test.ts`
+
+这项补齐仍然不新增逐端点代理逻辑；真实转发继续由 `/v1` 与 `/v1/*` 统一进入 Sub2API。新增的是可测试、可巡检、可在管理员入口展示的代表路径证据，降低未来路由收窄时漏掉新 OpenAI API surface 的风险。

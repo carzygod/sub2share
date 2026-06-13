@@ -60,7 +60,12 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
     "/v1/responses",
     "/v1/responses/resp_123",
     "/v1/responses/resp_123/input_items?after=item_1",
+    "/v1/responses/input_tokens",
+    "/v1/responses/resp_123/cancel",
     "/v1/chat/completions",
+    "/v1/chat/completions/chatcmpl_123",
+    "/v1/conversations",
+    "/v1/conversations/conv_123/items",
     "/v1/embeddings",
     "/v1/assistants",
     "/v1/assistants/asst_123",
@@ -70,12 +75,29 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
     "/v1/threads/thread_123/runs/run_123/steps",
     "/v1/vector_stores",
     "/v1/vector_stores/vs_123/files",
+    "/v1/vector_stores/vs_123/search",
     "/v1/files",
     "/v1/uploads",
+    "/v1/uploads/upload_123/parts",
+    "/v1/uploads/upload_123/complete",
     "/v1/batches",
     "/v1/audio/transcriptions",
+    "/v1/audio/translations",
+    "/v1/audio/speech",
     "/v1/images/generations",
-    "/v1/fine_tuning/jobs"
+    "/v1/videos",
+    "/v1/videos/video_123/content",
+    "/v1/fine_tuning/jobs",
+    "/v1/moderations",
+    "/v1/evals",
+    "/v1/evals/eval_123/runs",
+    "/v1/evals/eval_123/runs/run_123/output_items",
+    "/v1/containers",
+    "/v1/containers/container_123/files",
+    "/v1/containers/container_123/files/file_123/content",
+    "/v1/realtime/client_secrets",
+    "/v1/realtime/calls",
+    "/v1/realtime/calls/call_123/accept"
   ]);
   assert.equal(openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path)), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1"), true);
@@ -83,14 +105,24 @@ test("routes every concrete OpenAI v1 child path through the local proxy", () =>
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123/input_items?after=item_1"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/responses/input_tokens"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/responses/resp_123/cancel"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/chat/completions"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/conversations/conv_123/items"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/embeddings"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/assistants/asst_123"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/threads/thread_123/runs/run_123/steps"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/files"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/search"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/audio/transcriptions"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/audio/speech"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/images/generations"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/videos/video_123/content"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/fine_tuning/jobs"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/moderations"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/evals/eval_123/runs/run_123/output_items"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/containers/container_123/files/file_123/content"), true);
+  assert.equal(isOpenAiProxyRoutedPath("/v1/realtime/calls/call_123/accept"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex"), true);
   assert.equal(isOpenAiProxyRoutedPath("/v10/responses"), false);
   assert.equal(isOpenAiProxyRoutedPath("/api/admin/system-health"), false);
@@ -390,9 +422,11 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.supportsMutationMethods, true);
   assert.equal(result.summary.routesResponsesApi, true);
   assert.equal(result.summary.routesResponsesItems, true);
+  assert.equal(result.summary.routesResponsesLifecycle, true);
   assert.equal(result.summary.routesChatCompletions, true);
+  assert.equal(result.summary.routesConversationsApi, true);
   assert.equal(result.summary.routesModelMetadata, true);
-  assert.equal(result.summary.corePathSamples, "/v1,/v1/models,/v1/models/gpt-5.3-codex,/v1/responses,/v1/responses/resp_123,/v1/responses/resp_123/input_items?after=item_1,/v1/chat/completions,/v1/embeddings,/v1/assistants,/v1/assistants/asst_123,/v1/threads,/v1/threads/thread_123/messages,/v1/threads/thread_123/runs,/v1/threads/thread_123/runs/run_123/steps,/v1/vector_stores,/v1/vector_stores/vs_123/files,/v1/files,/v1/uploads,/v1/batches,/v1/audio/transcriptions,/v1/images/generations,/v1/fine_tuning/jobs");
+  assert.equal(result.summary.corePathSamples, openAiProxyCorePathSamples.join(","));
   assert.equal(result.summary.routesCorePathSamples, true);
   assert.equal(result.summary.routesEmbeddings, true);
   assert.equal(result.summary.routesAssistantsApi, true);
@@ -401,7 +435,12 @@ test("inspects the local OpenAI proxy public contract", () => {
   assert.equal(result.summary.routesFileUploadApis, true);
   assert.equal(result.summary.routesBatchApis, true);
   assert.equal(result.summary.routesAudioImageApis, true);
+  assert.equal(result.summary.routesVideoApis, true);
   assert.equal(result.summary.routesFineTuningJobs, true);
+  assert.equal(result.summary.routesModerationsApi, true);
+  assert.equal(result.summary.routesEvalsApi, true);
+  assert.equal(result.summary.routesContainersApi, true);
+  assert.equal(result.summary.routesRealtimeApi, true);
   assert.equal(result.summary.preservesRawPathAndQuery, true);
   assert.equal(result.summary.normalizesSub2BaseTrailingSlash, true);
   assert.equal(result.summary.forwardsUpstreamHeaders, true);

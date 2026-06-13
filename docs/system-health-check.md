@@ -355,3 +355,17 @@ Dashboard 的 `latestSystemHealth.upstreamBlocker` 会把这些字段映射为 `
 这让管理员可以直接看出当前是“模型列表可达但 Responses 调用失败”，而不是只看到笼统的 smoke failed。2026-06-13 的生产复查结果为：`/v1/models` 返回 200，`/v1/responses` 返回 `HTTP 503 / api_error / Service temporarily unavailable`，并且 Sub2 账号错误仍为 `HTTP 401 / token_invalidated`。
 
 该能力只增强健康诊断和管理员修复上下文，不读取 refresh token 明文，不写入 Sub2API，也不改变真实 OpenAI/Codex 反代、鉴权、限流、计费或租赁交付链路。
+
+## 2026-06-13 Update: Broader OpenAI v1 Contract Samples
+
+`openAiProxyContract` 的代表路径样本继续扩展，用于证明本地 `/v1/*` 反代仍覆盖更多 OpenAI API surface：
+
+- Responses 生命周期：input token 计数、cancel。
+- Conversations 与 Chat Completions 检索路径。
+- Vector Stores search、Uploads parts/complete。
+- Audio transcription/translation/speech、Images、Videos。
+- Moderations、Evals、Containers、Realtime。
+
+巡检摘要新增 `routesResponsesLifecycle`、`routesConversationsApi`、`routesVideoApis`、`routesModerationsApi`、`routesEvalsApi`、`routesContainersApi` 和 `routesRealtimeApi`。Dashboard 健康预览白名单也保留这些字段。
+
+该检查仍是本地静态契约检查，不主动调用 OpenAI 或 Sub2API；真实上游可用性仍由 `sub2`、`localProxySmoke` 和反代请求日志证明。

@@ -35,7 +35,12 @@ export const openAiProxyCorePathSamples = [
   "/v1/responses",
   "/v1/responses/resp_123",
   "/v1/responses/resp_123/input_items?after=item_1",
+  "/v1/responses/input_tokens",
+  "/v1/responses/resp_123/cancel",
   "/v1/chat/completions",
+  "/v1/chat/completions/chatcmpl_123",
+  "/v1/conversations",
+  "/v1/conversations/conv_123/items",
   "/v1/embeddings",
   "/v1/assistants",
   "/v1/assistants/asst_123",
@@ -45,12 +50,29 @@ export const openAiProxyCorePathSamples = [
   "/v1/threads/thread_123/runs/run_123/steps",
   "/v1/vector_stores",
   "/v1/vector_stores/vs_123/files",
+  "/v1/vector_stores/vs_123/search",
   "/v1/files",
   "/v1/uploads",
+  "/v1/uploads/upload_123/parts",
+  "/v1/uploads/upload_123/complete",
   "/v1/batches",
   "/v1/audio/transcriptions",
+  "/v1/audio/translations",
+  "/v1/audio/speech",
   "/v1/images/generations",
-  "/v1/fine_tuning/jobs"
+  "/v1/videos",
+  "/v1/videos/video_123/content",
+  "/v1/fine_tuning/jobs",
+  "/v1/moderations",
+  "/v1/evals",
+  "/v1/evals/eval_123/runs",
+  "/v1/evals/eval_123/runs/run_123/output_items",
+  "/v1/containers",
+  "/v1/containers/container_123/files",
+  "/v1/containers/container_123/files/file_123/content",
+  "/v1/realtime/client_secrets",
+  "/v1/realtime/calls",
+  "/v1/realtime/calls/call_123/accept"
 ] as const;
 export type OpenAiProxyErrorType = "invalid_request_error" | "insufficient_quota" | "rate_limit_error" | "api_error";
 export type OpenAiProxyContractIssueSeverity = "warning" | "error";
@@ -263,16 +285,23 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
   const supportsMutationMethods = ["POST", "PUT", "PATCH", "DELETE"].every((method) => routeMethods.includes(method as typeof openAiProxyRouteMethods[number]));
   const routesResponsesApi = isOpenAiProxyRoutedPath("/v1/responses");
   const routesResponsesItems = isOpenAiProxyRoutedPath("/v1/responses/resp_123");
+  const routesResponsesLifecycle = isOpenAiProxyRoutedPath("/v1/responses/input_tokens") && isOpenAiProxyRoutedPath("/v1/responses/resp_123/cancel");
   const routesChatCompletions = isOpenAiProxyRoutedPath("/v1/chat/completions");
+  const routesConversationsApi = isOpenAiProxyRoutedPath("/v1/conversations") && isOpenAiProxyRoutedPath("/v1/conversations/conv_123/items");
   const routesModelMetadata = isOpenAiProxyRoutedPath("/v1/models/gpt-5.3-codex");
   const routesEmbeddings = isOpenAiProxyRoutedPath("/v1/embeddings");
   const routesAssistantsApi = isOpenAiProxyRoutedPath("/v1/assistants/asst_123");
   const routesThreadsRuns = isOpenAiProxyRoutedPath("/v1/threads/thread_123/runs/run_123/steps");
-  const routesVectorStores = isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/files");
-  const routesFileUploadApis = isOpenAiProxyRoutedPath("/v1/files") && isOpenAiProxyRoutedPath("/v1/uploads");
+  const routesVectorStores = isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/files") && isOpenAiProxyRoutedPath("/v1/vector_stores/vs_123/search");
+  const routesFileUploadApis = isOpenAiProxyRoutedPath("/v1/files") && isOpenAiProxyRoutedPath("/v1/uploads") && isOpenAiProxyRoutedPath("/v1/uploads/upload_123/parts") && isOpenAiProxyRoutedPath("/v1/uploads/upload_123/complete");
   const routesBatchApis = isOpenAiProxyRoutedPath("/v1/batches");
-  const routesAudioImageApis = isOpenAiProxyRoutedPath("/v1/audio/transcriptions") && isOpenAiProxyRoutedPath("/v1/images/generations");
+  const routesAudioImageApis = isOpenAiProxyRoutedPath("/v1/audio/transcriptions") && isOpenAiProxyRoutedPath("/v1/audio/translations") && isOpenAiProxyRoutedPath("/v1/audio/speech") && isOpenAiProxyRoutedPath("/v1/images/generations");
+  const routesVideoApis = isOpenAiProxyRoutedPath("/v1/videos") && isOpenAiProxyRoutedPath("/v1/videos/video_123/content");
   const routesFineTuningJobs = isOpenAiProxyRoutedPath("/v1/fine_tuning/jobs");
+  const routesModerationsApi = isOpenAiProxyRoutedPath("/v1/moderations");
+  const routesEvalsApi = isOpenAiProxyRoutedPath("/v1/evals") && isOpenAiProxyRoutedPath("/v1/evals/eval_123/runs") && isOpenAiProxyRoutedPath("/v1/evals/eval_123/runs/run_123/output_items");
+  const routesContainersApi = isOpenAiProxyRoutedPath("/v1/containers") && isOpenAiProxyRoutedPath("/v1/containers/container_123/files") && isOpenAiProxyRoutedPath("/v1/containers/container_123/files/file_123/content");
+  const routesRealtimeApi = isOpenAiProxyRoutedPath("/v1/realtime/client_secrets") && isOpenAiProxyRoutedPath("/v1/realtime/calls/call_123/accept");
   const routesCorePathSamples = openAiProxyCorePathSamples.every((path) => isOpenAiProxyRoutedPath(path));
   const sub2UrlWithTrailingBase = buildSub2ProxyUrl("https://sub2.example.com/api/", "/v1/responses/resp_123/input_items?after=item_1&include=output_text");
   const sub2UrlWithoutLeadingPath = buildSub2ProxyUrl("https://sub2.example.com/api", "v1/chat/completions?stream=true");
@@ -406,11 +435,11 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       message: "OpenAI proxy route must cover representative Responses, Chat Completions, files, uploads, and batches paths"
     });
   }
-  if (!routesEmbeddings || !routesAssistantsApi || !routesThreadsRuns || !routesVectorStores || !routesFileUploadApis || !routesBatchApis || !routesAudioImageApis || !routesFineTuningJobs) {
+  if (!routesResponsesLifecycle || !routesConversationsApi || !routesEmbeddings || !routesAssistantsApi || !routesThreadsRuns || !routesVectorStores || !routesFileUploadApis || !routesBatchApis || !routesAudioImageApis || !routesVideoApis || !routesFineTuningJobs || !routesModerationsApi || !routesEvalsApi || !routesContainersApi || !routesRealtimeApi) {
     issues.push({
       type: "extended_openai_path_samples_not_routed",
       severity: "error",
-      message: "OpenAI proxy route must cover representative embeddings, Assistants, Threads/Runs, Vector Stores, file/upload, batch, audio/image, and fine-tuning paths"
+      message: "OpenAI proxy route must cover representative Responses lifecycle, Conversations, embeddings, Assistants, Threads/Runs, Vector Stores, file/upload, batch, audio/image/video, fine-tuning, moderations, evals, containers, and realtime paths"
     });
   }
   if (!preservesRawPathAndQuery || !normalizesSub2BaseTrailingSlash) {
@@ -495,7 +524,9 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       supportsMutationMethods,
       routesResponsesApi,
       routesResponsesItems,
+      routesResponsesLifecycle,
       routesChatCompletions,
+      routesConversationsApi,
       routesModelMetadata,
       routesEmbeddings,
       routesAssistantsApi,
@@ -504,7 +535,12 @@ export function inspectOpenAiProxyContract(endpoint: string, runtimeOptions: Ope
       routesFileUploadApis,
       routesBatchApis,
       routesAudioImageApis,
+      routesVideoApis,
       routesFineTuningJobs,
+      routesModerationsApi,
+      routesEvalsApi,
+      routesContainersApi,
+      routesRealtimeApi,
       corePathSamples: openAiProxyCorePathSamples.join(","),
       routesCorePathSamples,
       preservesRawPathAndQuery,
