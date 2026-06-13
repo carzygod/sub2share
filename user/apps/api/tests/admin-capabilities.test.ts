@@ -13,7 +13,7 @@ const {
   adminCapabilities,
   inspectAdminCapabilityRouteCoverage
 } = await import("../src/modules/admin/capabilities.js");
-const { dashboardHealthCheckPreviews, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
+const { dashboardHealthCheckPreviews, dashboardInternalExcludedOverview, dashboardLatestSystemHealthPreview, dashboardManagementStatusCounts, dashboardProxyRequestStatusFilter, dashboardWalletManagementOverview, emptyProductCatalogIssue, enrichSub2RepairContextChecks, proxyRequestStatusWhere, registerAdminRoutes, validateInitialResourceCredentialApplyRequest } = await import("../src/modules/admin/routes.js");
 const { openAiProxyCorePathSamples } = await import("../src/modules/openai-proxy/helpers.js");
 const { inspectAdminSurfaceCoverage } = await import("@zyz/shared/admin-surfaces");
 
@@ -214,6 +214,25 @@ test("dashboard management overview normalizes core status and wallet risk count
     frozen: 2,
     available: 0,
     spent: 0
+  });
+
+  assert.deepEqual(dashboardInternalExcludedOverview({
+    usersTotal: 11,
+    users: 1,
+    walletsTotal: 10,
+    wallets: 1,
+    salesTotal: 22,
+    sales: 1,
+    rentalsTotal: 2,
+    rentals: 1,
+    sharingTotal: 1,
+    sharing: 3
+  }), {
+    users: 10,
+    wallets: 9,
+    sales: 21,
+    rentals: 1,
+    sharing: 0
   });
 });
 

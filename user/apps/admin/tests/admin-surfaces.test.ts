@@ -494,11 +494,12 @@ test("resource create defaults expose product catalog repair context", () => {
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     productId: "prod-codex",
     productName: "Codex Pro",
+    productStatus: "offline",
     priceId: "price-monthly"
   });
 
   assert.equal(items.find((item) => item.label === "Source")?.value, "productCatalog / production");
-  assert.equal(items.find((item) => item.label === "Product")?.value, "Codex Pro / prod-codex / price-monthly");
+  assert.equal(items.find((item) => item.label === "Product")?.value, "Codex Pro / status offline / prod-codex / price-monthly");
   assert.equal(items.find((item) => item.label === "Resource")?.value, "codex / online / production");
   assert.equal(items.find((item) => item.label === "Sub2 account")?.value, "#2");
   assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
@@ -509,8 +510,9 @@ test("resource create defaults format product context for confirmations", () => 
   assert.equal(resourceCreateDefaultsProductText({
     productId: "prod-codex",
     productName: "Codex Pro",
+    productStatus: "draft",
     priceId: "price-monthly"
-  }), "Codex Pro / prod-codex / price-monthly");
+  }), "Codex Pro / status draft / prod-codex / price-monthly");
 
   assert.equal(resourceCreateDefaultsProductText({
     productId: " prod-codex ",

@@ -1118,7 +1118,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       negativeWallets,
       frozenWallets,
       availableWallets,
-      spentWallets
+      spentWallets,
+      allUsers,
+      allWallets,
+      allOrders,
+      allRentals,
+      allResources
     ] = await Promise.all([
       prisma.user.count({ where: nonSmokeUserWhere() }),
       prisma.rental.count({ where: { status: "active", ...nonSmokeRentalWhere() } }),
@@ -1174,12 +1179,32 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), availableBalance: { lt: 0 } } }),
       prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), frozenBalance: { gt: 0 } } }),
       prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), availableBalance: { gt: 0 } } }),
-      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), totalSpent: { gt: 0 } } })
+      prisma.walletAccount.count({ where: { ...nonSmokeWalletWhere(), totalSpent: { gt: 0 } } }),
+      prisma.user.count(),
+      prisma.walletAccount.count(),
+      prisma.order.count(),
+      prisma.rental.count(),
+      prisma.supplierResource.count()
     ]);
     const userStatusCounts = dashboardManagementStatusCounts(userStatuses, userStatusRows);
     const orderStatusCounts = dashboardManagementStatusCounts(orderStatuses, orderStatusRows);
     const rentalStatusCounts = dashboardManagementStatusCounts(rentalStatuses, rentalStatusRows);
     const resourceStatusCounts = dashboardManagementStatusCounts(resourceStatuses, resourceStatusRows);
+    const salesTotal = orderStatusCounts.reduce((total, row) => total + row.count, 0);
+    const rentalsTotal = rentalStatusCounts.reduce((total, row) => total + row.count, 0);
+    const sharingTotal = resourceStatusCounts.reduce((total, row) => total + row.count, 0);
+    const internalExcluded = dashboardInternalExcludedOverview({
+      usersTotal: allUsers,
+      users,
+      walletsTotal: allWallets,
+      wallets: walletCount,
+      salesTotal: allOrders,
+      sales: salesTotal,
+      rentalsTotal: allRentals,
+      rentals: rentalsTotal,
+      sharingTotal: allResources,
+      sharing: sharingTotal
+    });
 
     return adminOk(reply, {
       users,
@@ -1208,17 +1233,18 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           spent: spentWallets
         }),
         sales: {
-          total: orderStatusCounts.reduce((total, row) => total + row.count, 0),
+          total: salesTotal,
           statuses: orderStatusCounts
         },
         rentals: {
-          total: rentalStatusCounts.reduce((total, row) => total + row.count, 0),
+          total: rentalsTotal,
           statuses: rentalStatusCounts
         },
         sharing: {
-          total: resourceStatusCounts.reduce((total, row) => total + row.count, 0),
+          total: sharingTotal,
           statuses: resourceStatusCounts
-        }
+        },
+        internalExcluded
       },
       latestSystemHealth: latestSystemHealth ? {
         ...dashboardLatestSystemHealthPreview(latestSystemHealth, new Date(), deploymentRuntimeHealthCheck())
@@ -6252,6 +6278,27 @@ export function dashboardWalletManagementOverview(input: {
   };
 }
 
+export function dashboardInternalExcludedOverview(input: {
+  usersTotal?: number | null;
+  users?: number | null;
+  walletsTotal?: number | null;
+  wallets?: number | null;
+  salesTotal?: number | null;
+  sales?: number | null;
+  rentalsTotal?: number | null;
+  rentals?: number | null;
+  sharingTotal?: number | null;
+  sharing?: number | null;
+}) {
+  return {
+    users: dashboardExcludedCount(input.usersTotal, input.users),
+    wallets: dashboardExcludedCount(input.walletsTotal, input.wallets),
+    sales: dashboardExcludedCount(input.salesTotal, input.sales),
+    rentals: dashboardExcludedCount(input.rentalsTotal, input.rentals),
+    sharing: dashboardExcludedCount(input.sharingTotal, input.sharing)
+  };
+}
+
 export function dashboardLatestSystemHealthPreview(
   snapshot: DashboardLatestSystemHealthSnapshot,
   now = new Date(),
@@ -6680,6 +6727,10 @@ function dashboardMoneyLikeValue(value: string | number | Prisma.Decimal | null 
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (value && typeof value.toString === "function") return value.toString();
   return null;
+}
+
+function dashboardExcludedCount(total: number | null | undefined, visible: number | null | undefined) {
+  return Math.max(0, (total ?? 0) - (visible ?? 0));
 }
 
 function dashboardDetailNumber(detail: DashboardHealthDetailPreview, field: string) {

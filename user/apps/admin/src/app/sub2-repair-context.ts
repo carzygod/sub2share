@@ -57,6 +57,7 @@ export interface ResourceCreateDefaults {
   resourceStatus?: string;
   productId?: string;
   productName?: string;
+  productStatus?: string;
   priceId?: string;
   sub2AccountName?: string;
   accountStatus?: string;
@@ -368,6 +369,7 @@ export function proxyRequestRepairContext(candidate: ProxyRequestRepairCandidate
 export function resourceCreateDefaultsProductText(defaults: ResourceCreateDefaults) {
   return [
     defaults.productName,
+    defaults.productStatus ? `status ${defaults.productStatus}` : undefined,
     defaults.productId,
     defaults.priceId
   ].map((value) => value?.trim()).filter(Boolean).join(" / ");
