@@ -312,3 +312,11 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - `upstreamBlocker` 与 `openai_group_has_no_active_accounts` issue 继续从第一条候选生成 `repairAction=apply_openai_refresh_token_to_sub2_account`。
 
 这让管理员在多个异常 Sub2 OpenAI 账号同时存在时，更稳定地先处理最可能阻断 `/v1/responses` 的凭据失效账号。该检查仍然只读取 Sub2 状态，不解密或展示 refresh token 明文，也不主动写入 Sub2API。
+
+## 2026-06-13 扩展：Sub2 修复诊断字段空白归一化
+
+- `sub2` 巡检账号样本会把空白的可选诊断字段归一为 `null`，包括 `tempUnschedulableReason`、`updatedAt`、限流/过载时间和错误摘要来源。
+- 资源凭据修复候选和 Sub2 账号修复样本也会同步归一化空白账号名、账号状态、凭据状态、group、message 和更新时间。
+- 当 Sub2 账号没有有效错误摘要时，样本会返回默认可读 message，而不是把空字符串透传到完整健康 payload。
+
+这让完整 `GET /api/admin/system-health`、Dashboard 摘要和 Admin 修复表单对“字段为空”的判断一致，减少空字符串在运维排障中的噪声。该处理只影响只读诊断输出，不改变 Sub2API 状态、凭据写入或真实反代请求。

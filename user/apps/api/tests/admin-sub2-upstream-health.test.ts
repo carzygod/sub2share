@@ -128,6 +128,37 @@ test("sub2 upstream samples prioritize configured auth failures for repair", () 
   assert.equal(issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
 });
 
+test("sub2 upstream samples normalize blank optional diagnostics", () => {
+  const samples = sub2AccountHealthSamples([
+    {
+      id: 7,
+      name: "blank-diagnostics",
+      platform: "openai",
+      type: "oauth",
+      status: "error",
+      credentialsStatus: " ",
+      schedulable: false,
+      groupIds: [2],
+      groupNames: ["oai"],
+      rateLimitedAt: " ",
+      overloadUntil: " ",
+      tempUnschedulableUntil: " ",
+      tempUnschedulableReason: " ",
+      updatedAt: " ",
+      errorMessage: " "
+    }
+  ]);
+
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].credentialsStatus, null);
+  assert.equal(samples[0].rateLimitedAt, null);
+  assert.equal(samples[0].overloadUntil, null);
+  assert.equal(samples[0].tempUnschedulableUntil, null);
+  assert.equal(samples[0].tempUnschedulableReason, null);
+  assert.equal(samples[0].updatedAt, null);
+  assert.equal(samples[0].message, "Sub2 OpenAI account blank-diagnostics #7 is error and not schedulable.");
+});
+
 test("sub2 upstream issues point no-active-account repairs to the first account candidate", () => {
   const issues = buildSub2UpstreamIssues({
     gatewayReachable: true,

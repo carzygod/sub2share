@@ -73,28 +73,32 @@ export function sub2AccountHealthSamples(accounts: Sub2AccountHealthSource[]) {
     .filter((account) => account.status !== "active" || account.schedulable === false)
     .sort(compareSub2AccountRepairCandidates)
     .slice(0, 20)
-    .map((account): Sub2AccountHealthSample => ({
-      id: `sub2_account:${account.id}`,
-      sub2AccountId: account.id,
-      sub2AccountName: account.name,
-      platform: account.platform,
-      accountType: account.type,
-      accountStatus: account.status,
-      credentialsStatus: account.credentialsStatus ?? null,
-      schedulable: account.schedulable ?? null,
-      groupIds: account.groupIds.join(","),
-      groupNames: account.groupNames.join(","),
-      currentConcurrency: account.currentConcurrency ?? null,
-      concurrency: account.concurrency ?? null,
-      rateLimitedAt: account.rateLimitedAt ?? null,
-      overloadUntil: account.overloadUntil ?? null,
-      tempUnschedulableUntil: account.tempUnschedulableUntil ?? null,
-      tempUnschedulableReason: account.tempUnschedulableReason ?? null,
-      updatedAt: account.updatedAt ?? null,
-      message: account.errorMessage
-        ?? account.tempUnschedulableReason
-        ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`
-    }));
+    .map((account): Sub2AccountHealthSample => {
+      const tempUnschedulableReason = nullableText(account.tempUnschedulableReason);
+      const errorMessage = nullableText(account.errorMessage);
+      return {
+        id: `sub2_account:${account.id}`,
+        sub2AccountId: account.id,
+        sub2AccountName: account.name,
+        platform: account.platform,
+        accountType: account.type,
+        accountStatus: account.status,
+        credentialsStatus: nullableText(account.credentialsStatus),
+        schedulable: account.schedulable ?? null,
+        groupIds: account.groupIds.join(","),
+        groupNames: account.groupNames.join(","),
+        currentConcurrency: account.currentConcurrency ?? null,
+        concurrency: account.concurrency ?? null,
+        rateLimitedAt: nullableText(account.rateLimitedAt),
+        overloadUntil: nullableText(account.overloadUntil),
+        tempUnschedulableUntil: nullableText(account.tempUnschedulableUntil),
+        tempUnschedulableReason,
+        updatedAt: nullableText(account.updatedAt),
+        message: errorMessage
+          ?? tempUnschedulableReason
+          ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`
+      };
+    });
 }
 
 function compareSub2AccountRepairCandidates(left: Sub2AccountHealthSource, right: Sub2AccountHealthSource) {
@@ -118,7 +122,7 @@ function sub2AccountRepairPriority(account: Sub2AccountHealthSource) {
 }
 
 function hasConfiguredCredential(account: Sub2AccountHealthSource) {
-  const status = account.credentialsStatus?.toLowerCase() ?? "";
+  const status = nullableText(account.credentialsStatus)?.toLowerCase() ?? "";
   return status.startsWith("configured");
 }
 
@@ -132,9 +136,16 @@ function hasAuthCredentialFailure(account: Sub2AccountHealthSource) {
 }
 
 function timestampValue(value?: string | null) {
-  if (!value) return 0;
-  const timestamp = Date.parse(value);
+  const text = nullableText(value);
+  if (!text) return 0;
+  const timestamp = Date.parse(text);
   return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function nullableText(value?: string | null) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 export function buildSub2UpstreamIssues(input: {

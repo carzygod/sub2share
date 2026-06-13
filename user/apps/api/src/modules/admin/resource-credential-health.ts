@@ -39,13 +39,13 @@ export function resourceCredentialRepairCandidateFields(candidates: ResourceCred
 
   return {
     sub2AccountId: candidate.sub2AccountId,
-    sub2AccountName: candidate.sub2AccountName ?? null,
-    accountStatus: candidate.accountStatus ?? null,
-    credentialsStatus: candidate.credentialsStatus ?? null,
+    sub2AccountName: nullableText(candidate.sub2AccountName),
+    accountStatus: nullableText(candidate.accountStatus),
+    credentialsStatus: nullableText(candidate.credentialsStatus),
     schedulable: candidate.schedulable ?? null,
-    ...(candidate.tempUnschedulableReason !== undefined ? { tempUnschedulableReason: candidate.tempUnschedulableReason } : {}),
-    ...(candidate.message !== undefined ? { accountMessage: candidate.message } : {}),
-    ...(candidate.updatedAt !== undefined ? { updatedAt: candidate.updatedAt } : {}),
+    ...(candidate.tempUnschedulableReason !== undefined ? { tempUnschedulableReason: optionalText(candidate.tempUnschedulableReason) } : {}),
+    ...(candidate.message !== undefined ? { accountMessage: optionalText(candidate.message) } : {}),
+    ...(candidate.updatedAt !== undefined ? { updatedAt: optionalText(candidate.updatedAt) } : {}),
     repairAction: "apply_openai_refresh_token_to_sub2_account"
   };
 }
@@ -56,8 +56,27 @@ export function resourceCredentialSub2AccountRepairSamples(candidates: ResourceC
     .slice(0, 10)
     .map((candidate) => ({
       ...candidate,
+      sub2AccountName: optionalText(candidate.sub2AccountName),
+      accountStatus: optionalText(candidate.accountStatus),
+      credentialsStatus: optionalText(candidate.credentialsStatus),
+      tempUnschedulableReason: optionalText(candidate.tempUnschedulableReason),
+      groupIds: optionalText(candidate.groupIds),
+      groupNames: optionalText(candidate.groupNames),
+      message: optionalText(candidate.message),
+      updatedAt: optionalText(candidate.updatedAt),
       sampleType: "sub2_account_repair_candidate",
       sub2Status: true,
       repairAction: "apply_openai_refresh_token_to_sub2_account"
     }));
+}
+
+function nullableText(value?: string | null) {
+  return optionalText(value) ?? null;
+}
+
+function optionalText(value?: string | null) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }

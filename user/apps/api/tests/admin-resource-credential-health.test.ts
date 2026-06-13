@@ -43,6 +43,34 @@ test("resource credential health exposes the first Sub2 account repair candidate
   });
 });
 
+test("resource credential health normalizes blank repair candidate diagnostics", () => {
+  const fields = resourceCredentialRepairCandidateFields([
+    {
+      id: "sub2_account:2",
+      sub2AccountId: 2,
+      sub2AccountName: " ",
+      accountStatus: " error ",
+      credentialsStatus: " ",
+      schedulable: false,
+      tempUnschedulableReason: " ",
+      message: " ",
+      updatedAt: " "
+    }
+  ]);
+
+  assert.deepEqual(fields, {
+    sub2AccountId: 2,
+    sub2AccountName: null,
+    accountStatus: "error",
+    credentialsStatus: null,
+    schedulable: false,
+    tempUnschedulableReason: null,
+    accountMessage: null,
+    updatedAt: null,
+    repairAction: "apply_openai_refresh_token_to_sub2_account"
+  });
+});
+
 test("resource credential health omits account fields when no candidate is available", () => {
   assert.deepEqual(resourceCredentialRepairCandidateFields([]), {});
   assert.deepEqual(resourceCredentialRepairCandidateFields([{ id: "missing" }]), {});
@@ -68,4 +96,31 @@ test("resource credential health turns Sub2 accounts into repair samples", () =>
   assert.equal(samples[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
   assert.equal(samples[0].sub2AccountId, 2);
   assert.equal(samples[0].message, "token invalidated");
+});
+
+test("resource credential health normalizes blank repair samples", () => {
+  const samples = resourceCredentialSub2AccountRepairSamples([
+    {
+      id: "sub2_account:2",
+      sub2AccountId: 2,
+      sub2AccountName: " ",
+      accountStatus: " ",
+      credentialsStatus: " ",
+      tempUnschedulableReason: " ",
+      groupIds: " ",
+      groupNames: " ",
+      message: " ",
+      updatedAt: " "
+    }
+  ]);
+
+  assert.equal(samples.length, 1);
+  assert.equal(samples[0].sub2AccountName, null);
+  assert.equal(samples[0].accountStatus, null);
+  assert.equal(samples[0].credentialsStatus, null);
+  assert.equal(samples[0].tempUnschedulableReason, null);
+  assert.equal(samples[0].groupIds, null);
+  assert.equal(samples[0].groupNames, null);
+  assert.equal(samples[0].message, null);
+  assert.equal(samples[0].updatedAt, null);
 });
