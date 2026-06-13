@@ -1142,7 +1142,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         }
       },
       latestSystemHealth: latestSystemHealth ? {
-        ...dashboardLatestSystemHealthPreview(latestSystemHealth)
+        ...dashboardLatestSystemHealthPreview(latestSystemHealth, new Date(), deploymentRuntimeHealthCheck())
       } : null
     });
   });
@@ -6156,9 +6156,16 @@ export function dashboardWalletManagementOverview(input: {
   };
 }
 
-export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSystemHealthSnapshot, now = new Date()) {
+export function dashboardLatestSystemHealthPreview(
+  snapshot: DashboardLatestSystemHealthSnapshot,
+  now = new Date(),
+  liveDeploymentRuntimeCheck?: SystemHealthCheck | null
+) {
   const ageMinutes = Math.floor(Math.max(0, now.getTime() - snapshot.createdAt.getTime()) / 60000);
   const staleThresholdMinutes = Math.floor(dashboardSystemHealthSnapshotStaleMs / 60000);
+  const deploymentRuntime = liveDeploymentRuntimeCheck
+    ? dashboardDeploymentRuntimePreview([liveDeploymentRuntimeCheck]) ?? dashboardDeploymentRuntimePreview(snapshot.checks)
+    : dashboardDeploymentRuntimePreview(snapshot.checks);
 
   return {
     id: snapshot.id,
@@ -6171,7 +6178,7 @@ export function dashboardLatestSystemHealthPreview(snapshot: DashboardLatestSyst
     staleThresholdMinutes,
     upstreamBlocker: dashboardUpstreamBlockerPreview(snapshot.checks),
     deliveryBlocker: dashboardDeliveryBlockerPreview(snapshot.checks),
-    deploymentRuntime: dashboardDeploymentRuntimePreview(snapshot.checks),
+    deploymentRuntime,
     adminEntryCoverage: dashboardAdminEntryCoveragePreview(snapshot.checks),
     criticalChecks: dashboardHealthCheckPreviews(snapshot.checks)
   };

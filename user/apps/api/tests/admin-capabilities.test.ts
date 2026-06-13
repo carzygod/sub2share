@@ -797,6 +797,58 @@ test("dashboard latest system health preview always exposes admin entry coverage
   assert.equal(preview.adminEntryCoverage?.frontend?.metrics.criticalViews, 5);
 });
 
+test("dashboard latest system health preview prefers live deployment runtime evidence", () => {
+  const snapshot = {
+    id: "snapshot-old-runtime",
+    status: "error",
+    source: "manual",
+    summary: { totalChecks: 2, ok: 1, error: 1, warning: 0 },
+    checks: [
+      {
+        id: "deploymentRuntime",
+        label: "Deployment runtime",
+        status: "ok",
+        summary: "Running old release",
+        metrics: {
+          releaseRoot: "/opt/zhisuan-yizhan/user",
+          markerPath: "/opt/zhisuan-yizhan/user/.release-marker",
+          commit: "old-commit",
+          deployedAt: "20260613T012534Z",
+          runningFromReplacedRelease: false,
+          runningFromStagingRelease: false
+        }
+      },
+      { id: "localProxySmoke", label: "Local proxy smoke", status: "error", summary: "Proxy failed" }
+    ],
+    createdAt: new Date("2026-06-13T01:25:34.000Z")
+  };
+  const liveDeploymentRuntime = {
+    id: "deploymentRuntime",
+    label: "Deployment runtime",
+    status: "ok" as const,
+    summary: "Running current release",
+    metrics: {
+      releaseRoot: "/opt/zhisuan-yizhan/user",
+      markerPath: "/opt/zhisuan-yizhan/user/.release-marker",
+      commit: "58199b7dfa79c83c2d61e323305a1439e8e4f1e0",
+      deployedAt: "20260613T014205Z",
+      runningFromReplacedRelease: false,
+      runningFromStagingRelease: false
+    }
+  };
+
+  const preview = dashboardLatestSystemHealthPreview(
+    snapshot,
+    new Date("2026-06-13T01:44:00.000Z"),
+    liveDeploymentRuntime
+  );
+
+  assert.equal(preview.deploymentRuntime?.commit, "58199b7dfa79c83c2d61e323305a1439e8e4f1e0");
+  assert.equal(preview.deploymentRuntime?.deployedAt, "20260613T014205Z");
+  assert.equal(preview.deploymentRuntime?.summary, "Running current release");
+  assert.equal(preview.criticalChecks[0]?.id, "localProxySmoke");
+});
+
 test("dashboard health previews retain product catalog drilldown fields", () => {
   const previews = dashboardHealthCheckPreviews([
     {
