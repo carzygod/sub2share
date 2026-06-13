@@ -319,6 +319,11 @@ interface DashboardUpstreamBlockerPreview {
   evidenceErrorCode?: string | null;
   evidenceModel?: string | null;
   evidenceResponsesOk?: boolean | null;
+  evidenceModelsStatusCode?: number | null;
+  evidenceModelsError?: string | null;
+  evidenceResponsesStatusCode?: number | null;
+  evidenceResponsesErrorType?: string | null;
+  evidenceResponsesErrorMessage?: string | null;
   evidenceLocalProxyOk?: boolean | null;
   evidenceAgeMinutes?: number | null;
   evidenceStale?: boolean | null;
@@ -435,7 +440,12 @@ const dashboardHealthDetailPreviewFields = [
   "proxyRequestErrorCode",
   "model",
   "modelsOk",
+  "modelsStatusCode",
+  "modelsError",
   "responsesOk",
+  "responsesStatusCode",
+  "responsesErrorType",
+  "responsesErrorMessage",
   "localProxyOk",
   "smokeTestSkippedReason",
   "ageMinutes",
@@ -4621,7 +4631,12 @@ function localProxySmokeRepairContextFields(checks: SystemHealthCheck[]) {
     "auditAction",
     "model",
     "modelsOk",
+    "modelsStatusCode",
+    "modelsError",
     "responsesOk",
+    "responsesStatusCode",
+    "responsesErrorType",
+    "responsesErrorMessage",
     "localProxyOk",
     "smokeTestSkippedReason",
     "keyDisabled",
@@ -6250,6 +6265,11 @@ function dashboardUpstreamBlockerPreview(checks: unknown): DashboardUpstreamBloc
     evidenceErrorCode: textJsonValue(detail.proxyRequestErrorCode) ?? null,
     evidenceModel: textJsonValue(detail.model) ?? null,
     evidenceResponsesOk: dashboardDetailBoolean(detail, "responsesOk"),
+    evidenceModelsStatusCode: dashboardDetailNumber(detail, "modelsStatusCode"),
+    evidenceModelsError: textJsonValue(detail.modelsError) ?? null,
+    evidenceResponsesStatusCode: dashboardDetailNumber(detail, "responsesStatusCode"),
+    evidenceResponsesErrorType: textJsonValue(detail.responsesErrorType) ?? null,
+    evidenceResponsesErrorMessage: textJsonValue(detail.responsesErrorMessage) ?? null,
     evidenceLocalProxyOk: dashboardDetailBoolean(detail, "localProxyOk"),
     evidenceAgeMinutes: dashboardDetailNumber(detail, "ageMinutes"),
     evidenceStale: dashboardDetailBoolean(detail, "stale"),
@@ -7616,7 +7636,12 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
         ok: false,
         model: null,
         modelsOk: null,
+        modelsStatusCode: null,
+        modelsError: null,
         responsesOk: null,
+        responsesStatusCode: null,
+        responsesErrorType: null,
+        responsesErrorMessage: null,
         localProxyOk: null,
         keyDisabled: null,
         smokeTestSkippedReason: null,
@@ -7677,7 +7702,12 @@ async function inspectLocalProxySmokeEvidence(checkedAt: Date) {
       ok: latest.ok,
       model: latest.model ?? null,
       modelsOk: latest.modelsOk,
+      modelsStatusCode: latest.modelsStatusCode,
+      modelsError: latest.modelsError,
       responsesOk: latest.responsesOk,
+      responsesStatusCode: latest.responsesStatusCode,
+      responsesErrorType: latest.responsesErrorType,
+      responsesErrorMessage: latest.responsesErrorMessage,
       localProxyOk: latest.localProxyOk,
       keyDisabled: latest.keyDisabled,
       smokeTestSkippedReason: latest.smokeTestSkippedReason,

@@ -70,6 +70,9 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthIssueRefFields.includes("staleAt"));
   assert.ok(adminSystemHealthIssueRefFields.includes("accountErrorStatusCode"));
   assert.ok(adminSystemHealthIssueRefFields.includes("accountErrorCode"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("modelsStatusCode"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("responsesStatusCode"));
+  assert.ok(adminSystemHealthIssueRefFields.includes("responsesErrorMessage"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("repairAction"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("sampleType"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("productName"));
@@ -84,6 +87,9 @@ test("system health summaries expose repair actions for operator drilldown", () 
   assert.ok(adminSystemHealthSampleSummaryFields.includes("walletTransactionId"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("accountErrorStatusCode"));
   assert.ok(adminSystemHealthSampleSummaryFields.includes("accountErrorCode"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("modelsStatusCode"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("responsesStatusCode"));
+  assert.ok(adminSystemHealthSampleSummaryFields.includes("responsesErrorMessage"));
 });
 
 test("system health product lookup falls back to product names", () => {
@@ -135,7 +141,11 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
     proxyRequestErrorCode: "upstream_http_503",
     model: "gpt-5.3-codex",
     modelsOk: "true",
+    modelsStatusCode: "200",
     responsesOk: "false",
+    responsesStatusCode: "503",
+    responsesErrorType: "api_error",
+    responsesErrorMessage: "Service temporarily unavailable",
     localProxyOk: "false",
     ageMinutes: "12",
     staleThresholdMinutes: "1440",
@@ -152,7 +162,7 @@ test("sub2 repair context summarizes operator drilldown targets", () => {
   assert.equal(items.find((item) => item.label === "账号诊断")?.value, "schedulable false / temp token_invalidated / HTTP 401 / token_invalidated / invalid_request_error / Your authentication token has been invalidated. / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "资源")?.value, "resource-1 / codex / online / production");
   assert.equal(items.find((item) => item.label === "请求定位")?.value, "req-local / log-1 / req-upstream");
-  assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / responses 失败 / local 失败");
+  assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / models HTTP 200 / responses 失败 / responses HTTP 503 / api_error / Service temporarily unavailable / local 失败");
   assert.equal(items.find((item) => item.label === "失败请求")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 12 分钟前 / 阈值 1440 分钟 / staleAt 2026-06-12T04:00:00.000Z / 证据已过期");
   assert.ok(items.every((item) => item.value.trim().length > 0));
 });
@@ -353,7 +363,12 @@ test("resource create defaults expose repair context for operators", () => {
     accountUpdatedAt: "2026-06-12T22:53:59.925286+08:00",
     repairAction: "apply_openai_refresh_token_to_sub2_account",
     model: "gpt-5.3-codex",
+    modelsOk: "true",
+    modelsStatusCode: "200",
     responsesOk: "false",
+    responsesStatusCode: "503",
+    responsesErrorType: "api_error",
+    responsesErrorMessage: "Service temporarily unavailable",
     localProxyOk: "false",
     proxyRequestPath: "/v1/responses",
     proxyRequestStatusCode: "503",
@@ -384,7 +399,7 @@ test("resource create defaults expose repair context for operators", () => {
   assert.equal(items.find((item) => item.label === "Account status")?.value, "error / configured(3)");
   assert.equal(items.find((item) => item.label === "Account diagnostics")?.value, "schedulable false / temp token_invalidated / HTTP 401 / token_invalidated / invalid_request_error / Your authentication token has been invalidated. / updated 2026-06-12T22:53:59.925286+08:00 / Authentication failed: token_invalidated");
   assert.equal(items.find((item) => item.label === "Credential apply")?.value, "enabled after create");
-  assert.match(items.find((item) => item.label === "Smoke")?.value ?? "", /model gpt-5.3-codex/);
+  assert.equal(items.find((item) => item.label === "Smoke")?.value, "model gpt-5.3-codex / models 通过 / models HTTP 200 / responses 失败 / responses HTTP 503 / api_error / Service temporarily unavailable / local 失败");
   assert.equal(items.find((item) => item.label === "Failure")?.value, "/v1/responses / HTTP 503 / upstream_http_503 / 1341 分钟前 / 阈值 1440 分钟 / 剩余 99 分钟过期 / staleAt 2026-06-12T04:00:00.000Z");
 });
 

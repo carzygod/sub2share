@@ -293,7 +293,12 @@ test("dashboard health previews prioritize blocking checks and retain critical o
           proxyRequestStatusCode: 503,
           proxyRequestErrorCode: "upstream_http_503",
           model: "gpt-5.3-codex",
+          modelsOk: true,
+          modelsStatusCode: 200,
           responsesOk: false,
+          responsesStatusCode: 503,
+          responsesErrorType: "api_error",
+          responsesErrorMessage: "Service temporarily unavailable",
           localProxyOk: false,
           ageMinutes: 12,
           stale: true,
@@ -319,7 +324,12 @@ test("dashboard health previews prioritize blocking checks and retain critical o
   assert.equal(previews[0].primaryIssue?.proxyRequestStatusCode, 503);
   assert.equal(previews[0].primaryIssue?.proxyRequestErrorCode, "upstream_http_503");
   assert.equal(previews[0].primaryIssue?.model, "gpt-5.3-codex");
+  assert.equal(previews[0].primaryIssue?.modelsOk, true);
+  assert.equal(previews[0].primaryIssue?.modelsStatusCode, 200);
   assert.equal(previews[0].primaryIssue?.responsesOk, false);
+  assert.equal(previews[0].primaryIssue?.responsesStatusCode, 503);
+  assert.equal(previews[0].primaryIssue?.responsesErrorType, "api_error");
+  assert.equal(previews[0].primaryIssue?.responsesErrorMessage, "Service temporarily unavailable");
   assert.equal(previews[0].primaryIssue?.ageMinutes, 12);
   assert.equal(previews[0].primaryIssue?.stale, true);
   assert.equal(previews[0].primaryIssue?.staleThresholdMinutes, 1440);
@@ -496,7 +506,12 @@ test("dashboard latest system health preview exposes actionable upstream blocker
             proxyRequestStatusCode: 503,
             proxyRequestErrorCode: "upstream_http_503",
             model: "gpt-5.3-codex",
+            modelsOk: true,
+            modelsStatusCode: 200,
             responsesOk: false,
+            responsesStatusCode: 503,
+            responsesErrorType: "api_error",
+            responsesErrorMessage: "Service temporarily unavailable",
             localProxyOk: false,
             ageMinutes: 1_448,
             stale: true,
@@ -543,6 +558,10 @@ test("dashboard latest system health preview exposes actionable upstream blocker
   assert.equal(preview.upstreamBlocker?.evidenceErrorCode, "upstream_http_503");
   assert.equal(preview.upstreamBlocker?.evidenceModel, "gpt-5.3-codex");
   assert.equal(preview.upstreamBlocker?.evidenceResponsesOk, false);
+  assert.equal(preview.upstreamBlocker?.evidenceModelsStatusCode, 200);
+  assert.equal(preview.upstreamBlocker?.evidenceResponsesStatusCode, 503);
+  assert.equal(preview.upstreamBlocker?.evidenceResponsesErrorType, "api_error");
+  assert.equal(preview.upstreamBlocker?.evidenceResponsesErrorMessage, "Service temporarily unavailable");
   assert.equal(preview.upstreamBlocker?.evidenceLocalProxyOk, false);
   assert.equal(preview.upstreamBlocker?.evidenceAgeMinutes, 1_448);
   assert.equal(preview.upstreamBlocker?.evidenceStale, true);
@@ -961,7 +980,11 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
           auditAction: "admin.sub2.proxy_smoke_test",
           model: "gpt-5.3-codex",
           modelsOk: true,
+          modelsStatusCode: 200,
           responsesOk: false,
+          responsesStatusCode: 503,
+          responsesErrorType: "api_error",
+          responsesErrorMessage: "Service temporarily unavailable",
           localProxyOk: false,
           smokeTestSkippedReason: null,
           keyDisabled: true,
@@ -993,7 +1016,11 @@ test("sub2 repair context enrichment shares local smoke evidence with repair iss
     assert.equal(issue.repairAction, "apply_openai_refresh_token_to_sub2_account");
     assert.equal(issue.resourceType, "codex");
     assert.equal(issue.model, "gpt-5.3-codex");
+    assert.equal(issue.modelsStatusCode, 200);
     assert.equal(issue.responsesOk, false);
+    assert.equal(issue.responsesStatusCode, 503);
+    assert.equal(issue.responsesErrorType, "api_error");
+    assert.equal(issue.responsesErrorMessage, "Service temporarily unavailable");
     assert.equal(issue.localProxyOk, false);
     assert.equal(issue.keyDisabled, true);
     assert.equal(issue.proxyRequestLogCount, 2);

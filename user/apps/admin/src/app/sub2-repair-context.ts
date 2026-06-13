@@ -32,7 +32,12 @@ export interface Sub2RepairContext {
   proxyRequestErrorCode?: string;
   model?: string;
   modelsOk?: string;
+  modelsStatusCode?: string;
+  modelsError?: string;
   responsesOk?: string;
+  responsesStatusCode?: string;
+  responsesErrorType?: string;
+  responsesErrorMessage?: string;
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
@@ -65,7 +70,13 @@ export interface ResourceCreateDefaults {
   accountErrorMessage?: string;
   accountUpdatedAt?: string;
   model?: string;
+  modelsOk?: string;
   responsesOk?: string;
+  responsesStatusCode?: string;
+  responsesErrorType?: string;
+  responsesErrorMessage?: string;
+  modelsStatusCode?: string;
+  modelsError?: string;
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   proxyRequestPath?: string;
@@ -163,7 +174,9 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
   const smoke = [
     context.model ? `model ${context.model}` : undefined,
     healthFlag("models", context.modelsOk),
+    smokePhaseSummary("models", context.modelsStatusCode, undefined, context.modelsError),
     healthFlag("responses", context.responsesOk),
+    smokePhaseSummary("responses", context.responsesStatusCode, context.responsesErrorType, context.responsesErrorMessage),
     healthFlag("local", context.localProxyOk)
   ].filter(Boolean).join(" / ");
   const failingRequest = [
@@ -203,6 +216,7 @@ export function sub2RepairContextItems(context: Sub2RepairContext): Sub2RepairCo
 
 export function sub2RepairContextShouldRunSmokeTest(context: Sub2RepairContext) {
   return context.checkId === "localProxySmoke"
+    || context.modelsOk === "false"
     || context.responsesOk === "false"
     || context.localProxyOk === "false"
     || Boolean(context.proxyRequestPath || context.proxyRequestStatusCode || context.proxyRequestErrorCode);
@@ -221,6 +235,7 @@ export function resourceCreateDefaultsShouldRunSmokeTest(defaults: ResourceCreat
   return defaults.resourceType === "codex"
     || defaults.checkId === "resources"
     || defaults.resourceScope === "production"
+    || defaults.modelsOk === "false"
     || defaults.responsesOk === "false"
     || defaults.localProxyOk === "false"
     || Boolean(defaults.proxyRequestPath || defaults.proxyRequestStatusCode || defaults.proxyRequestErrorCode);
@@ -321,7 +336,10 @@ export function resourceCreateDefaultsContextItems(defaults: ResourceCreateDefau
   ].filter(Boolean).join(" / ");
   const smoke = [
     resourceCreateDefaultsSmokeModel(defaults) ? `model ${resourceCreateDefaultsSmokeModel(defaults)}` : undefined,
+    healthFlag("models", defaults.modelsOk),
+    smokePhaseSummary("models", defaults.modelsStatusCode, undefined, defaults.modelsError),
     healthFlag("responses", defaults.responsesOk),
+    smokePhaseSummary("responses", defaults.responsesStatusCode, defaults.responsesErrorType, defaults.responsesErrorMessage),
     healthFlag("local", defaults.localProxyOk)
   ].filter(Boolean).join(" / ");
   const failure = [
@@ -367,6 +385,14 @@ function healthFlag(label: string, value?: string) {
   if (value === "true") return `${label} 通过`;
   if (value === "false") return `${label} 失败`;
   return `${label} ${value}`;
+}
+
+function smokePhaseSummary(label: string, statusCode?: string, errorType?: string, errorMessage?: string) {
+  return [
+    statusCode ? `${label} HTTP ${statusCode}` : undefined,
+    errorType,
+    errorMessage
+  ].filter(Boolean).join(" / ");
 }
 
 function accountErrorSummary(source: {

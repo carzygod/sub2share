@@ -42,7 +42,12 @@ test("normalizes direct local proxy smoke audit evidence", () => {
   assert.equal(evidence.ok, true);
   assert.equal(evidence.model, "gpt-5.3-codex");
   assert.equal(evidence.modelsOk, true);
+  assert.equal(evidence.modelsStatusCode, 200);
+  assert.equal(evidence.modelsError, null);
   assert.equal(evidence.responsesOk, true);
+  assert.equal(evidence.responsesStatusCode, 200);
+  assert.equal(evidence.responsesErrorType, null);
+  assert.equal(evidence.responsesErrorMessage, null);
   assert.equal(evidence.localProxyOk, true);
   assert.equal(evidence.keyDisabled, true);
   assert.equal(evidence.proxyRequestLogCount, 2);
@@ -76,7 +81,7 @@ test("normalizes direct refresh token apply smoke evidence", () => {
         model: "gpt-5.3-codex",
         keyDisabled: true,
         models: { ok: true, statusCode: 200 },
-        responses: { ok: false, statusCode: 401, errorType: "invalid_auth" },
+        responses: { ok: false, statusCode: 401, errorType: "invalid_auth", errorMessage: "Expired token" },
         localProxy: {
           ok: false,
           proxyRequestLogCount: 1,
@@ -95,10 +100,14 @@ test("normalizes direct refresh token apply smoke evidence", () => {
   assert.equal(evidence.sub2AccountId, "2");
   assert.equal(evidence.ok, false);
   assert.equal(evidence.responsesOk, false);
+  assert.equal(evidence.modelsStatusCode, 200);
+  assert.equal(evidence.responsesStatusCode, 401);
+  assert.equal(evidence.responsesErrorType, "invalid_auth");
+  assert.equal(evidence.responsesErrorMessage, "Expired token");
   assert.equal(evidence.proxyRequestLogId, "direct-apply-proxy");
   assert.equal(evidence.requestId, "direct-apply-req");
   assert.equal(evidence.upstreamRequestId, "upstream-direct-apply");
-  assert.equal(localProxySmokeFailureSummary(evidence), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
+  assert.equal(localProxySmokeFailureSummary(evidence), "Latest local OpenAI/Codex smoke test failed at /v1/responses (HTTP 401 / invalid_auth / Expired token).");
 });
 
 test("normalizes credential apply smoke skip evidence", () => {
@@ -118,7 +127,12 @@ test("normalizes credential apply smoke skip evidence", () => {
   assert.equal(evidence.ok, false);
   assert.equal(evidence.model, null);
   assert.equal(evidence.modelsOk, null);
+  assert.equal(evidence.modelsStatusCode, null);
+  assert.equal(evidence.modelsError, null);
   assert.equal(evidence.responsesOk, null);
+  assert.equal(evidence.responsesStatusCode, null);
+  assert.equal(evidence.responsesErrorType, null);
+  assert.equal(evidence.responsesErrorMessage, null);
   assert.equal(evidence.localProxyOk, null);
   assert.equal(evidence.keyDisabled, null);
   assert.equal(evidence.smokeTestSkippedReason, "sub2_account_test_failed");
@@ -177,8 +191,8 @@ test("chooses the newest valid smoke evidence across audit sources", () => {
           ok: false,
           model: "gpt-5.3-codex",
           keyDisabled: true,
-          models: { ok: true },
-          responses: { ok: false },
+          models: { ok: true, statusCode: 200 },
+          responses: { ok: false, statusCode: 503, errorMessage: "Service unavailable" },
           localProxy: { ok: false, proxyRequestLogCount: 2 }
         }
       }
@@ -191,7 +205,7 @@ test("chooses the newest valid smoke evidence across audit sources", () => {
   assert.equal(candidates[1].auditLogId, "credential-newer");
   assert.equal(candidates[2].auditLogId, "direct-older");
   assert.equal(latestLocalProxySmokeEvidence(logs)?.auditLogId, "direct-apply-newest");
-  assert.equal(localProxySmokeFailureSummary(candidates[1]), "Latest local OpenAI/Codex smoke test failed at /v1/responses.");
+  assert.equal(localProxySmokeFailureSummary(candidates[1]), "Latest local OpenAI/Codex smoke test failed at /v1/responses (HTTP 503 / Service unavailable).");
 });
 
 test("local proxy smoke issues link operators back to repair surfaces", () => {

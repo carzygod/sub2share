@@ -210,6 +210,11 @@ interface DashboardUpstreamBlocker {
   evidenceErrorCode?: string | null;
   evidenceModel?: string | null;
   evidenceResponsesOk?: boolean | null;
+  evidenceModelsStatusCode?: number | null;
+  evidenceModelsError?: string | null;
+  evidenceResponsesStatusCode?: number | null;
+  evidenceResponsesErrorType?: string | null;
+  evidenceResponsesErrorMessage?: string | null;
   evidenceLocalProxyOk?: boolean | null;
   evidenceAgeMinutes?: number | null;
   evidenceStale?: boolean | null;
@@ -443,7 +448,12 @@ interface SystemHealthIssueRow {
   proxyRequestErrorCode?: string;
   model?: string;
   modelsOk?: string;
+  modelsStatusCode?: string;
+  modelsError?: string;
   responsesOk?: string;
+  responsesStatusCode?: string;
+  responsesErrorType?: string;
+  responsesErrorMessage?: string;
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
@@ -499,7 +509,12 @@ interface SystemHealthSampleRow {
   proxyRequestErrorCode?: string;
   model?: string;
   modelsOk?: string;
+  modelsStatusCode?: string;
+  modelsError?: string;
   responsesOk?: string;
+  responsesStatusCode?: string;
+  responsesErrorType?: string;
+  responsesErrorMessage?: string;
   localProxyOk?: string;
   smokeTestSkippedReason?: string;
   ageMinutes?: string;
@@ -2155,7 +2170,13 @@ function App() {
       productName: filter?.productName,
       priceId: filter?.priceId,
       model: filter?.model,
+      modelsOk: filter?.modelsOk,
+      modelsStatusCode: filter?.modelsStatusCode,
+      modelsError: filter?.modelsError,
       responsesOk: filter?.responsesOk,
+      responsesStatusCode: filter?.responsesStatusCode,
+      responsesErrorType: filter?.responsesErrorType,
+      responsesErrorMessage: filter?.responsesErrorMessage,
       localProxyOk: filter?.localProxyOk,
       smokeTestSkippedReason: filter?.smokeTestSkippedReason,
       proxyRequestPath: filter?.proxyRequestPath,
@@ -3548,7 +3569,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <div className="row-actions">
                 {issue.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(issue.proxyRequestLookup!)}>打开反代请求</button>}
                 {issue.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthIssueSub2RepairContext(issue))}>打开反代状态</button>}
-                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, sub2AccountName: issue.sub2AccountName, accountStatus: issue.accountStatus, credentialsStatus: issue.credentialsStatus, schedulable: issue.schedulable, tempUnschedulableReason: issue.tempUnschedulableReason, accountMessage: issue.accountMessage, accountErrorStatusCode: issue.accountErrorStatusCode, accountErrorType: issue.accountErrorType, accountErrorCode: issue.accountErrorCode, accountErrorMessage: issue.accountErrorMessage, accountUpdatedAt: issue.accountUpdatedAt, repairAction: issue.repairAction, productId: issue.productId, productName: issue.productName, priceId: issue.priceId, model: issue.model, responsesOk: issue.responsesOk, localProxyOk: issue.localProxyOk, smokeTestSkippedReason: issue.smokeTestSkippedReason, proxyRequestPath: issue.proxyRequestPath, proxyRequestStatusCode: issue.proxyRequestStatusCode, proxyRequestErrorCode: issue.proxyRequestErrorCode, ageMinutes: issue.ageMinutes, stale: issue.stale, staleThresholdMinutes: issue.staleThresholdMinutes, freshMinutesRemaining: issue.freshMinutesRemaining, staleAt: issue.staleAt })}>打开共享资源</button>}
+                {issue.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: issue.supplierEmail, resourceType: issue.resourceType, status: issue.resourceStatus, scope: issue.resourceScope, sub2AccountId: issue.sub2AccountId, sub2AccountName: issue.sub2AccountName, accountStatus: issue.accountStatus, credentialsStatus: issue.credentialsStatus, schedulable: issue.schedulable, tempUnschedulableReason: issue.tempUnschedulableReason, accountMessage: issue.accountMessage, accountErrorStatusCode: issue.accountErrorStatusCode, accountErrorType: issue.accountErrorType, accountErrorCode: issue.accountErrorCode, accountErrorMessage: issue.accountErrorMessage, accountUpdatedAt: issue.accountUpdatedAt, repairAction: issue.repairAction, productId: issue.productId, productName: issue.productName, priceId: issue.priceId, model: issue.model, modelsOk: issue.modelsOk, modelsStatusCode: issue.modelsStatusCode, modelsError: issue.modelsError, responsesOk: issue.responsesOk, responsesStatusCode: issue.responsesStatusCode, responsesErrorType: issue.responsesErrorType, responsesErrorMessage: issue.responsesErrorMessage, localProxyOk: issue.localProxyOk, smokeTestSkippedReason: issue.smokeTestSkippedReason, proxyRequestPath: issue.proxyRequestPath, proxyRequestStatusCode: issue.proxyRequestStatusCode, proxyRequestErrorCode: issue.proxyRequestErrorCode, ageMinutes: issue.ageMinutes, stale: issue.stale, staleThresholdMinutes: issue.staleThresholdMinutes, freshMinutesRemaining: issue.freshMinutesRemaining, staleAt: issue.staleAt })}>打开共享资源</button>}
                 {issue.resourceId && <button className="secondary mini" onClick={() => onOpenResource(issue.resourceId!)}>打开资源</button>}
                 {issue.orderId && <button className="secondary mini" onClick={() => onOpenOrder(issue.orderId!)}>打开订单</button>}
                 {issue.rentalId && <button className="secondary mini" onClick={() => onOpenRental(issue.rentalId!)}>打开租赁</button>}
@@ -3586,7 +3607,7 @@ function SystemHealthView({ health, maintenance, snapshots, onRefresh, onRunMain
               <td>
                 <div className="row-actions">
                   {sample.proxyRequestLookup && <button className="secondary mini" onClick={() => onOpenProxyRequest(sample.proxyRequestLookup!)}>打开反代请求</button>}
-                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, sub2AccountName: sample.sub2AccountName, accountStatus: sample.accountStatus, credentialsStatus: sample.credentialsStatus, schedulable: sample.schedulable, tempUnschedulableReason: sample.tempUnschedulableReason, accountMessage: sample.accountMessage, accountErrorStatusCode: sample.accountErrorStatusCode, accountErrorType: sample.accountErrorType, accountErrorCode: sample.accountErrorCode, accountErrorMessage: sample.accountErrorMessage, accountUpdatedAt: sample.accountUpdatedAt, repairAction: sample.repairAction, productId: sample.productId, productName: sample.productName, priceId: sample.priceId, model: sample.model, responsesOk: sample.responsesOk, localProxyOk: sample.localProxyOk, smokeTestSkippedReason: sample.smokeTestSkippedReason, proxyRequestPath: sample.proxyRequestPath, proxyRequestStatusCode: sample.proxyRequestStatusCode, proxyRequestErrorCode: sample.proxyRequestErrorCode, ageMinutes: sample.ageMinutes, stale: sample.stale, staleThresholdMinutes: sample.staleThresholdMinutes, freshMinutesRemaining: sample.freshMinutesRemaining, staleAt: sample.staleAt })}>打开共享资源</button>}
+                  {sample.resourceList && <button className="secondary mini" onClick={() => onOpenResources({ supplierEmail: sample.supplierEmail, resourceType: sample.resourceType, status: sample.resourceStatus, scope: sample.resourceScope, sub2AccountId: sample.sub2AccountId, sub2AccountName: sample.sub2AccountName, accountStatus: sample.accountStatus, credentialsStatus: sample.credentialsStatus, schedulable: sample.schedulable, tempUnschedulableReason: sample.tempUnschedulableReason, accountMessage: sample.accountMessage, accountErrorStatusCode: sample.accountErrorStatusCode, accountErrorType: sample.accountErrorType, accountErrorCode: sample.accountErrorCode, accountErrorMessage: sample.accountErrorMessage, accountUpdatedAt: sample.accountUpdatedAt, repairAction: sample.repairAction, productId: sample.productId, productName: sample.productName, priceId: sample.priceId, model: sample.model, modelsOk: sample.modelsOk, modelsStatusCode: sample.modelsStatusCode, modelsError: sample.modelsError, responsesOk: sample.responsesOk, responsesStatusCode: sample.responsesStatusCode, responsesErrorType: sample.responsesErrorType, responsesErrorMessage: sample.responsesErrorMessage, localProxyOk: sample.localProxyOk, smokeTestSkippedReason: sample.smokeTestSkippedReason, proxyRequestPath: sample.proxyRequestPath, proxyRequestStatusCode: sample.proxyRequestStatusCode, proxyRequestErrorCode: sample.proxyRequestErrorCode, ageMinutes: sample.ageMinutes, stale: sample.stale, staleThresholdMinutes: sample.staleThresholdMinutes, freshMinutesRemaining: sample.freshMinutesRemaining, staleAt: sample.staleAt })}>打开共享资源</button>}
                   {sample.resourceId && <button className="secondary mini" onClick={() => onOpenResource(sample.resourceId!)}>打开资源</button>}
                   {sample.sub2Status && <button className="secondary mini" onClick={() => onOpenSub2Status(systemHealthSampleSub2RepairContext(sample))}>打开反代状态</button>}
                   {sample.orderId && <button className="secondary mini" onClick={() => onOpenOrder(sample.orderId!)}>打开订单</button>}
@@ -5864,7 +5885,12 @@ function systemHealthIssueSub2RepairContext(issue: SystemHealthIssueRow): Sub2Re
     proxyRequestErrorCode: issue.proxyRequestErrorCode,
     model: issue.model,
     modelsOk: issue.modelsOk,
+    modelsStatusCode: issue.modelsStatusCode,
+    modelsError: issue.modelsError,
     responsesOk: issue.responsesOk,
+    responsesStatusCode: issue.responsesStatusCode,
+    responsesErrorType: issue.responsesErrorType,
+    responsesErrorMessage: issue.responsesErrorMessage,
     localProxyOk: issue.localProxyOk,
     smokeTestSkippedReason: issue.smokeTestSkippedReason,
     ageMinutes: issue.ageMinutes,
@@ -5906,7 +5932,12 @@ function systemHealthSampleSub2RepairContext(sample: SystemHealthSampleRow): Sub
     proxyRequestErrorCode: sample.proxyRequestErrorCode,
     model: sample.model,
     modelsOk: sample.modelsOk,
+    modelsStatusCode: sample.modelsStatusCode,
+    modelsError: sample.modelsError,
     responsesOk: sample.responsesOk,
+    responsesStatusCode: sample.responsesStatusCode,
+    responsesErrorType: sample.responsesErrorType,
+    responsesErrorMessage: sample.responsesErrorMessage,
     localProxyOk: sample.localProxyOk,
     smokeTestSkippedReason: sample.smokeTestSkippedReason,
     ageMinutes: sample.ageMinutes,
@@ -6681,6 +6712,8 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
     && !blocker.evidenceModel
     && !blocker.evidenceStatusCode
     && !blocker.evidenceErrorCode
+    && !dashboardSmokePhaseEvidenceText("models", blocker.evidenceModelsStatusCode, undefined, blocker.evidenceModelsError)
+    && !dashboardSmokePhaseEvidenceText("responses", blocker.evidenceResponsesStatusCode, blocker.evidenceResponsesErrorType, blocker.evidenceResponsesErrorMessage)
     && typeof blocker.evidenceAgeMinutes !== "number"
     && typeof blocker.evidenceStale !== "boolean"
     && typeof blocker.evidenceFreshMinutesRemaining !== "number"
@@ -6695,13 +6728,25 @@ function dashboardUpstreamBlockerEvidenceText(blocker: DashboardUpstreamBlocker)
   const failure = blocker.evidenceStatusCode
     ? `HTTP ${blocker.evidenceStatusCode}${blocker.evidenceErrorCode ? ` / ${blocker.evidenceErrorCode}` : ""}`
     : blocker.evidenceErrorCode ?? "";
+  const models = dashboardSmokePhaseEvidenceText("models", blocker.evidenceModelsStatusCode, undefined, blocker.evidenceModelsError);
+  const responses = dashboardSmokePhaseEvidenceText("responses", blocker.evidenceResponsesStatusCode, blocker.evidenceResponsesErrorType, blocker.evidenceResponsesErrorMessage);
   return [
     blocker.evidencePath,
     blocker.evidenceModel,
+    models,
+    responses,
     freshness,
     age,
     failure,
     blocker.evidenceStaleAt ? `过期于 ${blocker.evidenceStaleAt}` : ""
+  ].filter(Boolean).join(" / ");
+}
+
+function dashboardSmokePhaseEvidenceText(label: string, statusCode?: number | null, errorType?: string | null, errorMessage?: string | null) {
+  return [
+    typeof statusCode === "number" ? `${label} HTTP ${statusCode}` : "",
+    errorType ?? "",
+    errorMessage ?? ""
   ].filter(Boolean).join(" / ");
 }
 
@@ -6863,7 +6908,12 @@ function dashboardHealthSub2RepairContext(check: DashboardHealthCheckPreview): S
     proxyRequestErrorCode: textValue(record?.proxyRequestErrorCode),
     model: textValue(record?.model),
     modelsOk: textValue(record?.modelsOk),
+    modelsStatusCode: textValue(record?.modelsStatusCode),
+    modelsError: textValue(record?.modelsError),
     responsesOk: textValue(record?.responsesOk),
+    responsesStatusCode: textValue(record?.responsesStatusCode),
+    responsesErrorType: textValue(record?.responsesErrorType),
+    responsesErrorMessage: textValue(record?.responsesErrorMessage),
     localProxyOk: textValue(record?.localProxyOk),
     smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
     ageMinutes: textValue(record?.ageMinutes),
@@ -6914,7 +6964,13 @@ function dashboardHealthResourceFilter(record: DashboardHealthDetailPreview | un
     productName: textValue(record?.productName),
     priceId: textValue(record?.priceId),
     model: textValue(record?.model),
+    modelsOk: textValue(record?.modelsOk),
+    modelsStatusCode: textValue(record?.modelsStatusCode),
+    modelsError: textValue(record?.modelsError),
     responsesOk: textValue(record?.responsesOk),
+    responsesStatusCode: textValue(record?.responsesStatusCode),
+    responsesErrorType: textValue(record?.responsesErrorType),
+    responsesErrorMessage: textValue(record?.responsesErrorMessage),
     localProxyOk: textValue(record?.localProxyOk),
     smokeTestSkippedReason: textValue(record?.smokeTestSkippedReason),
     proxyRequestPath: textValue(record?.proxyRequestPath),
@@ -6996,7 +7052,12 @@ function dashboardHealthPreviewContext(check: DashboardHealthCheckPreview) {
     "proxyRequestErrorCode",
     "model",
     "modelsOk",
+    "modelsStatusCode",
+    "modelsError",
     "responsesOk",
+    "responsesStatusCode",
+    "responsesErrorType",
+    "responsesErrorMessage",
     "localProxyOk",
     "smokeTestSkippedReason",
     "ageMinutes",
@@ -7065,7 +7126,12 @@ function systemHealthIssueRows(check: SystemHealthCheckRow) {
       proxyRequestErrorCode: textValue(record.proxyRequestErrorCode),
       model: textValue(record.model),
       modelsOk: textValue(record.modelsOk),
+      modelsStatusCode: textValue(record.modelsStatusCode),
+      modelsError: textValue(record.modelsError),
       responsesOk: textValue(record.responsesOk),
+      responsesStatusCode: textValue(record.responsesStatusCode),
+      responsesErrorType: textValue(record.responsesErrorType),
+      responsesErrorMessage: textValue(record.responsesErrorMessage),
       localProxyOk: textValue(record.localProxyOk),
       smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
       ageMinutes: textValue(record.ageMinutes),
@@ -7131,7 +7197,12 @@ function systemHealthSampleRows(check: SystemHealthCheckRow) {
       proxyRequestErrorCode: textValue(record.proxyRequestErrorCode),
       model: textValue(record.model),
       modelsOk: textValue(record.modelsOk),
+      modelsStatusCode: textValue(record.modelsStatusCode),
+      modelsError: textValue(record.modelsError),
       responsesOk: textValue(record.responsesOk),
+      responsesStatusCode: textValue(record.responsesStatusCode),
+      responsesErrorType: textValue(record.responsesErrorType),
+      responsesErrorMessage: textValue(record.responsesErrorMessage),
       localProxyOk: textValue(record.localProxyOk),
       smokeTestSkippedReason: textValue(record.smokeTestSkippedReason),
       ageMinutes: textValue(record.ageMinutes),

@@ -18,7 +18,12 @@ export interface LocalProxySmokeEvidence {
   ok: boolean;
   model?: string | null;
   modelsOk: boolean | null;
+  modelsStatusCode: number | null;
+  modelsError: string | null;
   responsesOk: boolean | null;
+  responsesStatusCode: number | null;
+  responsesErrorType: string | null;
+  responsesErrorMessage: string | null;
   localProxyOk: boolean | null;
   keyDisabled: boolean | null;
   smokeTestSkippedReason: string | null;
@@ -60,7 +65,12 @@ export interface LocalProxySmokeEvidenceIssue {
   repairAction?: string;
   model?: string | null;
   modelsOk?: boolean | null;
+  modelsStatusCode?: number | null;
+  modelsError?: string | null;
   responsesOk?: boolean | null;
+  responsesStatusCode?: number | null;
+  responsesErrorType?: string | null;
+  responsesErrorMessage?: string | null;
   localProxyOk?: boolean | null;
   keyDisabled?: boolean | null;
   smokeTestSkippedReason?: string | null;
@@ -118,7 +128,12 @@ export function normalizeLocalProxySmokeAuditLog(log: LocalProxySmokeAuditLog): 
     ok: smoke ? Boolean(smoke.ok) : false,
     model: smoke ? jsonText(smoke.model) : null,
     modelsOk: jsonBoolean(models?.ok),
+    modelsStatusCode: jsonNumber(models?.statusCode),
+    modelsError: jsonText(models?.error),
     responsesOk: jsonBoolean(responses?.ok),
+    responsesStatusCode: jsonNumber(responses?.statusCode),
+    responsesErrorType: jsonText(responses?.errorType),
+    responsesErrorMessage: jsonText(responses?.errorMessage),
     localProxyOk: jsonBoolean(localProxy?.ok),
     keyDisabled: smoke ? jsonBoolean(smoke.keyDisabled) : null,
     smokeTestSkippedReason: skippedReason,
@@ -156,7 +171,12 @@ export function localProxySmokeEvidenceSummary(
     ok: smoke.ok,
     model: smoke.model ?? null,
     modelsOk: smoke.modelsOk,
+    modelsStatusCode: smoke.modelsStatusCode,
+    modelsError: smoke.modelsError,
     responsesOk: smoke.responsesOk,
+    responsesStatusCode: smoke.responsesStatusCode,
+    responsesErrorType: smoke.responsesErrorType,
+    responsesErrorMessage: smoke.responsesErrorMessage,
     localProxyOk: smoke.localProxyOk,
     keyDisabled: smoke.keyDisabled,
     smokeTestSkippedReason: smoke.smokeTestSkippedReason,
@@ -194,7 +214,12 @@ export function localProxySmokeEvidenceIssue(
     sub2AccountId: smoke.sub2AccountId ?? null,
     model: smoke.model ?? null,
     modelsOk: smoke.modelsOk,
+    modelsStatusCode: smoke.modelsStatusCode,
+    modelsError: smoke.modelsError,
     responsesOk: smoke.responsesOk,
+    responsesStatusCode: smoke.responsesStatusCode,
+    responsesErrorType: smoke.responsesErrorType,
+    responsesErrorMessage: smoke.responsesErrorMessage,
     localProxyOk: smoke.localProxyOk,
     keyDisabled: smoke.keyDisabled,
     smokeTestSkippedReason: smoke.smokeTestSkippedReason,
@@ -246,11 +271,20 @@ export function localProxySmokeFailureSummary(smoke: LocalProxySmokeEvidence) {
   if (smoke.smokeTestSkippedReason === "credential_apply_failed") return "Latest requested local OpenAI/Codex smoke test was skipped because credential application failed.";
   if (smoke.smokeTestSkippedReason === "sub2_account_test_failed") return "Latest requested local OpenAI/Codex smoke test was skipped because the Sub2 account test failed.";
   if (smoke.smokeTestSkippedReason) return `Latest requested local OpenAI/Codex smoke test was skipped: ${smoke.smokeTestSkippedReason}.`;
-  if (smoke.modelsOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/models.";
-  if (smoke.responsesOk === false) return "Latest local OpenAI/Codex smoke test failed at /v1/responses.";
+  if (smoke.modelsOk === false) return `Latest local OpenAI/Codex smoke test failed at /v1/models${smokePhaseFailureSuffix(smoke.modelsStatusCode, null, smoke.modelsError)}.`;
+  if (smoke.responsesOk === false) return `Latest local OpenAI/Codex smoke test failed at /v1/responses${smokePhaseFailureSuffix(smoke.responsesStatusCode, smoke.responsesErrorType, smoke.responsesErrorMessage)}.`;
   if (smoke.localProxyOk === false) return "Latest local OpenAI/Codex smoke test did not complete local proxy cleanup or log evidence.";
   if (smoke.keyDisabled === false) return "Latest local OpenAI/Codex smoke test did not disable the temporary Sub2 key.";
   return "Latest local OpenAI/Codex smoke test failed.";
+}
+
+function smokePhaseFailureSuffix(statusCode?: number | null, errorType?: string | null, errorMessage?: string | null) {
+  const parts = [
+    typeof statusCode === "number" ? `HTTP ${statusCode}` : "",
+    errorType ?? "",
+    errorMessage ?? ""
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join(" / ")})` : "";
 }
 
 function isEmbeddedLocalProxySmokeAction(action: string) {
