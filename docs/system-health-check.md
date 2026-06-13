@@ -342,3 +342,16 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - `accountErrorMessage=Your authentication token has been invalidated. Please try signing in again.`
 
 因此，系统内核与管理员入口已经能够证明本地 OpenAI/Codex 反代契约、Sub2API 依赖和管理员入口覆盖均正常；剩余不可用性来自真实上游凭据失效，以及缺少 ready production Codex shared resource。
+
+## 2026-06-13 Update: Local Proxy Smoke Phase Diagnostics
+
+`localProxySmoke` 现在会把本地 OpenAI/Codex smoke 的两个关键阶段拆开返回：
+
+- `/v1/models` 阶段：`modelsOk`、`modelsStatusCode`、`modelsError`。
+- `/v1/responses` 阶段：`responsesOk`、`responsesStatusCode`、`responsesErrorType`、`responsesErrorMessage`。
+
+Dashboard 的 `latestSystemHealth.upstreamBlocker` 会把这些字段映射为 `evidenceModelsStatusCode`、`evidenceModelsError`、`evidenceResponsesStatusCode`、`evidenceResponsesErrorType` 和 `evidenceResponsesErrorMessage`。完整系统健康 issue/sample、共享资源创建默认值和 Sub2 修复上下文也会保留这些字段。
+
+这让管理员可以直接看出当前是“模型列表可达但 Responses 调用失败”，而不是只看到笼统的 smoke failed。2026-06-13 的生产复查结果为：`/v1/models` 返回 200，`/v1/responses` 返回 `HTTP 503 / api_error / Service temporarily unavailable`，并且 Sub2 账号错误仍为 `HTTP 401 / token_invalidated`。
+
+该能力只增强健康诊断和管理员修复上下文，不读取 refresh token 明文，不写入 Sub2API，也不改变真实 OpenAI/Codex 反代、鉴权、限流、计费或租赁交付链路。
