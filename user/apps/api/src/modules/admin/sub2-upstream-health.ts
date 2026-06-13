@@ -71,6 +71,7 @@ export interface Sub2UpstreamIssue {
 export function sub2AccountHealthSamples(accounts: Sub2AccountHealthSource[]) {
   return accounts
     .filter((account) => account.status !== "active" || account.schedulable === false)
+    .sort(compareSub2AccountRepairCandidates)
     .slice(0, 20)
     .map((account): Sub2AccountHealthSample => ({
       id: `sub2_account:${account.id}`,
@@ -94,6 +95,46 @@ export function sub2AccountHealthSamples(accounts: Sub2AccountHealthSource[]) {
         ?? account.tempUnschedulableReason
         ?? `Sub2 OpenAI account ${account.name} #${account.id} is ${account.status}${account.schedulable === false ? " and not schedulable" : ""}.`
     }));
+}
+
+function compareSub2AccountRepairCandidates(left: Sub2AccountHealthSource, right: Sub2AccountHealthSource) {
+  const priorityDelta = sub2AccountRepairPriority(left) - sub2AccountRepairPriority(right);
+  if (priorityDelta !== 0) return priorityDelta;
+
+  const updatedDelta = timestampValue(right.updatedAt) - timestampValue(left.updatedAt);
+  if (updatedDelta !== 0) return updatedDelta;
+
+  return String(left.id).localeCompare(String(right.id), undefined, { numeric: true });
+}
+
+function sub2AccountRepairPriority(account: Sub2AccountHealthSource) {
+  if (hasAuthCredentialFailure(account)) return 0;
+  if (account.status === "error" && hasConfiguredCredential(account)) return 1;
+  if (account.status === "error") return 2;
+  if (hasConfiguredCredential(account)) return 3;
+  if (account.status !== "active") return 4;
+  if (account.schedulable === false) return 5;
+  return 6;
+}
+
+function hasConfiguredCredential(account: Sub2AccountHealthSource) {
+  const status = account.credentialsStatus?.toLowerCase() ?? "";
+  return status.startsWith("configured");
+}
+
+function hasAuthCredentialFailure(account: Sub2AccountHealthSource) {
+  const text = [
+    account.errorMessage,
+    account.tempUnschedulableReason
+  ].filter(Boolean).join(" ").toLowerCase();
+  return ["auth", "credential", "token", "invalidated", "unauthorized", "expired", "revoked"]
+    .some((token) => text.includes(token));
+}
+
+function timestampValue(value?: string | null) {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 export function buildSub2UpstreamIssues(input: {

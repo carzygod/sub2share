@@ -48,6 +48,86 @@ test("sub2 upstream samples expose failed OpenAI account repair candidates", () 
   assert.equal(samples[0].message, "token invalidated");
 });
 
+test("sub2 upstream samples prioritize configured auth failures for repair", () => {
+  const samples = sub2AccountHealthSamples([
+    {
+      id: 9,
+      name: "disabled",
+      platform: "openai",
+      type: "oauth",
+      status: "disabled",
+      credentialsStatus: null,
+      schedulable: false,
+      groupIds: [2],
+      groupNames: ["oai"],
+      updatedAt: "2026-06-12T15:10:00.000Z",
+      tempUnschedulableReason: "manual_disable"
+    },
+    {
+      id: 12,
+      name: "old-revoked",
+      platform: "openai",
+      type: "oauth",
+      status: "error",
+      credentialsStatus: "configured(3)",
+      schedulable: false,
+      groupIds: [2],
+      groupNames: ["oai"],
+      updatedAt: "2026-06-12T14:50:00.000Z",
+      tempUnschedulableReason: "token_invalidated",
+      errorMessage: "token invalidated"
+    },
+    {
+      id: 3,
+      name: "new-revoked",
+      platform: "openai",
+      type: "oauth",
+      status: "error",
+      credentialsStatus: "configured(3)",
+      schedulable: false,
+      groupIds: [2],
+      groupNames: ["oai"],
+      updatedAt: "2026-06-12T15:00:00.000Z",
+      tempUnschedulableReason: "token_invalidated"
+    },
+    {
+      id: 4,
+      name: "generic-error",
+      platform: "openai",
+      type: "oauth",
+      status: "error",
+      credentialsStatus: null,
+      schedulable: false,
+      groupIds: [2],
+      groupNames: ["oai"],
+      updatedAt: "2026-06-12T15:20:00.000Z",
+      errorMessage: "overloaded"
+    }
+  ]);
+
+  assert.deepEqual(
+    samples.map((sample) => sample.sub2AccountId),
+    [3, 12, 4, 9]
+  );
+
+  const issues = buildSub2UpstreamIssues({
+    gatewayReachable: true,
+    blockingReasons: ["openai_group_has_no_active_accounts"],
+    defaultGroupId: 2,
+    openAiGroupName: "oai",
+    openAiGroupStatus: "active",
+    accountCount: 4,
+    openAiAccountCount: 4,
+    activeOpenAiAccountCount: 0,
+    accountSamples: samples
+  });
+
+  assert.equal(issues[0].sub2AccountId, 3);
+  assert.equal(issues[0].sub2AccountName, "new-revoked");
+  assert.equal(issues[0].tempUnschedulableReason, "token_invalidated");
+  assert.equal(issues[0].repairAction, "apply_openai_refresh_token_to_sub2_account");
+});
+
 test("sub2 upstream issues point no-active-account repairs to the first account candidate", () => {
   const issues = buildSub2UpstreamIssues({
     gatewayReachable: true,

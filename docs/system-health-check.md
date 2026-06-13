@@ -304,3 +304,11 @@ API CORS 配置现在显式复用本地 `/v1/*` 反代路由方法：
 - Dashboard 健康预览会保留这些指标，管理员不用展开完整 payload 也能看到本地 `/v1/*` 反代契约覆盖的代表面。
 
 该检查仍是本地静态契约检查，不会主动调用 Sub2API 或 OpenAI；真实上游可用性仍由 `sub2`、`localProxySmoke` 和反代请求日志共同证明。
+
+## 2026-06-13 扩展：Sub2 上游修复候选账号稳定排序
+
+- `sub2` 巡检生成 OpenAI 账号修复候选时，会优先展示 token/auth/credential 失效类账号，其次是已配置凭据的 error 账号、普通 error 账号和其他非 active 账号。
+- 同优先级候选按 `updatedAt` 新近程度倒序排列，再按账号 ID 稳定排序。
+- `upstreamBlocker` 与 `openai_group_has_no_active_accounts` issue 继续从第一条候选生成 `repairAction=apply_openai_refresh_token_to_sub2_account`。
+
+这让管理员在多个异常 Sub2 OpenAI 账号同时存在时，更稳定地先处理最可能阻断 `/v1/responses` 的凭据失效账号。该检查仍然只读取 Sub2 状态，不解密或展示 refresh token 明文，也不主动写入 Sub2API。
